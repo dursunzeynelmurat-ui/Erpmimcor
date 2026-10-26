@@ -1,13 +1,16 @@
 from django.core.paginator import Paginator
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
+from django.views.decorators.http import require_GET
 
 from accounts.permissions import can, check, require_perm
+from catalog.models import Customer
 from core.services import history_for
 from core.viewutils import run_form_action
 
 from . import services
-from .forms import ApproveLineForm, LineAddForm, OrderCreateForm
+from .forms import ApproveLineForm, LineAddForm, OrderCreateForm, products_for
 from .models import LineStatus, OrderLine, SalesOrder
 from .selectors import line_progress
 
@@ -38,6 +41,16 @@ def order_create(request):
             return resp
     return render(request, "core/form_page.html", {"form": form, "title": "Yeni satış siparişi", "submit": "Siparişi kaydet",
                                                    "back": reverse("orders:order_list")})
+
+
+@require_GET
+@require_perm("order.create")
+def customer_products(request, pk):
+    """Sipariş formu için müşterinin aktif ürün kodları. Kayıtta sunucu ayrıca doğrular."""
+    customer = get_object_or_404(Customer.objects.active(), pk=pk)
+    resp = JsonResponse({"products": [{"id": p.pk, "label": str(p)} for p in products_for(customer)]})
+    resp["Cache-Control"] = "no-store"
+    return resp
 
 
 def order_detail(request, pk):

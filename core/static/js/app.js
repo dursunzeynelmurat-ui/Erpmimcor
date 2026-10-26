@@ -75,6 +75,72 @@
       button.textContent = 'Gönderiliyor…';
     });
   });
+  // Müşteriye bağlı ürün listesi. Sunucu her kayıtta ürünün müşteriye ait ve aktif olduğunu ayrıca doğrular.
+  document.querySelectorAll('select[data-customer-field]').forEach(function (product) {
+    const form = product.form;
+    const customer = form && form.elements[product.dataset.customerField];
+    if (!customer) return;
+    const help = document.getElementById(product.id + '_helptext');
+    if (help) help.setAttribute('aria-live', 'polite');
+    const retry = document.createElement('button');
+    retry.type = 'button'; retry.className = 'btn'; retry.textContent = 'Tekrar dene';
+    showRetry(false);
+    (help || product).after(retry);
+    function showRetry(on) { retry.hidden = !on; retry.style.display = on ? '' : 'none'; } // .btn, [hidden]'ı ezer
+    let seq = 0;
+    let controller = null;
+
+    function setState(state, message) {
+      product.dataset.state = state;
+      product.disabled = state !== 'ready';
+      product.setAttribute('aria-busy', state === 'loading' ? 'true' : 'false');
+      if (help) help.textContent = message;
+      showRetry(state === 'error');
+    }
+    function clearOptions() {
+      product.value = '';
+      Array.from(product.options).forEach(function (opt) { if (opt.value) opt.remove(); });
+    }
+    function load() {
+      const id = customer.value;
+      const mine = ++seq;
+      if (controller) controller.abort();
+      controller = null;
+      clearOptions();
+      product.dataset.loadedCustomer = '';
+      if (!id) { setState('none', product.dataset.msgNoCustomer); return; }
+      setState('loading', product.dataset.msgLoading);
+      const ctrl = controller = new AbortController();
+      const timer = setTimeout(function () { ctrl.abort(); }, 15000);
+      fetch(product.dataset.productsUrl.replace('__ID__', encodeURIComponent(id)),
+            { headers: { Accept: 'application/json' }, credentials: 'same-origin', signal: ctrl.signal })
+        .then(function (resp) { if (!resp.ok) throw new Error(String(resp.status)); return resp.json(); })
+        .then(function (data) {
+          if (mine !== seq) return; // Eski müşterinin geç gelen yanıtı yeni listeyi ezmez.
+          (data.products || []).forEach(function (p) { product.add(new Option(p.label, p.id)); });
+          product.dataset.loadedCustomer = id;
+          if (product.options.length > 1) setState('ready', product.dataset.msgReady);
+          else setState('empty', product.dataset.msgEmpty);
+        })
+        .catch(function () {
+          if (mine !== seq) return;
+          clearOptions();
+          setState('error', product.dataset.msgError);
+        })
+        .finally(function () { clearTimeout(timer); });
+    }
+    customer.addEventListener('change', load);
+    retry.addEventListener('click', load);
+    // Geri tuşu/otomatik doldurma ile müşteri, sunucunun listelediğinden farklıysa listeyi yenile.
+    if ((customer.value || '') !== (product.dataset.loadedCustomer || '')) load();
+  });
+  document.addEventListener('submit', function (event) {
+    // Ürün listesi yüklenirken gönderim engellenir (yarım seçimle kayıt denemesi olmasın).
+    if (event.target.querySelector('select[data-customer-field][data-state="loading"]')) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  }, true);
   window.addEventListener('pageshow', function () {
     document.querySelectorAll('form[data-submitting="1"]').forEach(function (form) {
       delete form.dataset.submitting;

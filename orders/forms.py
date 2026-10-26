@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django import forms
+from django.urls import reverse
 from django.utils import timezone
 
 from catalog.models import Customer, Product, RecipeRevision, Unit
@@ -8,6 +9,14 @@ from core.forms import IdemForm
 
 DEC = forms.NumberInput(attrs={"step": "any", "inputmode": "decimal"})
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
+NO_CUSTOMER = "Önce müşteri seçin."
+NO_PRODUCTS = "Bu müşteriye ait aktif ürün bulunmuyor."
+HAS_PRODUCTS = "Yalnız seçilen müşteriye ait aktif ürün kodları listelenir."
+
+
+def products_for(customer):
+    """Müşteriye bağlı aktif ürün kodları (form listesi ve ürün uç noktası aynı sorguyu kullanır)."""
+    return Product.objects.active().filter(customer=customer).order_by("code")
 
 
 class OrderCreateForm(IdemForm):
@@ -16,10 +25,50 @@ class OrderCreateForm(IdemForm):
     order_date = forms.DateField(label="Sipariş tarihi", widget=DATE, initial=timezone.localdate)
     due_date = forms.DateField(label="Termin", widget=DATE, required=False)
     notes = forms.CharField(label="Not", widget=forms.Textarea(attrs={"rows": 2}), required=False)
-    product = forms.ModelChoiceField(label="Ürün (ilk kalem)", queryset=Product.objects.active().select_related("customer"),
-                                     help_text="Yalnızca seçilen müşterinin ürün kodları kabul edilir.")
+    product = forms.ModelChoiceField(label="Ürün (ilk kalem)", queryset=Product.objects.none())
     quantity = forms.DecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
     unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        customer = self._selected_customer()
+        field = self.fields["product"]
+        # Ürün listesi sunucuda seçilen müşteriye göre kurulur; tarayıcıdaki filtre yalnız kolaylıktır.
+        field.queryset = products_for(customer) if customer else Product.objects.none()
+        field.widget.attrs.update({
+            "data-customer-field": "customer",
+            "data-products-url": reverse("orders:customer_products", args=[0]).replace("/0/", "/__ID__/"),
+            "data-msg-no-customer": NO_CUSTOMER,
+            "data-msg-empty": NO_PRODUCTS,
+            "data-msg-ready": HAS_PRODUCTS,
+            "data-msg-loading": "Ürünler yükleniyor…",
+            "data-msg-error": "Ürün listesi yüklenemedi. Bağlantınızı kontrol edip tekrar deneyin.",
+        })
+        field.widget.attrs["data-loaded-customer"] = str(customer.pk) if customer else ""
+        if customer is None:
+            field.widget.attrs["disabled"] = "disabled"  # Yalnız HTML; Django alanı devre dışı değil.
+            field.help_text = NO_CUSTOMER
+        elif not field.queryset.exists():
+            field.widget.attrs["disabled"] = "disabled"
+            field.help_text = NO_PRODUCTS
+        else:
+            field.help_text = HAS_PRODUCTS
+
+    def _selected_customer(self):
+        value = self.data.get(self.add_prefix("customer")) if self.is_bound else self.initial.get("customer")
+        if not value:
+            return None
+        try:
+            return Customer.objects.active().get(pk=getattr(value, "pk", value))
+        except (Customer.DoesNotExist, ValueError, TypeError):
+            return None
+
+    def clean(self):
+        data = super().clean()
+        customer, product = data.get("customer"), data.get("product")
+        if customer and product and (product.customer_id != customer.pk or not product.is_active):
+            self.add_error("product", "Bu ürün seçilen müşteriye ait aktif bir ürün değil.")
+        return data
 
 
 class LineAddForm(IdemForm):
@@ -30,7 +79,13 @@ class LineAddForm(IdemForm):
 
     def __init__(self, order, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["product"].queryset = Product.objects.active().filter(customer=order.customer)
+        field = self.fields["product"]
+        field.queryset = products_for(order.customer)
+        if not field.queryset.exists():
+            field.widget.attrs["disabled"] = "disabled"
+            field.help_text = NO_PRODUCTS
+        else:
+            field.help_text = f"Yalnız {order.customer.name} müşterisine ait aktif ürün kodları listelenir."
 
 
 class ApproveLineForm(IdemForm):

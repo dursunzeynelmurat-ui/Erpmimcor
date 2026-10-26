@@ -56,6 +56,21 @@ Tarayıcı testleri gerçek HTTP istekleri, Django şablonları ve PostgreSQL ka
 
 Başlangıç görünümü: [masaüstü](screenshots/before-desktop.png), [telefon](screenshots/before-mobile.png). Diğer görseller `screenshots/` altındadır. Son görüntüler test veritabanındaki kurgusal kayıtlardan alınmıştır; kodlar yerel demo veritabanındaki kayıtlarla aynı olmak zorunda değildir.
 
+## Sipariş girişinde müşteriye göre ürün filtresi (ek düzeltme)
+
+- Yeni siparişte müşteri seçilmeden ürün alanı kilitli ve “Önce müşteri seçin.” yazar. Müşteri seçilince yalnız o
+  müşterinin aktif ürün kodları `GET /siparisler/musteri/<id>/urunler/` ile yüklenir (giriş + `order.create` yetkisi,
+  pasif/olmayan müşteri 404). Müşteri değişince önceki ürün seçimi temizlenir; ürünsüz müşteride “Bu müşteriye ait
+  aktif ürün bulunmuyor.” görünür. Yükleme sırasında seçim ve gönderim engellenir; hata olursa liste boş kalır,
+  hata metni ve **Tekrar dene** düğmesi çıkar. Önceki istek iptal edilir ve sıra numarasıyla eski yanıt yok sayılır.
+- Sunucu, filtreyi tarayıcıdan bağımsız uygular: form ürün listesini seçilen müşteriye göre kurar, `clean()` ürünün
+  müşteriye ait ve aktif olduğunu denetler, servis (`_validate_product`) yine reddeder. Doğrulama hatasında müşteri ve
+  ürün seçimi korunur. Kalem ekleme formu siparişin müşterisine göre filtrelidir; ürün yoksa aynı boş durum metni çıkar.
+- Yeni sipariş formu tek kalemlidir (ek kalemler sipariş sayfasından eklenir); filtre formdaki tüm bağlı ürün alanlarına uygulanır.
+- Doğrulama: `python manage.py test` 135/135 (12 yeni); `ui_checks.order_product_filter_checks` 2/2 (1440 ve 390 px:
+  kilit, filtre, müşteri değişiminde temizleme, ürünsüz müşteri, hata + tekrar deneme, hızlı değişim yarışı,
+  doğrulama hatasında seçimlerin korunması, geçerli kayıt); `ui_checks.browser_checks` 2/2 (Demo A + B).
+
 ## Sınırlar ve ayrı backend bulguları
 
 - **Fiziksel telefon testi yapılmadı.** iOS Safari, Android Chrome cihaz testi, gerçek QR kamera/yazıcı, gerçek ağ koşulları ve fiziksel terazi doğrulanmadı. Chromium emülasyonu bunların yerine geçmez.
