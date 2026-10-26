@@ -1,3 +1,30 @@
+# UI/UX teslim güncellemesi — 26 Ekim 2026
+
+Tasarım branch’i: `design/mimcor-demo-2026-10-30`. Kaynak `ee86192` korunarak devam edildi.
+
+Mevcut Django şablonları yenilendi: masaüstü yan menü, mobil gezinme, role göre gerçek iş listeleri,
+ayrı üretim/rezervasyon/sevk miktarları, görünür tartım/blokaj uyarıları, stok işlemi kontrol penceresi,
+form hataları/etiketleri, Türkçe işlem geçmişi ve ana operasyon listelerinde sayfalama.
+Servisler, yetki matrisi ve veritabanı şeması değişmedi.
+
+**Doğrulama:** başlangıç 114/114; son durumda 123/123 Django testi ve 2/2 tarayıcı testi.
+Tarayıcı testlerinin her biri Demo A + B’yi 1440 px veya 390 px genişlikte çalıştırır.
+Kısmi sevkiyat, aynı POST tekrarı, kayıt sonrası bağlantı kaybı, QR ve yetkisiz erişim de kontrol edilir.
+Bu bir **mobil ekran emülasyonudur; fiziksel telefon testi yapılmadı**.
+
+[Ekran görüntüleri, komutlar, test kapsamı ve kalan sınırlamalar](docs/ui-ux-dogrulama.md).
+
+Aşağıdaki önceki devir notu tarihsel backend referansıdır. Güncel UI açısından iki madde artık çözülmüştür:
+- İşlem geçmişinin teknik alan/durum etiketleri sunum katmanında Türkçedir.
+- Sipariş/iş emri/palet/sevkiyat listelerinde 30 kayıtlık sayfalama vardır.
+
+Ek bulgular: adet/rulo üretim özeti alttaki selector’da kutu hareketlerine dayanabildiği için arayüzde gösterilmez;
+genel birim hesabı ayrı backend işi olarak raporlandı. Rezervasyon iptali hata görünümü artık gerekçeyi ve
+işlem anahtarını korur; mevcut servis kuralları değiştirilmedi. Özel iş emri/bobin/reçete şablonlarının gizli işlem
+anahtarı render’ı `hidden_fields` ile güvence altına alındı.
+
+---
+
 # Codex devir notu
 
 Bu belge, UI/UX ve görsel tasarım aşamasını devralacak geliştirici (Codex) içindir.

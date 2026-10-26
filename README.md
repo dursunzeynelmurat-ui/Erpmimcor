@@ -84,3 +84,22 @@ Demoyu sıfırdan başlatmak için veritabanını silip yeniden oluşturun:
 sudo -u postgres dropdb mimcor && sudo -u postgres createdb -O mimcor mimcor
 python manage.py migrate && python manage.py seed_demo
 ```
+
+## UI/UX demo doğrulaması
+
+Tasarım çalışması mevcut Django uygulaması üzerindedir. Ekranlar, kapsam ve sonuçlar:
+[UI/UX doğrulama notu](docs/ui-ux-dogrulama.md).
+
+```bash
+pip install -r requirements-dev.txt
+# Chromium sistemde değilse Playwright Chromium'u kurun:
+python -m playwright install chromium
+# Test dosyası varsayılan olarak /usr/bin/chromium kullanır.
+# Başka kurulumda CHROMIUM_PATH değerini tarayıcı yürütülebilir dosyasına ayarlayın.
+python manage.py test --noinput
+python manage.py test ui_checks.browser_checks --noinput
+```
+
+Tarayıcı testleri ayrı PostgreSQL test veritabanını oluşturur ve siler; yerel demo verilerini değiştirmez.
+İki test Demo A/B'yi 1440 ve 390 px ekranlarda çalıştırır, `docs/screenshots/` görüntülerini yeniler.
+Telefon görünümü emülasyondur; sunum öncesi gerçek cihaz ve tarayıcıyla ayrıca deneyin.

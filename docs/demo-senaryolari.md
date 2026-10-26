@@ -59,3 +59,17 @@ Her rol için ayrı tarayıcı / gizli pencere kullanmak en pratik yoldur. Tüm 
 - Ürün → *Reçete* → *Değiştir (yeni revizyon)*: Rev.3 oluşur; mevcut iş emirleri eski revizyonu gösterir.
 - Satış kullanıcısı iş emri ekranında “Üretimi başlat”/bobin düğmelerini görmez; adres çubuğundan doğrudan istekte 403 alır.
 - QR bağlantısı (`/q/<anahtar>/`) giriş yapmamış kullanıcıyı giriş sayfasına yönlendirir; okutmak hareket oluşturmaz.
+
+## Tasarım sürümünde sunum notları
+
+- Masaüstünde soldaki menüyü, telefonda **Menü** düğmesini kullanın. Ana sayfa rolün gerçek bekleyen işlerini gösterir.
+- Palet işlemi başlıkları açılır. Formu gönderince **İşlemi kontrol edin** penceresi miktarı, hedefi ve gerekçeyi gösterir;
+  **Düzenlemeye dön** kayıt yapmaz, **Onayla ve kaydet** mevcut sunucu doğrulamasına gönderir.
+- İş emrinin üstündeki kısayollar bobin/malzeme/palet ve operasyon işlemlerine götürür. Ek kaynak bobin alanları isteğe bağlı açılır.
+- Sipariş detayında **Gerçekleşen üretim**, **Siparişe ayrılan (kalan)** ve **Sevk edilen** farklı değerlerdir.
+  Demo B'de stoktan sevk gerçekleşmesi bu sipariş için yeni üretim yapıldığı anlamına gelmez.
+- İş emri kapanışındaki ±%3, ayarlanabilir demo varsayılanıdır; onaylanmış fabrika standardı değildir.
+- Telefonda geniş hareket tablolarını kendi alanında yatay kaydırabilirsiniz. Sipariş listesi mobilde etiketli satırlar olarak görünür.
+- Demo B 40 kutulu paleti bir kez tüketir; senaryoyu baştan tekrar etmek için yalnız kurgusal demo veritabanını yeniden kurun.
+  Otomatik testler kendi geçici veritabanını kurup kaldırır.
+- [Doğrulama ve ekran görüntüleri](ui-ux-dogrulama.md). Gerçek telefon testi ayrıca yapılmalıdır.
