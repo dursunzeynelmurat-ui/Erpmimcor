@@ -2,6 +2,7 @@ from decimal import Decimal, InvalidOperation
 
 from django import forms
 
+from catalog.models import Unit
 from core.forms import IdemForm
 from core.templatetags.mimcor import qty
 from core.models import QualityStatus
@@ -72,12 +73,14 @@ class DamageForm(IdemForm):
 
 
 class ReserveForm(IdemForm):
-    order_line = forms.ModelChoiceField(label="Sipariş kalemi", queryset=OrderLine.objects.none())
+    order_line = forms.ModelChoiceField(label="Sipariş kalemi", queryset=OrderLine.objects.none(),
+                                        help_text="Bu sürümde yalnız kutu birimli kalemler listelenir; "
+                                                  "kg/adet/rulo kalemleri stoktan ayrılamaz.")
     quantity = forms.IntegerField(label="Ayrılacak kutu", min_value=1, widget=INT)
 
     def __init__(self, pallet, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["order_line"].queryset = (OrderLine.objects.filter(product=pallet.product)
+        self.fields["order_line"].queryset = (OrderLine.objects.filter(product=pallet.product, unit=Unit.BOX)
                                               .exclude(status__in=[LineStatus.CANCELLED, LineStatus.SHIPPED])
                                               .select_related("order"))
         self.fields["order_line"].label_from_instance = lambda ln: f"{ln.code} – {qty(ln.quantity)} {ln.get_unit_display()}"

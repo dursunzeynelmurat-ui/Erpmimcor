@@ -16,6 +16,7 @@
   <dt>Oluşturan</dt><dd>{{ pallet.created_by.full_name }} · {{ pallet.created_at|date:"d.m.Y H:i" }}</dd>
   {% if pallet.accepted_at %}<dt>Depo kabulü</dt><dd>{{ pallet.accepted_by.full_name }} · {{ pallet.accepted_at|date:"d.m.Y H:i" }}</dd>{% endif %}
 </dl>
+{% if coil_holds %}<p class="msg msg-warning">İlişkili bobin blokeli ({{ coil_holds|join:", " }}): bu palet sevk edilemez. Aktarımla gelen kutuların kaynağı ayrılamadığı için ilişkili paletler ihtiyatlı olarak bekletilir.</p>{% endif %}
 <div class="actions"><a class="btn" href="{% url 'warehouse:pallet_label' pallet.pk %}">Etiket / QR</a></div>
 
 <section class="card"><h2>Güncel ağırlık</h2>

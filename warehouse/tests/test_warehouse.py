@@ -338,3 +338,246 @@ class WarehousePagesTests(TestCase):
         self.assertGreaterEqual(p["last_update"], pallet.created_at)
         with self.assertRaises(PermissionDenied):
             prod.record_coil(w.sales, wo.operations.get(), weight_kg=D("1"))
+
+
+class ProductionPalletRequiresCoilTests(TestCase):
+    """Üretimden paletleme en az bir geçerli son operasyon bobini gerektirir (servis doğrudan çağrıldığında da)."""
+
+    def setUp(self):
+        self.w = World()
+        self.wo = self.w.started_wo(stock=True)
+        self.coil = self.w.coil(self.wo)
+
+    def _state(self):
+        self.coil.refresh_from_db()
+        return (Pallet.objects.count(), PalletMovement.objects.count(), self.coil.status)
+
+    def _assert_rejected(self, fn):
+        before = self._state()
+        with self.assertRaises(BusinessRuleError):
+            fn()
+        self.assertEqual(self._state(), before)
+
+    def test_empty_source_rejected_on_create(self):
+        self._assert_rejected(lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[]))
+
+    def test_empty_source_rejected_on_add(self):
+        pallet = wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil])
+        before = pallet.box_count
+        with self.assertRaises(BusinessRuleError):
+            wh.add_production_to_pallet(self.w.foreman, pallet, self.wo, 5, coils=[])
+        pallet.refresh_from_db()
+        self.assertEqual(pallet.box_count, before)
+
+    def test_coil_of_other_work_order_rejected(self):
+        other = self.w.started_wo(stock=True)
+        foreign = self.w.coil(other)
+        self._assert_rejected(lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[foreign]))
+
+    def test_intermediate_operation_coil_rejected(self):
+        wo = self.w.started_wo(machines=[self.w.ext, self.w.slit], stock=True)
+        ext_coil = self.w.coil(wo)
+        with self.assertRaisesMessage(BusinessRuleError, "son operasyon"):
+            wh.create_pallet_from_production(self.w.foreman, wo, 10, coils=[ext_coil])
+
+    def test_blocked_coil_rejected(self):
+        from production import services as prod
+        prod.set_coil_quality(self.w.foreman, self.coil, QualityStatus.BLOCKED, "Kenar yırtığı")
+        self._assert_rejected(lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil]))
+
+    def test_same_coil_cannot_be_palletized_twice(self):
+        pallet = wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil])
+        self._assert_rejected(lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil]))
+        self._assert_rejected(lambda: wh.add_production_to_pallet(self.w.foreman, pallet, self.wo, 5, coils=[self.coil]))
+
+    def test_same_coil_twice_in_one_call_rejected(self):
+        self._assert_rejected(
+            lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil, self.coil]))
+
+    def test_successful_palletizing(self):
+        pallet = wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[self.coil])
+        self.coil.refresh_from_db()
+        self.assertEqual(self.coil.status, "palete_alindi")
+        self.assertEqual(self.coil.pallet_link.pallet, pallet)
+        self.assertEqual(pallet.movements.get().kind, MovementKind.PRODUCTION)
+
+    def test_form_requires_coil(self):
+        from production.forms import PalletFromProductionForm
+        form = PalletFromProductionForm(self.wo, data={"idem_key": "k", "box_count": "10"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("coils", form.errors)
+
+    def test_warehouse_transfer_does_not_require_coil(self):
+        pallet = self.w.stock_pallet()
+        target = wh.transfer_boxes(self.w.depot, pallet, 5, "Bölme")
+        self.assertEqual(target.box_count, 5)
+        self.assertFalse(target.pallet_coils.exists())
+
+
+class UnitLimitTests(TestCase):
+    """Bu sürümde rezervasyon/sevk yalnız kutu birimli kalemlerde; başka birim kutuya çevrilmez."""
+
+    def setUp(self):
+        self.w = World()
+        self.pallet = self.w.stock_pallet(boxes=40)
+
+    def _line(self, unit, qty=D("10")):
+        order = orders.create_order(self.w.sales, customer=self.w.cust_a, order_date=timezone.localdate(),
+                                    lines=[{"product": self.w.prod_a, "quantity": qty, "unit": unit}])
+        return order, order.lines.get()
+
+    def test_non_box_units_cannot_be_reserved(self):
+        for unit in (Unit.KG, Unit.ROLL, Unit.PIECE):
+            _, line = self._line(unit)
+            with self.assertRaisesMessage(BusinessRuleError, "yalnız kutu birimli"):
+                wh.reserve(self.w.sales, self.pallet, line, 5)
+            self.assertFalse(line.reservations.exists())
+
+    def test_preexisting_incompatible_records_cannot_ship(self):
+        from warehouse.models import Reservation, Shipment, ShipmentLine
+        order, line = self._line(Unit.KG, qty=D("10"))
+        # Düzeltmeden önce oluşmuş olabilecek uyumsuz kayıtlar (servisi atlayarak)
+        res = Reservation.objects.create(pallet=self.pallet, order_line=line, quantity=10, created_by=self.w.sales)
+        shipment = wh.create_shipment(self.w.depot, order)
+        with self.assertRaisesMessage(BusinessRuleError, "yalnız kutu birimli"):
+            wh.add_shipment_line(self.w.depot, shipment, res, 10)
+        ShipmentLine.objects.create(shipment=shipment, reservation=res, pallet=self.pallet, order_line=line, quantity=10)
+        with self.assertRaisesMessage(BusinessRuleError, "yalnız kutu birimli"):
+            wh.confirm_shipment(self.w.depot, shipment)
+        self.pallet.refresh_from_db()
+        res.refresh_from_db()
+        line.refresh_from_db()
+        self.assertEqual(self.pallet.box_count, 40)
+        self.assertEqual((res.shipped_quantity, res.status), (0, ReservationStatus.ACTIVE))
+        self.assertNotEqual(line.status, LineStatus.SHIPPED)
+        self.assertEqual(Shipment.objects.get(pk=shipment.pk).status, ShipmentStatus.DRAFT)
+
+    def test_box_line_partial_then_full_shipment(self):
+        order, line = self._line(Unit.BOX, qty=D("10"))
+        res = wh.reserve(self.w.sales, self.pallet, line, 10)
+        s1 = wh.create_shipment(self.w.depot, order)
+        wh.add_shipment_line(self.w.depot, s1, res, 4)
+        wh.confirm_shipment(self.w.depot, s1)
+        line.refresh_from_db()
+        self.assertNotEqual(line.status, LineStatus.SHIPPED)
+        s2 = wh.create_shipment(self.w.depot, order)
+        wh.add_shipment_line(self.w.depot, s2, res, 6)
+        wh.confirm_shipment(self.w.depot, s2)
+        line.refresh_from_db()
+        self.pallet.refresh_from_db()
+        self.assertEqual(line.status, LineStatus.SHIPPED)
+        self.assertEqual(self.pallet.box_count, 30)
+
+    def test_reserve_form_lists_only_box_lines(self):
+        from warehouse.forms import ReserveForm
+        _, kg_line = self._line(Unit.KG)
+        _, box_line = self._line(Unit.BOX)
+        qs = ReserveForm(self.pallet).fields["order_line"].queryset
+        self.assertIn(box_line, qs)
+        self.assertNotIn(kg_line, qs)
+
+
+class CoilBlockShipmentTests(TestCase):
+    """Palete alınmış (veya kaynak zincirindeki) bobin blokelenirse ilgili içerik sevk edilemez."""
+
+    def setUp(self):
+        from production import services as prod
+        self.prod = prod
+        self.w = World()
+        self.pallet = self.w.stock_pallet(boxes=40)
+        self.coil = self.pallet.pallet_coils.get().coil
+        self.order = self.w.order(qty=D("10"))
+        self.line = self.order.lines.get()
+
+    def _prepare(self, pallet):
+        res = wh.reserve(self.w.sales, pallet, self.line, 10)
+        shipment = wh.create_shipment(self.w.depot, self.order)
+        wh.add_shipment_line(self.w.depot, shipment, res, 10)
+        return res, shipment
+
+    def _block(self, coil=None):
+        self.prod.set_coil_quality(self.w.foreman, coil or self.coil, QualityStatus.BLOCKED, "Kalınlık sapması")
+
+    def _assert_ship_rejected(self, shipment, pallet, res):
+        movements = PalletMovement.objects.count()
+        before = Pallet.objects.get(pk=pallet.pk).box_count
+        with self.assertRaisesMessage(BusinessRuleError, "bobin blokeli"):
+            wh.confirm_shipment(self.w.depot, shipment)
+        pallet.refresh_from_db()
+        res.refresh_from_db()
+        shipment.refresh_from_db()
+        self.assertEqual(pallet.box_count, before)
+        self.assertEqual((res.shipped_quantity, res.status), (0, ReservationStatus.ACTIVE))
+        self.assertEqual(shipment.status, ShipmentStatus.DRAFT)
+        self.assertEqual(PalletMovement.objects.count(), movements)
+
+    def test_block_after_pallet_ok_blocks_shipment(self):
+        res, shipment = self._prepare(self.pallet)
+        self._block()
+        self.pallet.refresh_from_db()
+        self.assertEqual(self.pallet.quality_status, QualityStatus.OK)  # palet alanı değişmez
+        self._assert_ship_rejected(shipment, self.pallet, res)
+        self.assertTrue(AuditLog.objects.filter(action="pallet.coil_hold", object_code=self.pallet.code,
+                                                reason="Kalınlık sapması").exists())
+
+    def test_block_before_adding_line_rejected_early(self):
+        res = wh.reserve(self.w.sales, self.pallet, self.line, 10)
+        self._block()
+        shipment = wh.create_shipment(self.w.depot, self.order)
+        with self.assertRaisesMessage(BusinessRuleError, "bobin blokeli"):
+            wh.add_shipment_line(self.w.depot, shipment, res, 10)
+
+    def test_upstream_source_coil_block_holds_pallet(self):
+        wo = self.w.started_wo(machines=[self.w.ext, self.w.slit], stock=True)
+        ext_coil = self.w.coil(wo, D("100"))
+        self.prod.start_operation(self.w.foreman, wo.operations.get(seq=2))
+        out = self.w.coil(wo, D("90"), op_seq=2, sources=[(ext_coil, D("100"))])
+        pallet = wh.create_pallet_from_production(self.w.foreman, wo, 20, coils=[out])
+        wh.accept_pallet(self.w.depot, pallet, {"gross_kg": D("110")})
+        wh.set_pallet_quality(self.w.foreman, pallet, QualityStatus.OK, "Uygun")
+        res, shipment = self._prepare(pallet)
+        self._block(ext_coil)
+        self._assert_ship_rejected(shipment, pallet, res)
+
+    def test_transfer_to_new_pallet_cannot_bypass(self):
+        new = wh.transfer_boxes(self.w.depot, self.pallet, 15, "Bölme")
+        res, shipment = self._prepare(new)
+        self._block()
+        self._assert_ship_rejected(shipment, new, res)
+
+    def test_transfer_to_existing_pallet_cannot_bypass(self):
+        other = self.w.stock_pallet(boxes=40)
+        wh.transfer_boxes(self.w.depot, self.pallet, 5, "Birleştirme", target=other)
+        res, shipment = self._prepare(other)
+        self._block()
+        self.assertEqual(wh.coil_holds(other), [self.coil.code])
+        self._assert_ship_rejected(shipment, other, res)
+
+    def test_damage_and_chained_transfers_are_traced(self):
+        damaged = wh.separate_damaged(self.w.depot, self.pallet, 2, "Ezik")
+        second = wh.transfer_boxes(self.w.depot, self.pallet, 10, "Bölme")
+        third = wh.transfer_boxes(self.w.depot, second, 4, "Tekrar bölme")
+        self._block()
+        for p in (self.pallet, damaged, second, third):
+            self.assertEqual(wh.coil_holds(p), [self.coil.code], p.code)
+        self.assertEqual(wh.pallets_affected_by_coil(self.coil), {self.pallet.pk, damaged.pk, second.pk, third.pk})
+
+    def test_unblocking_coil_releases_only_coil_hold(self):
+        res, shipment = self._prepare(self.pallet)
+        self._block()
+        self.prod.set_coil_quality(self.w.foreman, self.coil, QualityStatus.OK, "Yeniden ölçüldü, uygun")
+        self.assertEqual(wh.coil_holds(self.pallet), [])
+        # Paletin bağımsız blokesi bobin blokajı kalkınca otomatik kalkmaz
+        wh.set_pallet_quality(self.w.depot, self.pallet, QualityStatus.BLOCKED, "Ambalaj hasarı")
+        self._block()
+        self.prod.set_coil_quality(self.w.foreman, self.coil, QualityStatus.OK, "Uygun")
+        self.pallet.refresh_from_db()
+        self.assertEqual(self.pallet.quality_status, QualityStatus.BLOCKED)
+        with self.assertRaisesMessage(BusinessRuleError, "kalite durumu"):
+            wh.confirm_shipment(self.w.depot, shipment)
+
+    def test_unblocked_ok_pallet_ships(self):
+        res, shipment = self._prepare(self.pallet)
+        wh.confirm_shipment(self.w.depot, shipment)
+        self.pallet.refresh_from_db()
+        self.assertEqual(self.pallet.box_count, 30)

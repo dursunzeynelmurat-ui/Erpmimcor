@@ -1,3 +1,4 @@
+{% if non_box_lines %}<p class="msg msg-warning">{% for l in non_box_lines %}{{ l.code }}{% if not forloop.last %}, {% endif %}{% endfor %}: kutu dışı birimli kalemler bu sürümde stoktan ayrılamaz ve sevk edilemez.</p>{% endif %}
 {% if stock_options %}
 <section class="card"><h2>Stoktan karşılanabilir paletler</h2>
 <p class="muted">Kalem ürün koduyla aynı koddaki, depoda ve blokeli olmayan paletler. Ayırma palet sayfasından yapılır.</p>

@@ -8,12 +8,13 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from accounts.permissions import check
+from catalog.models import Unit
 from core.exceptions import BusinessRuleError
 from core.models import QualityStatus, ValueSource
 from core.services import audit, next_code
 from orders.models import LineStatus, OrderLine
 from orders.services import set_line_status
-from production.models import Coil, CoilStatus, WorkOrder, WorkOrderStatus
+from production.models import Coil, CoilLink, CoilStatus, WorkOrder, WorkOrderStatus
 from production.services import final_operation
 
 from .models import (LabelPrint, MovementKind, Pallet, PalletCoil, PalletMovement, PalletStatus, PalletWeighing,
@@ -68,55 +69,144 @@ def _positive(qty):
         raise BusinessRuleError("Kutu adedi sıfırdan büyük olmalı.", field="quantity")
 
 
+def _require_box_unit(line, field="order_line"):
+    """Bu sürümde fiziksel stok ve sevk kutu bazlıdır; başka birimdeki kalemle karşılaştırma/çevirme yapılmaz."""
+    if line.unit != Unit.BOX:
+        raise BusinessRuleError(
+            f"{line.code}: bu sürümde stoktan ayırma ve sevkiyat yalnız kutu birimli kalemlerde yapılabilir "
+            f"(kalem birimi: {line.get_unit_display()}).", field=field)
+
+
+# --- Bobin blokajının paletlere etkisi --------------------------------------------------
+
+# Bu hareketlerde related_pallet, kutuların geldiği kaynak palettir.
+_INFLOW_KINDS = (MovementKind.TRANSFER_IN, MovementKind.DAMAGE_IN)
+
+
+def _expand(start_ids, step):
+    seen, frontier = set(start_ids), set(start_ids)
+    while frontier:
+        frontier = set(step(frontier)) - seen
+        seen |= frontier
+    return seen
+
+
+def _pallet_ancestors(pallet_ids):
+    """Paletin kendisi ve aktarım/hasar ayırma ile kutu aldığı tüm kaynak paletler."""
+    return _expand(pallet_ids, lambda ids: PalletMovement.objects.filter(
+        pallet_id__in=ids, kind__in=_INFLOW_KINDS, related_pallet__isnull=False).values_list("related_pallet_id", flat=True))
+
+
+def _pallet_descendants(pallet_ids):
+    """Paletin kendisi ve aktarım/hasar ayırma ile kutu verdiği tüm paletler."""
+    return _expand(pallet_ids, lambda ids: PalletMovement.objects.filter(
+        related_pallet_id__in=ids, kind__in=_INFLOW_KINDS).values_list("pallet_id", flat=True))
+
+
+def coil_holds(pallet):
+    """Paletin içeriğiyle ilişkili blokeli bobin kodları.
+
+    Kapsam: paletin ve aktarımla kutu aldığı paletlerin bobinleri ile bunların kaynak bobin zinciri.
+    Aktarılan kutuların hangi bobinden geldiği modelde ayrılamadığı için ilişkili her palet ihtiyatlı olarak
+    bekletilir. Palet kalite alanı değişmez; engel bobin blokajı kalkınca kendiliğinden kalkar.
+    """
+    pallets = _pallet_ancestors({pallet.pk})
+    coils = set(PalletCoil.objects.filter(pallet_id__in=pallets).values_list("coil_id", flat=True))
+    coils = _expand(coils, lambda ids: CoilLink.objects.filter(output_id__in=ids).values_list("source_id", flat=True))
+    return list(Coil.objects.filter(pk__in=coils, quality_status=QualityStatus.BLOCKED)
+                .order_by("code").values_list("code", flat=True))
+
+
+def pallets_affected_by_coil(coil):
+    """Bobinin (ve ondan üretilen bobinlerin) bağlı olduğu paletler ile bunlardan aktarım alan paletler."""
+    coils = _expand({coil.pk}, lambda ids: CoilLink.objects.filter(source_id__in=ids).values_list("output_id", flat=True))
+    direct = set(PalletCoil.objects.filter(coil_id__in=coils).values_list("pallet_id", flat=True))
+    return _pallet_descendants(direct) if direct else set()
+
+
+def _hold_message(pallet, codes):
+    return (f"{pallet.code}: ilişkili bobin blokeli ({', '.join(codes)}); sevk edilemez. "
+            "Bobin blokajı kaldırılana kadar palet bekletilir.")
+
+
+def record_coil_hold_change(actor, coil, old_status, new_status, reason):
+    """Bobin blokajı değişince etkilenen paletleri kilitler (bobin → palet sırası) ve geçmişe gerekçeyi yazar.
+    Palet kalite durumu değiştirilmez; bağımsız palet blokeleri korunur."""
+    pallets = _lock(*Pallet.objects.filter(pk__in=pallets_affected_by_coil(coil)).order_by("pk"))
+    blocked = new_status == QualityStatus.BLOCKED
+    for pallet in pallets:
+        audit(actor, "pallet.coil_hold" if blocked else "pallet.coil_release", pallet,
+              {"bobin": (old_status, f"{coil.code}: {new_status}")}, reason=reason)
+    return pallets
+
+
 # --- Üretimden palet ---------------------------------------------------------------
 
-def _check_coils(wo, coils):
+def _lock_production_coils(wo, coils):
+    """Üretimden paletleme için kaynak bobinleri doğrular ve pk sırasıyla kilitler.
+
+    En az bir bobin zorunludur; yalnız bu iş emrinin son operasyonundan, kullanılabilir ve blokesiz bobinler
+    kabul edilir. Kilit sırası bobin → palet (bobin blokajı servisiyle aynı), böylece kilitlenme döngüsü oluşmaz.
+    """
+    coils = [c for c in coils if c is not None]
+    if not coils:
+        raise BusinessRuleError("Üretimden palet için en az bir bobin/rulo seçilmelidir.", field="coils")
+    ids = [c.pk for c in coils]
+    if len(set(ids)) != len(ids):
+        raise BusinessRuleError("Aynı bobin palete birden fazla kez eklenemez.", field="coils")
     last = final_operation(wo)
-    for c in coils:
-        c = Coil.objects.select_for_update().get(pk=c.pk)
+    locked = list(Coil.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
+    for c in locked:
         if c.work_order_id != wo.pk or c.operation_id != last.pk:
-            raise BusinessRuleError(f"{c.code} bu iş emrinin son operasyon çıktısı değil.")
+            raise BusinessRuleError(f"{c.code} bu iş emrinin son operasyon çıktısı değil.", field="coils")
+        if PalletCoil.objects.filter(coil=c).exists():
+            raise BusinessRuleError(f"{c.code} zaten bir palete bağlı.", field="coils")
         if c.status != CoilStatus.AVAILABLE:
-            raise BusinessRuleError(f"{c.code} zaten kullanılmış/palete alınmış.")
+            raise BusinessRuleError(f"{c.code} kullanılabilir durumda değil ({c.get_status_display()}).", field="coils")
         if c.quality_status == QualityStatus.BLOCKED:
-            raise BusinessRuleError(f"{c.code} blokeli; palete alınamaz.")
-        yield c
+            raise BusinessRuleError(f"{c.code} blokeli; palete alınamaz.", field="coils")
+    return locked
+
+
+def _lock_started_wo(wo, message):
+    wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
+    if wo.status != WorkOrderStatus.STARTED:
+        raise BusinessRuleError(message)
+    return wo
 
 
 @transaction.atomic
-def create_pallet_from_production(actor, wo, box_count, coils=()):
+def create_pallet_from_production(actor, wo, box_count, coils):
     check(actor, "production.execute")
-    wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
-    if wo.status != WorkOrderStatus.STARTED:
-        raise BusinessRuleError("Palet yalnız üretimdeki iş emrinden oluşturulabilir.")
+    wo = _lock_started_wo(wo, "Palet yalnız üretimdeki iş emrinden oluşturulabilir.")
     _positive(box_count)
+    locked_coils = _lock_production_coils(wo, coils)
     pallet = Pallet.objects.create(code=next_code("PLT"), product=wo.product, work_order=wo, created_by=actor)
     audit(actor, "pallet.create", pallet, {"product": (None, wo.product.code), "work_order": (None, wo.code)})
-    _attach(actor, pallet, wo, box_count, coils)
+    _attach(actor, pallet, wo, box_count, locked_coils)
     return pallet
 
 
 @transaction.atomic
-def add_production_to_pallet(actor, pallet, wo, box_count, coils=()):
+def add_production_to_pallet(actor, pallet, wo, box_count, coils):
     """Var olan palete aynı ürünün üretimini ekler. Farklı ürün kodu aynı palete konamaz."""
     check(actor, "production.execute")
-    wo = WorkOrder.objects.select_for_update().get(pk=wo.pk)
+    wo = _lock_started_wo(wo, "Yalnız üretimdeki iş emrinden ekleme yapılabilir.")
+    _positive(box_count)
+    locked_coils = _lock_production_coils(wo, coils)
     (pallet,) = _lock(pallet)
     if pallet.product_id != wo.product_id:
         raise BusinessRuleError(
             f"{pallet.code} paleti {pallet.product.code} ürününe ait; {wo.product.code} eklenemez. "
             "Her palet yalnız bir ürün kodu içerir.")
-    if wo.status != WorkOrderStatus.STARTED:
-        raise BusinessRuleError("Yalnız üretimdeki iş emrinden ekleme yapılabilir.")
     if pallet.status == PalletStatus.EMPTY:
         raise BusinessRuleError("Boşalmış palete ekleme yapılamaz; yeni palet oluşturun.")
-    _positive(box_count)
-    _attach(actor, pallet, wo, box_count, coils)
+    _attach(actor, pallet, wo, box_count, locked_coils)
     return pallet
 
 
-def _attach(actor, pallet, wo, box_count, coils):
-    for coil in _check_coils(wo, coils):
+def _attach(actor, pallet, wo, box_count, locked_coils):
+    for coil in locked_coils:
         coil.status = CoilStatus.PALLETIZED
         coil.save()
         PalletCoil.objects.create(pallet=pallet, coil=coil)
@@ -335,6 +425,7 @@ def reserve(actor, pallet, order_line, quantity):
     _positive(quantity)
     (pallet,) = _lock(pallet)
     line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=order_line.pk)
+    _require_box_unit(line)
     if pallet.product_id != line.product_id:
         raise BusinessRuleError(f"Palet ürünü ({pallet.product.code}) kalem ürünüyle ({line.product.code}) aynı değil.",
                                 field="order_line")
@@ -397,8 +488,12 @@ def add_shipment_line(actor, shipment, reservation, quantity):
     res = Reservation.objects.select_for_update().select_related("order_line", "pallet").get(pk=reservation.pk)
     if res.order_line.order_id != shipment.order_id:
         raise BusinessRuleError("Rezervasyon bu siparişe ait değil.", field="reservation")
+    _require_box_unit(res.order_line, field="reservation")
     if res.status != ReservationStatus.ACTIVE:
         raise BusinessRuleError("Rezervasyon aktif değil.", field="reservation")
+    held = coil_holds(res.pallet)
+    if held:
+        raise BusinessRuleError(_hold_message(res.pallet, held), field="reservation")
     if shipment.lines.filter(reservation=res).exists():
         raise BusinessRuleError("Bu rezervasyon zaten sevkiyatta.", field="reservation")
     in_drafts = (ShipmentLine.objects.filter(reservation=res, shipment__status=ShipmentStatus.DRAFT)
@@ -435,16 +530,27 @@ def confirm_shipment(actor, shipment):
     lines = list(shipment.lines.select_related("reservation", "order_line").order_by("pallet_id"))
     if not lines:
         raise BusinessRuleError("Sevkiyatta satır yok.")
+    # Kilit sırası: sevkiyat → paletler (pk sırası) → rezervasyonlar. Bobin satırları kilitlenmez, okunur:
+    # bobin blokajı servisi bobin → palet sırasıyla kilitlediği için sevkle birlikte serileşir.
     pallets = {p.pk: p for p in _lock(*[ln.pallet for ln in lines])}
+    reservations = {r.pk: r for r in Reservation.objects.select_for_update().select_related("order_line")
+                    .filter(pk__in=[ln.reservation_id for ln in lines]).order_by("pk")}
+    # Önce tüm satırlar doğrulanır; tek bir satır bile uygun değilse hiçbir stok hareketi yazılmaz.
     for ln in lines:
-        pallet = pallets[ln.pallet_id]
-        res = Reservation.objects.select_for_update().get(pk=ln.reservation_id)
+        pallet, res = pallets[ln.pallet_id], reservations[ln.reservation_id]
+        _require_box_unit(ln.order_line)
+        _require_box_unit(res.order_line)
         if pallet.quality_status != QualityStatus.OK:
             raise BusinessRuleError(f"{pallet.code} kalite durumu '{pallet.get_quality_status_display()}'; "
                                     "yalnız uygun ürün sevk edilebilir.")
+        held = coil_holds(pallet)
+        if held:
+            raise BusinessRuleError(_hold_message(pallet, held))
         _require_in_stock(pallet)
         if res.status != ReservationStatus.ACTIVE or ln.quantity > res.open_quantity:
             raise BusinessRuleError(f"{pallet.code} rezervasyonu sevk için yeterli değil.")
+    for ln in lines:
+        pallet, res = pallets[ln.pallet_id], reservations[ln.reservation_id]
         _move(actor, pallet, MovementKind.SHIPMENT, -ln.quantity, shipment_line=ln,
               reason=f"{shipment.code} / {ln.order_line.code}")
         old = res.shipped_quantity
@@ -459,6 +565,8 @@ def confirm_shipment(actor, shipment):
     shipment.save()
     audit(actor, "shipment.confirm", shipment, {"status": (ShipmentStatus.DRAFT, ShipmentStatus.SHIPPED)})
     for line in {ln.order_line_id: ln.order_line for ln in lines}.values():
+        if line.unit != Unit.BOX:  # Kutu sayısı başka birimdeki sipariş miktarıyla karşılaştırılmaz.
+            continue
         shipped = ShipmentLine.objects.filter(order_line=line, shipment__status=ShipmentStatus.SHIPPED).aggregate(
             s=Sum("quantity"))["s"] or 0
         if shipped >= line.quantity:

@@ -191,9 +191,17 @@ def record_coil(actor, op, *, weight_kg, length_m=None, weight_source=ValueSourc
             raise BusinessRuleError("Extruder bobini kaynak bobinden üretilmez.")
     elif not sources:
         raise BusinessRuleError("Dönüştürme/bölme operasyonunda kaynak bobin seçilmelidir.", field="source_1")
+    seen = set()
+    for coil, _ in sources:
+        if coil.pk in seen:
+            raise BusinessRuleError(f"Aynı kaynak bobin ({coil.code}) birden fazla satırda seçilemez; "
+                                    "tüketimi tek satırda toplam olarak girin.", field="source_1")
+        seen.add(coil.pk)
+    # Kaynaklar tek sorguda, pk sırasıyla kilitlenir; kontroller kilitli (güncel) kalan miktar üzerinden yapılır.
+    current = {c.pk: c for c in Coil.objects.select_for_update().filter(pk__in=seen).order_by("pk")}
     locked = []
     for coil, qty in sources:
-        coil = Coil.objects.select_for_update().get(pk=coil.pk)
+        coil = current[coil.pk]
         if coil.work_order_id != wo.pk:
             raise BusinessRuleError(f"{coil.code} bu iş emrine ait değil.")
         if coil.operation.seq >= op.seq:
@@ -236,6 +244,11 @@ def set_coil_quality(actor, coil, status, reason):
         coil.quality_status = status
         coil.save()
         audit(actor, "coil.quality", coil, {"quality_status": (old, status)}, reason=reason)
+        if QualityStatus.BLOCKED in (old, status):
+            # Bağlı paletlerin sevki sevk anında bobin durumundan engellenir; burada paletler kilitlenip
+            # gerekçe geçmişe yazılır. Palet kalite alanına dokunulmaz.
+            from warehouse.services import record_coil_hold_change
+            record_coil_hold_change(actor, coil, old, status, reason)
     return coil
 
 

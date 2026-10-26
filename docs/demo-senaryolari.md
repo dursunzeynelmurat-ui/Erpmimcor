@@ -24,7 +24,7 @@ Her rol için ayrı tarayıcı / gizli pencere kullanmak en pratik yoldur. Tüm 
 6. *Extruder: bobin kaydet*: 68 kg (ağırlık kaynağı “Ölçülen”).
 7. 2. operasyonda *Operasyonu başlat*, 1. operasyonda *Operasyonu tamamla*.
 8. *Perfore: bobin kaydet*: kaynak bobin = extruder bobini, tüketilen 68 kg, çıktı 67,5 kg. (Kaynak kısmen de tüketilebilir.)
-9. *Palet oluştur / ekle*: 20 kutu, perfore bobinini işaretleyin → palet açılır (`PLT-…`), kalite “Kontrol bekliyor”.
+9. *Palet oluştur / ekle*: 20 kutu, perfore bobinini işaretleyin (en az bir bobin seçimi zorunlu) → palet açılır (`PLT-…`), kalite “Kontrol bekliyor”.
    *Etiket / QR* ile etiketi basın (yeniden basım yeni palet açmaz).
 10. Perfore operasyonunu tamamlayın → *İş emrini kapat*: fire 2,5 kg, “kalan malzeme iade edildi veya kalmadı” işaretli.
     Denge toleransı (±%3) aşılırsa gerekçe istenir.
@@ -51,6 +51,9 @@ Her rol için ayrı tarayıcı / gizli pencere kullanmak en pratik yoldur. Tüm 
 
 - *Sevk et* düğmesine çift tıklama veya aynı formu yeniden gönderme: tek sevkiyat hareketi oluşur, “daha önce kaydedilmişti” mesajı görünür.
 - Kalitesi “Kontrol bekliyor” veya “Blokeli” palet sevk edilemez.
+- Palet “Uygun” olsa bile, palete alınan bobin (bobin sayfası → *Kalite durumu* → Blokeli) blokelenirse palet sayfasında
+  uyarı çıkar ve sevk reddedilir; bu paletten aktarımla kutu alan paletler de bekletilir.
+- kg/adet/rulo birimli kalemler bu sürümde stoktan ayrılamaz ve sevk edilemez (sipariş sayfasında uyarı).
 - Palet → *Başka palete aktar*: farklı ürün kodlu hedef palet numarası girilirse reddedilir; aynı ürün için yeni/var olan palete aktarım kaynak ve hedefte birlikte görünür.
 - *Sayım düzeltmesi* ve *Hasarlı ürün ayır* gerekçe ister; hasarlı kutular blokeli yeni palete alınır.
 - Ürün → *Reçete* → *Değiştir (yeni revizyon)*: Rev.3 oluşur; mevcut iş emirleri eski revizyonu gösterir.

@@ -62,6 +62,7 @@ def pallet_detail(request, pk):
     ctx = {
         "pallet": pallet,
         "weighing_rows": services.weight_breakdown(weighing, pallet) if weighing else None,
+        "coil_holds": services.coil_holds(pallet),
         "weighings": [(w, services.weight_breakdown(w)) for w in weighings],
         "movements": pallet.movements.select_related("user", "related_pallet", "shipment_line__shipment"),
         "reservations": pallet.reservations.select_related("order_line__order", "created_by"),

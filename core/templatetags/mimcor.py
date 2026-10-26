@@ -60,6 +60,8 @@ ACTION_LABELS = {
     "pallet.hasar_girisi": "Hasarlı ürün paleti girişi", "pallet.weigh": "Tartım", "pallet.accept": "Depo kabulü",
     "pallet.quality": "Kalite durumu", "pallet.reserve": "Siparişe ayırma", "pallet.label_print": "Etiket basıldı",
     "pallet.label_reprint": "Etiket yeniden basıldı",
+    "pallet.coil_hold": "Bağlı bobin blokeye alındı (sevk bekletiliyor)",
+    "pallet.coil_release": "Bağlı bobin blokesi kaldırıldı",
     "reservation.create": "Rezervasyon", "reservation.cancel": "Rezervasyon iptali", "reservation.ship": "Rezervasyon sevki",
     "shipment.create": "Sevkiyat oluşturuldu", "shipment.line_add": "Sevkiyat satırı eklendi",
     "shipment.line_remove": "Sevkiyat satırı çıkarıldı", "shipment.confirm": "Sevk edildi",

@@ -107,3 +107,51 @@ class ClosureTests(TestCase):
         self.w.coil(self.wo, D("10"))
         with self.assertRaises(BusinessRuleError):
             prod.close_work_order(self.w.foreman, self.wo, scrap_kg=D("0"), remaining_confirmed=True)
+
+
+class DuplicateSourceCoilTests(TestCase):
+    """Aynı kaynak bobin tek işlemde birden fazla satırda kullanılamaz."""
+
+    def setUp(self):
+        from core.models import AuditLog
+        from production.models import Coil, CoilLink
+        self.Coil, self.CoilLink, self.AuditLog = Coil, CoilLink, AuditLog
+        self.w = World()
+        self.wo = self.w.started_wo(machines=[self.w.ext, self.w.slit])
+        self.src = self.w.coil(self.wo, D("100"))
+        self.src2 = self.w.coil(self.wo, D("50"))
+        self.slit_op = self.wo.operations.get(seq=2)
+        prod.start_operation(self.w.foreman, self.slit_op)
+
+    def _counts(self):
+        self.src.refresh_from_db()
+        return (self.src.remaining_kg, self.src.status, self.Coil.objects.count(), self.CoilLink.objects.count(),
+                self.AuditLog.objects.count())
+
+    def _assert_rejected(self, q1, q2, weight):
+        before = self._counts()
+        with self.assertRaisesMessage(BusinessRuleError, "Aynı kaynak bobin"):
+            self.w.coil(self.wo, weight, op_seq=2, sources=[(self.src, q1), (self.src, q2)])
+        self.assertEqual(self._counts(), before)
+        self.assertEqual(before[0], D("100"))
+
+    def test_same_source_60_plus_60_rejected(self):
+        self._assert_rejected(D("60"), D("60"), D("100"))
+
+    def test_same_source_20_plus_20_rejected_as_duplicate(self):
+        self._assert_rejected(D("20"), D("20"), D("30"))
+
+    def test_two_different_sources_work(self):
+        out = self.w.coil(self.wo, D("85"), op_seq=2, sources=[(self.src, D("50")), (self.src2, D("40"))])
+        self.src.refresh_from_db()
+        self.src2.refresh_from_db()
+        self.assertEqual((self.src.remaining_kg, self.src2.remaining_kg), (D("50"), D("10")))
+        self.assertEqual({lk.source for lk in out.source_links.all()}, {self.src, self.src2})
+
+    def test_form_rejects_duplicate_source(self):
+        from production.forms import CoilForm
+        form = CoilForm(self.slit_op, data={
+            "idem_key": "k", "weight_kg": "30", "weight_source": "olculen",
+            "source_1": self.src.pk, "consumed_1": "20", "source_2": self.src.pk, "consumed_2": "20"})
+        self.assertFalse(form.is_valid())
+        self.assertIn("Aynı kaynak bobin", str(form.errors["source_2"]))

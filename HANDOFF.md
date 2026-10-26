@@ -27,13 +27,44 @@ Durum tarihi: 26 Ekim 2026. Hedef: 30 Ekim 2026 demo.
 
 ## Test sonuçları
 
-`python manage.py test` → **84 test, hepsi başarılı** (PostgreSQL 16, ~11 sn).
+`python manage.py test` → **114 test, hepsi başarılı** (PostgreSQL 16, ~16 sn). Bunların 4'ü gerçek eş zamanlılık
+testidir (`warehouse/tests/test_concurrency.py`, aşağıda).
 Kapsanan başlıklar: yetkisiz işlem (view + servis), personel no tek başına giriş, kilit ve oturum zaman aşımı;
 farklı ürünü aynı palete koyma (ekleme ve aktarım); negatif stok (palet, lot, bobin) ve atomik geri alma; mükerrer
 sevkiyat (ikinci onay, aynı form anahtarı, rezervasyonun iki sevkiyata bölünmesi); kısmi sevkiyat 40→10→30 aynı palet;
 rezervasyonun fiziksel stoğu düşürmemesi; uygun olmayan ürün sevki; reçete revizyonu ve iş emrinin revizyonu koruması;
 eksik dara (sıfır sayılmama, “Palet hariç”, net yalnız tüm daralar bilinince); içerik değişince yeniden tartım; etiket
 yeniden basımı; QR’ın hareket oluşturmaması; iş emri kapanış dengesi; tüm rollerde sayfaların açılması.
+
+### Kod incelemesi düzeltmeleri (d40f3b4 sonrası)
+
+| Açık | Düzeltme | Testler |
+|---|---|---|
+| Aynı kaynak bobin birden fazla satırda seçilebiliyordu (100 kg’dan 60+60 tüketim geçiyordu) | Form ve `record_coil` mükerrer kaynağı reddeder; kaynaklar tek sorguda pk sırasıyla kilitlenip güncel kalan miktarla doğrulanır | `DuplicateSourceCoilTests` |
+| Üretimden bobinsiz palet açılabiliyordu | `create_pallet_from_production` / `add_production_to_pallet` en az bir bobin ister; yalnız iş emrinin son operasyonundan, kullanılabilir, blokesiz, palete bağlanmamış bobin; tekrar yok. Depo aktarım/bölme işlemleri etkilenmez | `ProductionPalletRequiresCoilTests` |
+| kg/adet/rulo kaleme kutu sevk edilip kalem “sevk edildi” olabiliyordu | `reserve`, `add_shipment_line`, `confirm_shipment` kutu dışı kalemi reddeder (önceden oluşmuş uyumsuz kayıtlar dahil); kalem durumu yalnız kutu kalemlerinde güncellenir | `UnitLimitTests` |
+| Palete alınmış bobin blokelense de palet “uygun” olduğu için sevk ediliyordu | Sevk anında `coil_holds()` palet ve kaynak soyundaki blokeli bobinleri arar; varsa sevk reddedilir. Bobin blokajı/kaldırılması etkilenen paletleri kilitleyip geçmişe gerekçeyle yazar; palet kalite alanına dokunmaz | `CoilBlockShipmentTests` |
+
+Bu 26 yeni testin 17'si d40f3b4 kodunda çalıştırıldığında başarısız oluyor (düzeltmeyi gerçekten yakalıyorlar).
+
+### Eş zamanlılık testleri
+
+`TransactionTestCase`; her thread ayrı PostgreSQL bağlantısı. Sıra zamanlamaya değil koşula dayanır: A hedef satırı
+kilitleyip bekler, ana thread B'nin gerçekten kilit beklediğini `pg_stat_activity` üzerinden görür, sonra A devam eder.
+Her bekleme süre sınırlı (20 sn), thread hataları ana teste aktarılır, `lock_timeout` 10 sn; iş kuralı hatası
+(`BusinessRuleError`) ile teknik hata (kilitlenme, IntegrityError vb.) ayrı doğrulanır.
+
+- Aynı sevkiyatın eş zamanlı iki onayı → tek stok düşümü, ikinci istek “zaten sevk edildi”.
+- Aynı form anahtarıyla eş zamanlı iki gönderim → biri işlenir, diğeri “daha önce kaydedildi”; tek hareket.
+- Aynı 100 kg kaynaktan eş zamanlı iki 60 kg tüketim → biri başarılı, diğeri iş kuralı hatası; kalan 40 kg, tek bağlantı.
+- Bobin blokajı ile sevk onayı yarışı → blokaj önce kilitlerse sevk bekler ve blokajı görerek reddedilir; stok değişmez.
+
+### Kilit sırası (değiştirirken korunmalı)
+
+- Paletleme: iş emri → bobin(ler) → palet. Bobin blokajı: bobin → etkilenen paletler (pk sırası).
+- Sevk onayı: sevkiyat → paletler (pk sırası) → rezervasyonlar; bobinler kilitlenmez, okunur.
+- Bobin kaydı: iş emri → operasyon → kaynak bobinler (pk sırası).
+Bu sıra döngü oluşturmaz; blokaj ve sevk birbirini bekleyerek serileşir.
 
 ## UI/UX için mimari notlar
 
@@ -56,11 +87,19 @@ yeniden basımı; QR’ın hareket oluşturmaması; iş emri kapanış dengesi; 
 ## Bilinen eksikler (çalışıyormuş gibi sunulmamalı)
 
 - Sipariş/kalem iptali, kalem miktarı düzeltme ve iş emri iptali için ekran ve servis yok (durum değerleri tanımlı).
-- Rezervasyon ve sevkiyat yalnız **kutu** biriminde. kg/adet/rulo birimli kalemlerde gerçekleşen miktar gösterilir
-  (kg: son operasyon bobin ağırlıkları) ama stoktan ayırma/sevk kutu üzerinden yapılır.
+- **Geçici sınır – birim:** rezervasyon ve sevkiyat yalnız **kutu** birimli kalemlerde yapılabilir. kg/adet/rulo
+  kalemleri sunucuda reddedilir (sipariş sayfasında uyarı görünür); otomatik birim çevirme yoktur ve bu kalemler
+  “sevk edildi” durumuna geçmez. kg kalemlerde gerçekleşen üretim (son operasyon bobin ağırlıkları) gösterilir.
+  Genel birim desteği ayrı bir iş olarak ele alınmalı.
 - Rezervasyon kısmi iptal edilemez (tamamı iptal; kısmen sevk edilmişse kalan serbest bırakılır).
 - Palet içinde parti/lot karışımı izlenmez; palet kaynağı tek iş emri alanıyla tutulur, aktarımla gelenler hareketlerden izlenir.
-- Bobin kalite durumu ile palet kalite durumu ayrı yönetilir; birbirine otomatik yansımaz.
+- **Bobin blokajı ihtiyatlıdır:** palete alınmış bir bobin (veya onun kaynak zincirindeki ara bobin) blokeliyse,
+  o palet ve aktarım/hasar ayırma ile ondan kutu almış tüm paletler sevkte bekletilir. Model, aktarılan kutuların
+  hangi bobinden geldiğini ayırmadığı için sağlam kutular da beklemeye girebilir; bu bilinçli olarak güvenli taraftır.
+  Engel palet kalite alanına yazılmaz, sevk anında hesaplanır: bobin blokajı kalkınca kendiliğinden kalkar, paletin
+  bağımsız blokesi ise korunur. Rezervasyon (fiziksel stok değiştirmediği için) bu durumda engellenmez; sevk satırı
+  ekleme ve sevk onayı engellenir.
+- Üretimden palet oluşturmak/palete eklemek için en az bir bobin seçimi zorunludur.
 - Hatalı giriş kilidi süreç içi bellekte (locmem cache) tutulur; birden çok süreçli kurulumda paylaşılan cache gerekir.
 - Canlı kurulum yapılandırması yok: `DJANGO_DEBUG=0` için `collectstatic` + statik dosya sunucusu (ör. whitenoise/nginx),
   HTTPS ve uygulama sunucusu (gunicorn) eklenmeli.
@@ -80,6 +119,7 @@ yeniden basımı; QR’ın hareket oluşturmaması; iş emri kapanış dengesi; 
 5. İlk operasyon extruder olmalıdır; operasyon n, operasyon n−1 başlamadan başlayamaz ve ondan önce tamamlanamaz.
 6. Dönüştürmede çıktı bobini, tüketilen kaynak toplamından ağır olamaz; aradaki fark kapanışta fire olarak girilir.
 7. İş emri kapanış dengesi: net verilen malzeme ≈ sağlam + blokeli + ara stok bobin + fire, tolerans
-   `WORK_ORDER_BALANCE_TOLERANCE_PCT` (vars. %3); aşılırsa gerekçe zorunlu.
+   `WORK_ORDER_BALANCE_TOLERANCE_PCT` (vars. %3); aşılırsa gerekçe zorunlu. %3 yalnız demo için seçilmiş,
+   `.env` ile ayarlanabilir bir varsayılandır; onaylanmış bir fabrika standardı değildir.
 8. Sipariş kalemine iş emri açılabilmesi için planlama teknik onayı gerekir; stoktan karşılanan kalem için gerekmez.
 9. Hareketsizlik zaman aşımı 30 dk, mutlak oturum 12 saat (`.env` ile değişir).

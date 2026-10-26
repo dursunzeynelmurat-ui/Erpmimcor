@@ -93,7 +93,9 @@ class CoilForm(IdemForm):
         if self.needs_source:
             for i in range(1, self.SOURCE_ROWS + 1):
                 c, q = data.get(f"source_{i}"), data.get(f"consumed_{i}")
-                if c and q:
+                if c and any(c.pk == s.pk for s, _ in sources):
+                    self.add_error(f"source_{i}", "Aynı kaynak bobin birden fazla satırda seçilemez.")
+                elif c and q:
                     sources.append((c, q))
                 elif c or q:
                     self.add_error(f"consumed_{i}", "Kaynak bobin ve tüketilen miktar birlikte girilmeli.")
@@ -114,7 +116,8 @@ class MaterialMoveForm(IdemForm):
 class PalletFromProductionForm(IdemForm):
     box_count = forms.IntegerField(label="Kutu adedi", min_value=1, widget=forms.NumberInput(attrs={"inputmode": "numeric"}))
     coils = forms.ModelMultipleChoiceField(label="Palete alınan bobinler/rulolar", queryset=Coil.objects.none(),
-                                           required=False, widget=forms.CheckboxSelectMultiple)
+                                           required=True, widget=forms.CheckboxSelectMultiple,
+                                           error_messages={"required": "En az bir bobin/rulo seçilmelidir."})
     target_code = forms.CharField(label="Var olan palete ekle (palet no)", required=False,
                                   help_text="Boş bırakılırsa yeni palet açılır. Palet aynı ürün koduna ait olmalı.")
 
