@@ -1,3 +1,3 @@
-<a class="tile" href="{% url 'warehouse:pallet_list' %}">Paletler</a>
-{% if can.warehouse_operate %}<a class="tile" href="{% url 'warehouse:pallet_list' %}?status=depo_kabul_bekliyor">Depo kabulü</a>
-<a class="tile" href="{% url 'warehouse:shipment_list' %}">Sevkiyatlar</a>{% endif %}
+{% if can.stock_view %}<a class="tile" href="{% url 'warehouse:pallet_list' %}">Paletler</a>{% endif %}
+{% if can.warehouse_operate %}<a class="tile" href="{% url 'warehouse:pallet_list' %}?status=depo_kabul_bekliyor">Depo kabulü</a>{% endif %}
+{% if can.shipment_view %}<a class="tile" href="{% url 'warehouse:shipment_list' %}">Sevkiyatlar</a>{% endif %}

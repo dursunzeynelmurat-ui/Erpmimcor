@@ -30,7 +30,7 @@ def _validate_machines(machines):
 
 @transaction.atomic
 def create_work_order(actor, *, machines, target_quantity, unit, order_line=None, product=None, revision=None,
-                      planned_start=None, notes=""):
+                      planned_start=None, notes="", foreman=None):
     """Siparişe bağlı (order_line) veya stok için (product + revision) iş emri açar.
     Reçete revizyonu iş emrine sabitlenir; sonradan açılan revizyonlar bu iş emrini etkilemez."""
     check(actor, "workorder.create")
@@ -53,13 +53,15 @@ def create_work_order(actor, *, machines, target_quantity, unit, order_line=None
     _validate_machines(machines)
     wo = WorkOrder.objects.create(code=next_code("IE"), purpose=purpose, order_line=order_line, product=product,
                                   recipe_revision=revision, target_quantity=target_quantity, unit=unit,
-                                  planned_start=planned_start, notes=notes, created_by=actor)
+                                  planned_start=planned_start, notes=notes, created_by=actor,
+                                  assigned_foreman=foreman, assigned_at=timezone.now() if foreman else None)
     for seq, machine in enumerate(machines, start=1):
         WorkOrderOperation.objects.create(work_order=wo, seq=seq, machine=machine, machine_type=machine.machine_type)
     audit(actor, "workorder.create", wo, {
         "purpose": (None, purpose), "order_line": (None, order_line.code if order_line else None),
         "product": (None, product.code), "recipe_revision": (None, str(revision)),
         "target_quantity": (None, target_quantity), "operations": (None, [m.code for m in machines]),
+        "assigned_foreman": (None, foreman.personnel_no if foreman else None),
     })
     return wo
 
@@ -70,7 +72,7 @@ def _lock_wo(wo):
 
 @transaction.atomic
 def start_work_order(actor, wo):
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
     if wo.status != WorkOrderStatus.PLANNED:
         raise BusinessRuleError(f"İş emri zaten '{wo.get_status_display()}' durumunda.")
@@ -100,7 +102,7 @@ def _start_op(actor, op):
 
 @transaction.atomic
 def start_operation(actor, op):
-    check(actor, "production.execute")
+    check(actor, "production.execute", op)
     wo = _lock_wo(op.work_order)
     if wo.status != WorkOrderStatus.STARTED:
         raise BusinessRuleError("Önce iş emri üretimi başlatılmalı.")
@@ -112,7 +114,7 @@ def start_operation(actor, op):
 
 @transaction.atomic
 def complete_operation(actor, op):
-    check(actor, "production.execute")
+    check(actor, "production.execute", op)
     wo = _lock_wo(op.work_order)
     op = WorkOrderOperation.objects.select_for_update().get(pk=op.pk)
     if op.status != OperationStatus.RUNNING:
@@ -137,7 +139,7 @@ def _require_started(wo):
 
 @transaction.atomic
 def issue_material(actor, wo, lot, quantity):
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
     _require_started(wo)
     if quantity <= 0:
@@ -156,7 +158,7 @@ def issued_by_lot(wo):
 @transaction.atomic
 def return_material(actor, wo, lot, quantity):
     """Makine başında kalan malzemenin lota iadesi; bu iş emrine verilen miktarı aşamaz."""
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
     _require_started(wo)
     if quantity <= 0:
@@ -177,7 +179,7 @@ def record_coil(actor, op, *, weight_kg, length_m=None, weight_source=ValueSourc
     Extruder bobini kaynaksızdır (malzeme iş emrine verilir). Sonraki operasyonlarda en az bir kaynak bobin
     gerekir: sources=[(Coil, tüketilen_kg)]. Kaynak kısmen tüketilebilir; kalan miktar negatife düşemez.
     """
-    check(actor, "production.execute")
+    check(actor, "production.execute", op)
     wo = _lock_wo(op.work_order)
     _require_started(wo)
     op = WorkOrderOperation.objects.select_for_update().select_related("machine").get(pk=op.pk)
@@ -235,7 +237,7 @@ def record_coil(actor, op, *, weight_kg, length_m=None, weight_source=ValueSourc
 
 @transaction.atomic
 def set_coil_quality(actor, coil, status, reason):
-    check(actor, "quality.decide" if status != QualityStatus.BLOCKED else "quality.block")
+    check(actor, "quality.decide" if status != QualityStatus.BLOCKED else "quality.block", coil)
     if not reason:
         raise BusinessRuleError("Kalite değişikliği için gerekçe zorunludur.", field="reason")
     coil = Coil.objects.select_for_update().get(pk=coil.pk)
@@ -281,7 +283,7 @@ def close_work_order(actor, wo, *, scrap_kg, remaining_confirmed, reason=""):
 
     Denge: net verilen malzeme ≈ sağlam + blokeli + ara stok + fire. Fark toleransı aşarsa gerekçe zorunlu.
     """
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
     _require_started(wo)
     if wo.operations.exclude(status=OperationStatus.DONE).exists():

@@ -29,8 +29,11 @@ class OrderCreateForm(IdemForm):
     quantity = forms.DecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
     unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX)
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
+        from accounts.permissions import scoped
         super().__init__(*args, **kwargs)
+        self._customers = scoped(Customer.objects.active(), user, "order.create") if user else Customer.objects.none()
+        self.fields["customer"].queryset = self._customers
         customer = self._selected_customer()
         field = self.fields["product"]
         # Ürün listesi sunucuda seçilen müşteriye göre kurulur; tarayıcıdaki filtre yalnız kolaylıktır.
@@ -59,7 +62,7 @@ class OrderCreateForm(IdemForm):
         if not value:
             return None
         try:
-            return Customer.objects.active().get(pk=getattr(value, "pk", value))
+            return self._customers.get(pk=getattr(value, "pk", value))
         except (Customer.DoesNotExist, ValueError, TypeError):
             return None
 

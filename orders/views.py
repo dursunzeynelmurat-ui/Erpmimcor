@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 
-from accounts.permissions import can, check, require_perm
+from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
 from catalog.models import Customer
 from core.services import history_for
 from core.viewutils import run_form_action
@@ -16,8 +16,10 @@ from .selectors import line_progress
 
 
 def order_list(request):
-    check(request.user, "view.orders")
-    orders = SalesOrder.objects.select_related("customer").prefetch_related("lines__product")
+    check(request.user, "order.view")
+    orders = scoped(SalesOrder.objects.all(), request.user, "order.view").select_related("customer").prefetch_related("lines__product")
+    if request.GET.get("musteri", "").isdigit():
+        orders = orders.filter(customer_id=request.GET["musteri"])
     q = request.GET.get("q", "").strip()
     if q:
         orders = orders.filter(code__icontains=q) | orders.filter(customer__name__icontains=q)
@@ -27,7 +29,7 @@ def order_list(request):
 
 @require_perm("order.create")
 def order_create(request):
-    form = OrderCreateForm(request.POST or None)
+    form = OrderCreateForm(request.POST or None, user=request.user)
     if request.method == "POST":
         def create(d):
             return services.create_order(
@@ -47,18 +49,18 @@ def order_create(request):
 @require_perm("order.create")
 def customer_products(request, pk):
     """Sipariş formu için müşterinin aktif ürün kodları. Kayıtta sunucu ayrıca doğrular."""
-    customer = get_object_or_404(Customer.objects.active(), pk=pk)
+    # Kapsam dışı (erişim verilmemiş/süresi dolmuş) müşteri 404 döner; ürün listesi sızmaz.
+    customer = get_object_or_404(scoped(Customer.objects.active(), request.user, "order.create"), pk=pk)
     resp = JsonResponse({"products": [{"id": p.pk, "label": str(p)} for p in products_for(customer)]})
     resp["Cache-Control"] = "no-store"
     return resp
 
 
 def order_detail(request, pk):
-    check(request.user, "view.orders")
-    order = get_object_or_404(SalesOrder.objects.select_related("customer", "created_by"), pk=pk)
-    form = LineAddForm(order, request.POST or None) if can(request.user, "order.create") else None
+    order = get_scoped_or_404(SalesOrder.objects.select_related("customer", "created_by"), request.user, "order.view", pk=pk)
+    form = LineAddForm(order, request.POST or None) if can(request.user, "order.create", order) else None
     if request.method == "POST":
-        check(request.user, "order.create")
+        check(request.user, "order.create", order)
         resp = run_form_action(
             request, form, action="order.line_add",
             fn=lambda d: services.add_line(request.user, order, product=d["product"], quantity=d["quantity"],
@@ -71,14 +73,15 @@ def order_detail(request, pk):
     from warehouse.selectors import order_warehouse_context
     return render(request, "orders/order_detail.html", {
         "order": order, "progress": [line_progress(line) for line in lines], "form": form,
-        "history": history_for(order), **order_warehouse_context(order, lines),
+        "history": history_for(order), **order_warehouse_context(order, lines, request.user),
+        "commercial": can(request.user, "customer.commercial.view", order.customer),
     })
 
 
 def progress_list(request):
     """Satış ekranı: açık kalemlerin gerçekleşen miktarı, aşaması, son güncellemesi (salt okunur)."""
-    check(request.user, "view.orders")
-    lines = (OrderLine.objects.select_related("order__customer", "product")
+    check(request.user, "order.view")
+    lines = (scoped(OrderLine.objects.all(), request.user, "order.view").select_related("order__customer", "product")
              .exclude(status__in=[LineStatus.CANCELLED, LineStatus.SHIPPED]).order_by("order__due_date", "order__code"))
     return render(request, "orders/progress_list.html", {"rows": [line_progress(line) for line in lines]})
 

@@ -14,6 +14,15 @@ DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 MAX_OPERATIONS = 4
 
 
+def foreman_candidates():
+    """Üretim kaydı yetkisi olan aktif kullanıcılar (rol adına değil yetkiye bakılır)."""
+    from accounts.models import RoleStatus, User
+    return (User.objects.filter(is_active=True, role_assignments__revoked_at__isnull=True,
+                                role_assignments__role__status=RoleStatus.ACTIVE,
+                                role_assignments__role__permissions__action="workorder.schedule")
+            .distinct().order_by("full_name"))
+
+
 class WorkOrderForm(IdemForm):
     """Operasyon sırası: 1. satır extruder, sonraki satırlar sırayla matbaa/perfore/dilimleme vb."""
 
@@ -25,6 +34,11 @@ class WorkOrderForm(IdemForm):
 
     def __init__(self, *args, stock=False, **kwargs):
         super().__init__(*args, **kwargs)
+        foremen = foreman_candidates()
+        self.fields["foreman"] = forms.ModelChoiceField(
+            label="Sorumlu ustabaşı", queryset=foremen,
+            initial=foremen.first() if foremen.count() == 1 else None,
+            help_text="İş emri önce ustabaşına atanır; operasyonları ustabaşı tarih, makine ve vardiyaya dağıtır.")
         if stock:
             self.fields["product"] = forms.ModelChoiceField(
                 label="Ürün (müşteri stoğu)", queryset=Product.objects.active().select_related("customer"))

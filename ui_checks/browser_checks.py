@@ -11,6 +11,7 @@ from django.test import override_settings
 from django.db import connections
 from playwright.sync_api import sync_playwright, expect
 
+from accounts.models import User
 from catalog.models import Product, Customer, Machine, MaterialLot
 from orders.models import SalesOrder
 from production.models import WorkOrder, Coil
@@ -117,10 +118,16 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         sales, planner, foreman, depot, admin = [self.page_for(n) for n in ['2001', '3001', '4001', '5001', '1001']]
         self.shot(admin, 'ana-ekran')
         # Beş rol: okuma ekranları ve sunucuda yetkisiz POST engeli.
+        lists = ['/siparisler/', '/is-emirleri/', '/paletler/', '/sevkiyatlar/']
+        # Ustabaşı şablonu yalnız kendine atanmış iş emirlerini ve paletleri görür; sipariş/sevkiyat 403.
+        allowed = {id(foreman): {'/is-emirleri/', '/paletler/'}}
         for page in [sales, planner, foreman, depot, admin]:
-            for path in ['/siparisler/', '/is-emirleri/', '/paletler/', '/sevkiyatlar/']:
-                self.go(page, path)
-                self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+            for path in lists:
+                if path in allowed.get(id(page), set(lists)):
+                    self.go(page, path)
+                    self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
+                else:
+                    self.assertEqual(page.request.get(self.live_server_url + path).status, 403, path)
         for page in [sales, planner, depot]:
             token = page.locator('[name=csrfmiddlewaretoken]').first.input_value()
             response = page.request.post(self.live_server_url + '/is-emirleri/1/baslat/',
@@ -140,6 +147,7 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         self.go(planner, f'/is-emirleri/kalem/{line.pk}/yeni/')
         planner.locator('[name=machine_1]').select_option(str(Machine.objects.get(code='EXT-01').pk))
         planner.locator('[name=machine_2]').select_option(str(Machine.objects.get(code='PER-01').pk))
+        planner.locator('[name=foreman]').select_option(str(User.objects.get(personnel_no='4001').pk))
         self.submit(planner, 'İş emrini oluştur')
         wo = WorkOrder.objects.get(order_line=line)
         op1, op2 = list(wo.operations.order_by('seq'))

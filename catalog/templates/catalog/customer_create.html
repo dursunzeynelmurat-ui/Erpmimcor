@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Yeni müşteri{% endblock %}
+{% block content %}
+<h1>Yeni müşteri</h1>
+<p class="muted">İlk kayıt kısadır. Kişiler, adresler, ticari ve operasyon bilgileri kartta sonradan tamamlanır;
+sipariş onayı ve sevkiyat aşamasında eksikler ayrıca istenir. Yabancı müşterilerde Türkiye vergi formatı uygulanmaz.</p>
+{% if similar %}
+<div class="msg msg-warning" role="alert"><strong>Benzer ünvanlı kayıtlar var:</strong>
+  <ul>{% for c in similar %}<li><a href="{% url 'catalog:customer_detail' c.pk %}">{{ c }}</a></li>{% endfor %}</ul>
+  Aynı müşteri ise mevcut kaydı kullanın. Farklı firma ise onay kutusunu işaretleyip tekrar kaydedin.</div>
+{% endif %}
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Müşteriyi aç</button>
+    <a class="btn" href="{% url 'catalog:customer_list' %}">Geri</a></div>
+</form>
+{% endblock %}

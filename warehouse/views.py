@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
-from accounts.permissions import can, check, require_perm
+from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
 from core.forms import ConfirmForm, ReasonForm
 from core.services import history_for
 from core.viewutils import run_form_action
@@ -23,9 +23,11 @@ def _pallet_url(p):
 
 
 def pallet_list(request):
-    check(request.user, "view.warehouse")
+    check(request.user, "stock.view")
     form = PalletFilterForm(request.GET or None)
-    qs = Pallet.objects.select_related("product__customer", "work_order")
+    qs = scoped(Pallet.objects.all(), request.user, "stock.view").select_related("product__customer", "work_order")
+    if request.GET.get("musteri", "").isdigit():
+        qs = qs.filter(product__customer_id=request.GET["musteri"])
     if form.is_valid():
         if form.cleaned_data["q"]:
             q = form.cleaned_data["q"].strip()
@@ -42,8 +44,8 @@ def pallet_list(request):
 
 def qr_open(request, token):
     """QR okutma yalnız kaydı açar; hiçbir stok hareketi oluşturmaz."""
-    check(request.user, "view.warehouse")
-    pallet = Pallet.objects.filter(qr_token=token).first()
+    check(request.user, "stock.view")
+    pallet = scoped(Pallet.objects.all(), request.user, "stock.view").filter(qr_token=token).first()
     if pallet is None:
         raise Http404("Palet bulunamadı.")
     return redirect(_pallet_url(pallet))
@@ -55,9 +57,8 @@ def qr_payload(request, pallet):
 
 
 def pallet_detail(request, pk):
-    check(request.user, "view.warehouse")
-    pallet = get_object_or_404(Pallet.objects.select_related("product__customer", "work_order__order_line__order",
-                                                             "created_by", "accepted_by"), pk=pk)
+    pallet = get_scoped_or_404(Pallet.objects.select_related("product__customer", "work_order__order_line__order",
+                                                             "created_by", "accepted_by"), request.user, "stock.view", pk=pk)
     u = request.user
     weighing = pallet.current_weighing
     weighings = pallet.weighings.select_related("user")
@@ -79,13 +80,13 @@ def pallet_detail(request, pk):
         elif pallet.status == PalletStatus.IN_STOCK:
             ctx.update(weigh_form=WeighingForm(), transfer_form=TransferForm(), count_form=CountForm(),
                        damage_form=DamageForm())
-    if can(u, "quality.block") and pallet.status != PalletStatus.EMPTY:
+    if can(u, "quality.block", pallet) and pallet.status != PalletStatus.EMPTY:
         form = QualityForm()
-        if not can(u, "quality.decide"):
+        if not can(u, "quality.decide", pallet):
             form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] == "blokeli"]
         ctx["quality_form"] = form
     if can(u, "reservation.manage") and pallet.status != PalletStatus.EMPTY:
-        ctx["reserve_form"] = ReserveForm(pallet)
+        ctx["reserve_form"] = ReserveForm(pallet, user=u)
         ctx["cancel_form"] = ReasonForm()
     for key, value in ctx.items():
         if key.endswith("_form"):
@@ -94,8 +95,8 @@ def pallet_detail(request, pk):
 
 
 def _pallet_action(request, pk, *, perm, form_cls, action, fn, success, form_kwargs=None, needs_pallet=False):
-    check(request.user, perm)
-    pallet = get_object_or_404(Pallet, pk=pk)
+    pallet = get_scoped_or_404(Pallet.objects.all(), request.user, "stock.view", pk=pk)
+    check(request.user, perm, pallet)
     args = [pallet] if needs_pallet else []
     form = form_cls(*args, request.POST or None, **(form_kwargs or {}))
     if request.method == "POST":
@@ -153,7 +154,7 @@ def pallet_quality(request, pk):
 
 def pallet_reserve(request, pk):
     return _pallet_action(request, pk, perm="reservation.manage", form_cls=ReserveForm, action="pallet.reserve",
-                          needs_pallet=True,
+                          needs_pallet=True, form_kwargs={"user": request.user},
                           fn=lambda p, d: services.reserve(request.user, p, d["order_line"], d["quantity"]),
                           success="Kutular siparişe ayrıldı (fiziksel stok değişmedi).")
 
@@ -161,7 +162,7 @@ def pallet_reserve(request, pk):
 @require_POST
 @require_perm("reservation.manage")
 def reservation_cancel(request, pk):
-    res = get_object_or_404(Reservation, pk=pk)
+    res = get_scoped_or_404(Reservation.objects.all(), request.user, "reservation.manage", pk=pk)
     form = ReasonForm(request.POST)
     resp = run_form_action(request, form, action="reservation.cancel",
                            fn=lambda d: services.cancel_reservation(request.user, res, d["reason"]),
@@ -176,8 +177,8 @@ def reservation_cancel(request, pk):
 
 def pallet_label(request, pk):
     """Yazdırılabilir etiket. Basım kaydı POST ile tutulur; yeni palet oluşmaz."""
-    check(request.user, "view.warehouse")
-    pallet = get_object_or_404(Pallet.objects.select_related("product__customer", "work_order"), pk=pk)
+    pallet = get_scoped_or_404(Pallet.objects.select_related("product__customer", "work_order"), request.user,
+                               "stock.view", pk=pk)
     payload = qr_payload(request, pallet)
     svg = segno.make(payload, error="m").svg_inline(scale=4, dark="#000")
     return render(request, "warehouse/pallet_label.html", {
@@ -188,7 +189,7 @@ def pallet_label(request, pk):
 
 @require_POST
 def pallet_label_print(request, pk):
-    pallet = get_object_or_404(Pallet, pk=pk)
+    pallet = get_scoped_or_404(Pallet.objects.all(), request.user, "stock.view", pk=pk)
     url = reverse("warehouse:pallet_label", args=[pk]) + "?yazdir=1"
     resp = run_form_action(request, ConfirmForm(request.POST), action="pallet.label_print",
                            fn=lambda d: services.record_label_print(request.user, pallet),
@@ -200,15 +201,17 @@ def pallet_label_print(request, pk):
 # --- Sevkiyat --------------------------------------------------------------------------
 
 def shipment_list(request):
-    check(request.user, "view.warehouse")
-    shipments = Shipment.objects.select_related("order__customer").prefetch_related("lines")
+    check(request.user, "shipment.view")
+    shipments = scoped(Shipment.objects.all(), request.user, "shipment.view").select_related("order__customer").prefetch_related("lines")
+    if request.GET.get("musteri", "").isdigit():
+        shipments = shipments.filter(order__customer_id=request.GET["musteri"])
     page = Paginator(shipments.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
     return render(request, "warehouse/shipment_list.html", {"shipments": page, "page_obj": page})
 
 
 @require_perm("shipment.manage")
 def shipment_create(request, order_pk):
-    order = get_object_or_404(SalesOrder, pk=order_pk)
+    order = get_scoped_or_404(SalesOrder.objects.all(), request.user, "order.view", pk=order_pk)
     form = ShipmentCreateForm(request.POST or None)
     if request.method == "POST":
         resp = run_form_action(request, form, action="shipment.create",
@@ -222,8 +225,8 @@ def shipment_create(request, order_pk):
 
 
 def shipment_detail(request, pk):
-    check(request.user, "view.warehouse")
-    shipment = get_object_or_404(Shipment.objects.select_related("order__customer", "created_by", "shipped_by"), pk=pk)
+    shipment = get_scoped_or_404(Shipment.objects.select_related("order__customer", "created_by", "shipped_by"),
+                                 request.user, "shipment.view", pk=pk)
     form = None
     if can(request.user, "shipment.manage") and shipment.status == ShipmentStatus.DRAFT:
         form = ShipmentLineForm(shipment, request.POST or None)
@@ -243,7 +246,7 @@ def shipment_detail(request, pk):
 @require_POST
 @require_perm("shipment.manage")
 def shipment_line_remove(request, pk):
-    line = get_object_or_404(ShipmentLine, pk=pk)
+    line = get_scoped_or_404(ShipmentLine.objects.all(), request.user, "shipment.view", pk=pk)
     url = reverse("warehouse:shipment_detail", args=[line.shipment_id])
     resp = run_form_action(request, ConfirmForm(request.POST), action="shipment.line_remove",
                            fn=lambda d: services.remove_shipment_line(request.user, line),
@@ -254,7 +257,7 @@ def shipment_line_remove(request, pk):
 @require_POST
 @require_perm("shipment.manage")
 def shipment_confirm(request, pk):
-    shipment = get_object_or_404(Shipment, pk=pk)
+    shipment = get_scoped_or_404(Shipment.objects.all(), request.user, "shipment.view", pk=pk)
     url = reverse("warehouse:shipment_detail", args=[pk])
     resp = run_form_action(request, ConfirmForm(request.POST), action="shipment.confirm",
                            fn=lambda d: services.confirm_shipment(request.user, shipment),

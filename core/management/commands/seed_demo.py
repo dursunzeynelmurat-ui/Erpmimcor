@@ -12,18 +12,31 @@ from catalog.models import Customer, Machine, MachineType, Material, MaterialKin
 from orders import services as orders
 from orders.models import SalesOrder
 
-USERS = [
-    ("1001", "Ayşe Yönetici", Role.ADMIN),
-    ("2001", "Selin Satış", Role.SALES),
-    ("3001", "Murat Planlama", Role.PLANNING),
-    ("4001", "Hasan Ustabaşı", Role.PRODUCTION),
-    ("5001", "Deniz Depo", Role.WAREHOUSE),
+USERS = [  # (personel no, ad, rol şablonu, vardiya kodu)
+    ("1001", "Ayşe Yönetici", Role.ADMIN, None),
+    ("2001", "Selin Satış", Role.SALES, None),
+    ("2002", "Kerem Satış", Role.SALES, None),
+    ("3001", "Murat Planlama", Role.PLANNING, None),
+    ("4001", "Hasan Ustabaşı", Role.PRODUCTION, "V1"),
+    ("4002", "Elif Üretim Yetkilisi", Role.PRODUCTION_MANAGER, None),
+    ("4003", "Can Operatör", Role.OPERATOR, "V1"),
+    ("4004", "Zeynep Kalite", Role.QUALITY, None),
+    ("5001", "Deniz Depo", Role.WAREHOUSE, None),
+    ("5002", "Burak Ambar", Role.WAREHOUSE_MANAGER, None),
+    ("6001", "Gül İK", Role.HR, None),
 ]
+# Tamamen kurgusal firma ve kimlik bilgileri (numaralar format örneğidir, gerçek kayıt değildir).
 CUSTOMERS = [
-    ("M-ORNEK", "Örnek Gıda Ambalaj Ltd. (kurgusal)"),
-    ("M-DENEME", "Deneme Tekstil A.Ş. (kurgusal)"),
-    ("M-KURGU", "Kurgu Kimya San. (kurgusal)"),
+    ("M-ORNEK", "Örnek Gıda Ambalaj Ltd. (kurgusal)", {
+        "short_name": "Örnek Gıda", "country": "TR", "tax_id_type": "vkn", "tax_id": "9990000011", "tax_office": "Kurgu VD"}),
+    ("M-DENEME", "Deneme Tekstil A.Ş. (kurgusal)", {
+        "short_name": "Deneme Tekstil", "country": "TR", "tax_id_type": "vkn", "tax_id": "9990000022", "tax_office": "Örnek VD"}),
+    ("M-KURGU", "Kurgu Kimya San. (kurgusal)", {
+        "short_name": "Kurgu Kimya", "country": "TR", "tax_id_type": "vkn", "tax_id": "9990000033", "tax_office": "Deneme VD"}),
+    ("M-NORD", "Nordfolie Beispiel GmbH (kurgusal)", {
+        "short_name": "Nordfolie", "country": "DE", "language": "de", "tax_id_type": "vat", "tax_id": "DE000000000"}),
 ]
+SALES_ACCESS = {"2001": ["M-ORNEK", "M-DENEME"], "2002": ["M-KURGU", "M-NORD"]}
 # Aynı teknik ürün (30 µ şeffaf poşet filmi) iki müşteride farklı ürün kodlarıyla.
 PRODUCTS = [
     ("ORN-PF-030", "M-ORNEK", "Şeffaf perfore poşet filmi 30µ", 20),
@@ -55,10 +68,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Demo verisi hazır."))
 
     def seed(self, password):
-        for no, name, role in USERS:
+        from accounts.bootstrap import install_defaults
+        from accounts.models import Shift
+        install_defaults()
+        for no, name, role, shift in USERS:
             if not User.objects.filter(personnel_no=no).exists():
                 User.objects.create_user(no, password, full_name=name, role=role,
-                                         is_staff=(role == Role.ADMIN), is_superuser=(role == Role.ADMIN))
+                                         shift=Shift.objects.filter(code=shift).first() if shift else None,
+                                         is_staff=(role == Role.ADMIN))
                 self.stdout.write(f"Kullanıcı: {no} {name} ({role.label})")
         admin = User.objects.get(personnel_no="1001")
         planner = User.objects.get(personnel_no="3001")
@@ -67,7 +84,8 @@ class Command(BaseCommand):
             obj = model.objects.filter(code=code).first()
             return obj or cat.create_definition(admin, model, {"code": code, **data})
 
-        customers = {c: ensure(Customer, c, name=n, contact="") for c, n in CUSTOMERS}
+        customers = {c: ensure(Customer, c, name=n, **extra) for c, n, extra in CUSTOMERS}
+        self.seed_customer_cards(admin, customers)
         products = {}
         for code, cust, name, per_box in PRODUCTS:
             products[code] = ensure(Product, code, customer=customers[cust], name=name, unit=Unit.BOX,
@@ -121,7 +139,8 @@ class Command(BaseCommand):
         ext = Machine.objects.get(code="EXT-01")
         per = Machine.objects.get(code="PER-01")
         wo = prod.create_work_order(planner, product=product, revision=product.current_revision, machines=[ext, per],
-                                    target_quantity=D("40"), unit=Unit.BOX, notes="Müşteri stoğu (kurgusal demo)")
+                                    target_quantity=D("40"), unit=Unit.BOX, notes="Müşteri stoğu (kurgusal demo)",
+                                    foreman=foreman)
         prod.start_work_order(foreman, wo)
         lot = materials["HM-LDPE"].lots.first()
         prod.issue_material(foreman, wo, lot, D("130"))
@@ -139,3 +158,36 @@ class Command(BaseCommand):
         wh.record_label_print(depot, pallet)
         wh.set_pallet_quality(foreman, pallet, QualityStatus.OK, "Görsel ve ölçü kontrolü uygun (kurgusal)")
         self.stdout.write(f"Demo B stok paleti: {pallet.code} ({product.code}, 40 kutu)")
+
+    def seed_customer_cards(self, admin, customers):
+        """Kurgusal kart bilgileri, kişiler, adresler ve satışçı erişimleri (yalnız ilk kurulumda)."""
+        from catalog import customers as cs
+        from catalog.models import CustomerAccess
+
+        for code, customer in customers.items():
+            if customer.contacts.exists():
+                continue
+            foreign = customer.country != "TR"
+            cs.update_customer(admin, customer, {
+                "currency": "EUR" if foreign else "TRY", "payment_method": "havale",
+                "payment_term_days": 60 if foreign else 30, "delivery_terms": "DAP" if foreign else "musteri",
+                "receiving_hours": "Hafta içi 08:00–16:00", "packing_instructions": "Kutular palete 5 kat dizilir (kurgusal).",
+                "labeling_instructions": "Her kutuda ürün kodu ve palet no (kurgusal)."})
+            cs.save_contact(admin, customer, {"name": f"{customer.short_name} Satın Alma", "department": "Satın alma",
+                                              "email": f"satinalma@{code.lower()}.example", "phone": "+90 000 000 00 00",
+                                              "is_primary": True, "is_active": True})
+            cs.save_address(admin, customer, {"purpose": "her_ikisi", "name": "Merkez", "country": customer.country,
+                                              "region": "Kurgu Bölge", "city": "Örnek İlçe", "postal_code": "00000",
+                                              "line": "Kurgusal Cad. No:1", "default_billing": True,
+                                              "default_shipping": True, "is_active": True})
+        today = timezone.localdate()
+        for no, codes in SALES_ACCESS.items():
+            user = User.objects.get(personnel_no=no)
+            for code in codes:
+                if not CustomerAccess.objects.filter(user=user, customer=customers[code], revoked_at__isnull=True).exists():
+                    cs.grant_access(admin, customers[code], user, today, None, "Demo: müşteri sorumlusu")
+        # Geçici erişim örneği: 2002, M-ORNEK'i 7 gün görebilir.
+        kerem = User.objects.get(personnel_no="2002")
+        if not CustomerAccess.objects.filter(user=kerem, customer=customers["M-ORNEK"]).exists():
+            cs.grant_access(admin, customers["M-ORNEK"], kerem, today, today + timezone.timedelta(days=7),
+                            "Demo: izin dönüşünde geçici destek")

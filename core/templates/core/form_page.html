@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>{{ title }}</h1>
-<form method="post" class="card form"{% if review_title %} data-review="{{ title }} · {{ review_title }}"{% endif %} novalidate>{% csrf_token %}
+<form method="post" class="card form"{% if multipart %} enctype="multipart/form-data"{% endif %}{% if review_title %} data-review="{{ title }} · {{ review_title }}"{% endif %} novalidate>{% csrf_token %}
   {% include "partials/form_fields.html" %}
   <div class="actions">
     {% if submit %}<button type="submit" class="btn btn-primary">{{ submit }}</button>{% endif %}

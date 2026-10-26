@@ -4,17 +4,19 @@ from django.db import transaction
 from django.db.models import Max
 
 from accounts.permissions import check
+from accounts.scope import customer_in_scope
 from core.exceptions import BusinessRuleError
 from core.services import audit, diff, next_code
 
 from .models import (Customer, LotMovement, LotMovementKind, Machine, Material, MaterialLot, Product, Recipe,
                      RecipeComponent, RecipeRevision)
 
+# Model → (oluşturma yetkisi, değiştirme yetkisi)
 DEFINITION_PERMS = {
-    Customer: "customer.manage",
-    Product: "product.manage",
-    Machine: "machine.manage",
-    Material: "material.manage",
+    Customer: ("customer.create", "customer.change"),
+    Product: ("product.create", "product.change"),
+    Machine: ("machine.manage", "machine.manage"),
+    Material: ("material.manage", "material.manage"),
 }
 # Oluşturulduktan sonra değişmeyen alanlar (ürün kodu tek müşteriye bağlıdır).
 IMMUTABLE_FIELDS = {Product: {"code", "customer"}, Customer: {"code"}, Machine: {"code"}, Material: {"code"}}
@@ -22,9 +24,17 @@ IMMUTABLE_FIELDS = {Product: {"code", "customer"}, Customer: {"code"}, Machine: 
 
 @transaction.atomic
 def create_definition(actor, model, data):
-    check(actor, DEFINITION_PERMS[model])
-    if model is Product and not data["customer"].is_active:
-        raise BusinessRuleError("Pasif müşteriye ürün tanımlanamaz.", field="customer")
+    if model is Customer:
+        from .customers import create_customer
+        return create_customer(actor, data, confirm_similar=True)
+    check(actor, DEFINITION_PERMS[model][0])
+    if model is Product:
+        if not data["customer"].is_active:
+            raise BusinessRuleError("Pasif müşteriye ürün tanımlanamaz.", field="customer")
+        if not customer_in_scope(actor, "product.create", data["customer"]):
+            raise BusinessRuleError("Bu müşteriye erişiminiz yok.", field="customer")
+        if data.get("units_per_box") is not None and data["units_per_box"] <= 0:
+            raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
     obj = model.objects.create(**data)
     audit(actor, f"{model._meta.model_name}.create", obj, {k: (None, v) for k, v in data.items()})
     return obj
@@ -33,12 +43,14 @@ def create_definition(actor, model, data):
 @transaction.atomic
 def update_definition(actor, obj, data, reason=""):
     model = type(obj)
-    check(actor, DEFINITION_PERMS[model])
+    check(actor, DEFINITION_PERMS[model][1], obj)
     obj = model.objects.select_for_update().get(pk=obj.pk)
     blocked = IMMUTABLE_FIELDS.get(model, set()) & set(data)
     changes = diff(obj, data)
     if blocked & set(changes):
         raise BusinessRuleError(f"Şu alanlar sonradan değiştirilemez: {', '.join(sorted(blocked & set(changes)))}")
+    if model is Product and data.get("units_per_box") is not None and data["units_per_box"] <= 0:
+        raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
     for field, (_, new) in changes.items():
         setattr(obj, field, new)
     obj.save()
@@ -51,7 +63,7 @@ def update_definition(actor, obj, data, reason=""):
 def set_active(actor, obj, active, reason):
     """Tanımlar silinmez; pasife alınır veya yeniden aktifleştirilir."""
     model = type(obj)
-    check(actor, DEFINITION_PERMS[model])
+    check(actor, DEFINITION_PERMS[model][1], obj)
     if not reason:
         raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
     obj = model.objects.select_for_update().get(pk=obj.pk)
@@ -72,7 +84,7 @@ def create_revision(actor, product, spec, components, reason=""):
 
     components: [(Material, Decimal yüzde), ...] toplamı 100 olmalı.
     """
-    check(actor, "recipe.manage")
+    check(actor, "recipe.change")
     product = Product.objects.select_for_update().get(pk=product.pk)
     if not product.is_active:
         raise BusinessRuleError("Pasif ürüne reçete revizyonu açılamaz.")

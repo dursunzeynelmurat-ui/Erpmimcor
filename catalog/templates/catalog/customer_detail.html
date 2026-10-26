@@ -1,0 +1,120 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ customer.code }}{% endblock %}
+{% block content %}
+<p class="eyebrow">Müşteri kartı</p>
+<h1>{{ customer.code }} – {{ customer.display_name }}
+  {% if customer.is_active %}<span class="status status-uygun">Aktif</span>{% else %}<span class="status status-blokeli">Pasif</span>{% endif %}</h1>
+
+<nav class="filters" aria-label="Kart bölümleri">
+  <a href="#firma">Firma</a><a href="#kimlik">Kimlik</a><a href="#kisiler">Kişiler</a><a href="#adresler">Adresler</a>
+  {% if commercial %}<a href="#ticari">Ticari</a>{% endif %}<a href="#operasyon">Operasyon</a>
+  {% if documents is not None %}<a href="#belgeler">Belgeler</a>{% endif %}
+  {% if accesses is not None %}<a href="#erisim">Erişimler</a>{% endif %}<a href="#gecmis">Geçmiş</a>
+</nav>
+
+<section class="card"><h2>Hazırlık durumu</h2>
+  <ul class="list">{% for key, item in readiness.items %}<li><strong>{{ item.0 }}:</strong>
+    {% if item.1 %}<span class="status status-kontrol_bekliyor">Eksik</span> {{ item.1|join:"; " }}{% else %}<span class="status status-uygun">Hazır</span>{% endif %}</li>{% endfor %}</ul>
+  <p class="muted">Bakiye/borç bilgisi gösterilmez: bu uygulamada finans hareketi tutulmuyor.</p>
+</section>
+
+<section class="card"><h2>Bağlantılar</h2>
+  <div class="actions">
+    {% if links.products is not None %}<a class="btn" href="{% url 'catalog:definition_list' 'urunler' %}?musteri={{ customer.pk }}">Ürünler ({{ links.products }})</a>{% endif %}
+    {% if links.orders is not None %}<a class="btn" href="{% url 'orders:order_list' %}?musteri={{ customer.pk }}">Açık siparişler ({{ links.orders }})</a>{% endif %}
+    {% if can.stock_view %}<a class="btn" href="{% url 'warehouse:pallet_list' %}?musteri={{ customer.pk }}">Müşteri stoğu</a>{% endif %}
+    {% if can.shipment_view %}<a class="btn" href="{% url 'warehouse:shipment_list' %}?musteri={{ customer.pk }}">Sevkiyatlar</a>{% endif %}
+  </div>
+</section>
+
+<section class="card" id="firma"><h2>Firma</h2>
+  <dl class="kv"><dt>Müşteri kodu</dt><dd>{{ customer.code }}</dd><dt>Resmî ünvan</dt><dd>{{ customer.name }}</dd>
+  <dt>Kısa ad</dt><dd>{{ customer.short_name|default:"—" }}</dd><dt>Tür</dt><dd>{{ customer.get_entity_type_display }}</dd>
+  <dt>Ülke</dt><dd>{{ customer.get_country_display }}</dd><dt>İletişim dili</dt><dd>{{ customer.get_language_display }}</dd>
+  <dt>Web sitesi</dt><dd>{{ customer.website|default:"—" }}</dd><dt>Not</dt><dd>{{ customer.notes|default:"—" }}</dd>
+  <dt>Açan</dt><dd>{{ customer.created_by.full_name|default:"—" }} · {{ customer.created_at|date:"d.m.Y" }}</dd></dl>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:customer_section_edit' customer.pk 'firma' %}">Firma bilgilerini düzenle</a>{% endif %}
+</section>
+
+<section class="card" id="kimlik"><h2>Kimlik</h2>
+  <dl class="kv"><dt>Kimlik türü</dt><dd>{{ customer.get_tax_id_type_display|default:"—" }}</dd>
+  <dt>Numara</dt><dd>{{ customer.tax_id|default:"—" }}</dd><dt>Vergi dairesi</dt><dd>{{ customer.tax_office|default:"—" }}</dd></dl>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:customer_section_edit' customer.pk 'kimlik' %}">Kimliği düzenle</a>{% endif %}
+</section>
+
+<section class="card" id="kisiler"><h2>İlgili kişiler</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Ad</th><th>Görev</th><th>E-posta</th><th>Telefon</th><th></th></tr></thead><tbody>
+  {% for c in contacts %}<tr class="{% if not c.is_active %}inactive{% endif %}"><td>{{ c.name }}{% if c.is_primary %} <span class="status status-uygun">Ana kişi</span>{% endif %}</td>
+    <td>{{ c.department|default:"—" }}</td><td>{{ c.email|default:"—" }}</td><td>{{ c.phone|default:"—" }}</td>
+    <td>{% if can_change %}<a href="{% url 'catalog:contact_edit' customer.pk c.pk %}">Düzenle</a>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">Kişi yok.</td></tr>{% endfor %}</tbody></table></div>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:contact_create' customer.pk %}">Kişi ekle</a>{% endif %}
+</section>
+
+<section class="card" id="adresler"><h2>Adresler</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Ad</th><th>Kullanım</th><th>Adres</th><th>Varsayılan</th><th></th></tr></thead><tbody>
+  {% for a in addresses %}<tr class="{% if not a.is_active %}inactive{% endif %}"><td>{{ a.name }}</td><td>{{ a.get_purpose_display }}</td><td>{{ a.as_text }}</td>
+    <td>{% if a.default_billing %}<span class="status">Fatura</span>{% endif %} {% if a.default_shipping %}<span class="status">Teslimat</span>{% endif %}</td>
+    <td>{% if can_change %}<a href="{% url 'catalog:address_edit' customer.pk a.pk %}">Düzenle</a>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">Adres yok.</td></tr>{% endfor %}</tbody></table></div>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:address_create' customer.pk %}">Adres ekle</a>{% endif %}
+  <p class="muted">Siparişler adresin oluşturma anındaki kopyasını saklar; buradaki değişiklik eski siparişleri değiştirmez.</p>
+</section>
+
+{% if commercial %}
+<section class="card" id="ticari"><h2>Ticari varsayılanlar</h2>
+  <dl class="kv"><dt>Para birimi</dt><dd>{{ customer.get_currency_display|default:"—" }}</dd>
+  <dt>Ödeme şekli</dt><dd>{{ customer.get_payment_method_display|default:"—" }}</dd>
+  <dt>Vade</dt><dd>{% if customer.payment_term_days is not None %}{{ customer.payment_term_days }} gün{% else %}—{% endif %}</dd>
+  <dt>Teslim şekli</dt><dd>{{ customer.get_delivery_terms_display|default:"—" }}</dd><dt>Teslim yeri</dt><dd>{{ customer.delivery_place|default:"—" }}</dd>
+  <dt>Müşteri PO zorunlu</dt><dd>{{ customer.po_required|yesno:"Evet,Hayır" }}</dd></dl>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:customer_section_edit' customer.pk 'ticari' %}">Ticari bilgileri düzenle</a>{% endif %}
+</section>
+{% endif %}
+
+<section class="card" id="operasyon"><h2>Operasyon</h2>
+  <dl class="kv"><dt>Teslim alma saatleri</dt><dd>{{ customer.receiving_hours|default:"—" }}</dd>
+  <dt>Randevu</dt><dd>{{ customer.appointment_required|yesno:"Gerekir,Gerekmez" }}</dd>
+  <dt>Paketleme</dt><dd>{{ customer.packing_instructions|default:"—"|linebreaksbr }}</dd>
+  <dt>Etiketleme</dt><dd>{{ customer.labeling_instructions|default:"—"|linebreaksbr }}</dd></dl>
+  {% if can_change %}<a class="btn" href="{% url 'catalog:customer_section_edit' customer.pk 'operasyon' %}">Operasyon bilgilerini düzenle</a>{% endif %}
+</section>
+
+{% if documents is not None %}
+<section class="card" id="belgeler"><h2>Belgeler</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Başlık</th><th>Tür</th><th>Sürüm</th><th>Tarih</th><th>Görünürlük</th><th></th></tr></thead><tbody>
+  {% for d in documents %}<tr class="{% if not d.is_active %}inactive{% endif %}"><td><a href="{% url 'catalog:document_download' customer.pk d.pk %}">{{ d.title }}</a></td>
+    <td>{{ d.get_kind_display }}</td><td>{{ d.version }}</td><td>{{ d.valid_from|date:"d.m.Y"|default:"—" }}</td><td>{{ d.get_visibility_display }}</td>
+    <td>{% if can_docs %}<form method="post" action="{% url 'catalog:document_toggle' customer.pk d.pk %}" class="inline-form">{% csrf_token %}{% idem_input %}
+      <label class="visually-hidden" for="doc-reason-{{ d.pk }}">Gerekçe</label><input id="doc-reason-{{ d.pk }}" name="reason" placeholder="Gerekçe" required>
+      <button class="btn" type="submit">{% if d.is_active %}Pasife al{% else %}Aktifleştir{% endif %}</button></form>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="6" class="muted">Belge yok.</td></tr>{% endfor %}</tbody></table></div>
+  {% if can_docs %}<a class="btn" href="{% url 'catalog:document_upload' customer.pk %}">Belge yükle</a>{% endif %}
+</section>
+{% endif %}
+
+{% if accesses is not None %}
+<section class="card" id="erisim"><h2>Sorumlular ve müşteri erişimleri</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Kullanıcı</th><th>Geçerlilik</th><th>Veren</th><th>Durum</th><th></th></tr></thead><tbody>
+  {% for a in accesses %}<tr class="{% if not a.is_current %}inactive{% endif %}"><td>{{ a.user }}</td>
+    <td>{{ a.valid_from|date:"d.m.Y" }} – {{ a.valid_until|date:"d.m.Y"|default:"kalıcı" }}</td><td>{{ a.granted_by.full_name|default:"—" }}</td>
+    <td>{% if a.revoked_at %}Kaldırıldı {{ a.revoked_at|date:"d.m.Y" }}{% elif a.is_current %}<span class="status status-uygun">Geçerli</span>{% else %}Süre dışı{% endif %}</td>
+    <td>{% if not a.revoked_at %}<form method="post" action="{% url 'catalog:access_revoke' customer.pk a.pk %}" class="inline-form">{% csrf_token %}{% idem_input %}
+      <label class="visually-hidden" for="acc-reason-{{ a.pk }}">Gerekçe</label><input id="acc-reason-{{ a.pk }}" name="reason" placeholder="Gerekçe" required>
+      <button class="btn" type="submit">Kaldır</button></form>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">Erişim kaydı yok.</td></tr>{% endfor %}</tbody></table></div>
+  <a class="btn" href="{% url 'catalog:access_grant' customer.pk %}">Erişim ver</a>
+  <p class="muted">Süresi dolan erişim kendiliğinden kapanır; geçmiş işlemler korunur.</p>
+</section>
+{% endif %}
+
+{% if can_change %}
+<form method="post" action="{% url 'catalog:customer_toggle' customer.pk %}" class="card form">{% csrf_token %}
+  <h2>{% if customer.is_active %}Pasife al{% else %}Yeniden aktifleştir{% endif %}</h2>
+  <p class="muted">Kullanılmış müşteri silinmez; pasif müşteriye yeni sipariş açılamaz.</p>
+  {% with form=toggle_form %}{% include "partials/form_fields.html" %}{% endwith %}
+  <button type="submit" class="btn {% if customer.is_active %}btn-danger{% else %}btn-primary{% endif %}">{% if customer.is_active %}Pasife al{% else %}Aktifleştir{% endif %}</button>
+</form>
+{% endif %}
+<div id="gecmis">{% include "partials/history.html" %}</div>
+{% endblock %}

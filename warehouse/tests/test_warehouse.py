@@ -314,15 +314,24 @@ class WarehousePagesTests(TestCase):
         wh.add_shipment_line(w.depot, shipment, res, 10)
         wo = pallet.work_order
         coil = wo.coils.first()
-        urls = [reverse("warehouse:pallet_list"), reverse("warehouse:pallet_detail", args=[pallet.pk]),
-                reverse("warehouse:pallet_label", args=[pallet.pk]), reverse("warehouse:shipment_list"),
-                reverse("warehouse:shipment_detail", args=[shipment.pk]), reverse("orders:order_detail", args=[order.pk]),
-                reverse("production:workorder_detail", args=[wo.pk]), reverse("production:coil_detail", args=[coil.pk]),
-                reverse("orders:progress_list")]
+        from accounts.permissions import can
+        pages = [(reverse("warehouse:pallet_list"), "stock.view", None),
+                 (reverse("warehouse:pallet_detail", args=[pallet.pk]), "stock.view", pallet),
+                 (reverse("warehouse:pallet_label", args=[pallet.pk]), "stock.view", pallet),
+                 (reverse("warehouse:shipment_list"), "shipment.view", None),
+                 (reverse("warehouse:shipment_detail", args=[shipment.pk]), "shipment.view", shipment),
+                 (reverse("orders:order_detail", args=[order.pk]), "order.view", order),
+                 (reverse("production:workorder_detail", args=[wo.pk]), "workorder.view", wo),
+                 (reverse("production:coil_detail", args=[coil.pk]), "workorder.view", coil),
+                 (reverse("orders:progress_list"), "order.view", None)]
         for u in (w.admin, w.sales, w.planner, w.foreman, w.depot):
             self.client.force_login(u)
-            for url in urls:
-                self.assertEqual(self.client.get(url).status_code, 200, f"{u.role} {url}")
+            for url, perm, obj in pages:
+                code = self.client.get(url).status_code
+                if can(u, perm, obj):
+                    self.assertEqual(code, 200, f"{u.personnel_no} {url}")
+                else:
+                    self.assertIn(code, (403, 404), f"{u.personnel_no} {url}")
 
     def test_sales_progress_shows_produced_and_shipped(self):
         from orders.selectors import line_progress
@@ -472,7 +481,7 @@ class UnitLimitTests(TestCase):
         from warehouse.forms import ReserveForm
         _, kg_line = self._line(Unit.KG)
         _, box_line = self._line(Unit.BOX)
-        qs = ReserveForm(self.pallet).fields["order_line"].queryset
+        qs = ReserveForm(self.pallet, user=self.w.sales).fields["order_line"].queryset
         self.assertIn(box_line, qs)
         self.assertNotIn(kg_line, qs)
 

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Vardiyalar{% endblock %}
+{% block content %}
+<h1>Vardiyalar</h1>
+<div class="table-wrap"><table class="table"><thead><tr><th>Kod</th><th>Ad</th><th>Saat</th><th>Durum</th></tr></thead><tbody>
+{% for s in shifts %}<tr class="{% if not s.is_active %}inactive{% endif %}"><td>{% if can.shift_manage %}<a href="{% url 'accounts:shift_edit' s.pk %}">{{ s.code }}</a>{% else %}{{ s.code }}{% endif %}</td>
+  <td>{{ s.name }}</td><td>{{ s.start_time|time:"H:i" }}–{{ s.end_time|time:"H:i" }}</td><td>{{ s.is_active|yesno:"Aktif,Pasif" }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% if form %}<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Yeni vardiya</h2>{% include "partials/form_fields.html" %}
+  <button type="submit" class="btn btn-primary">Kaydet</button></form>{% endif %}
+{% endblock %}

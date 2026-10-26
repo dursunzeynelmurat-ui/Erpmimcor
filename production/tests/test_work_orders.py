@@ -89,7 +89,7 @@ class WorkOrderViewTests(TestCase):
         self.client.force_login(self.w.planner)
         resp = self.client.post(reverse("production:workorder_create_for_line", args=[line.pk]), {
             "idem_key": "wo-1", "target_quantity": "50", "unit": "kutu",
-            "machine_1": self.w.ext.pk, "machine_2": self.w.prn.pk})
+            "machine_1": self.w.ext.pk, "machine_2": self.w.prn.pk, "foreman": self.w.foreman.pk})
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(line.work_orders.count(), 1)
 
@@ -103,12 +103,25 @@ class WorkOrderViewTests(TestCase):
         self.assertEqual(AuditLog.objects.filter(action="workorder.start").count(), 1)
 
     def test_pages_render(self):
+        """Her sayfa yetkili rolde açılır; yetkisiz rolde 403 (kapsam dışı kayıt 404) döner — boş/çöken sayfa yok."""
+        from accounts.permissions import can
         wo = self.w.work_order()
+        pages = [(reverse("core:home"), None, None), (reverse("orders:order_list"), "order.view", None),
+                 (reverse("orders:progress_list"), "order.view", None),
+                 (reverse("production:workorder_list"), "workorder.view", None),
+                 (reverse("production:workorder_detail", args=[wo.pk]), "workorder.view", wo),
+                 (reverse("orders:order_detail", args=[wo.order_line.order.pk]), "order.view", wo.order_line.order),
+                 (reverse("catalog:definition_list", args=["urunler"]), "product.view", None),
+                 (reverse("catalog:recipe_detail", args=[self.w.prod_a.pk]), "recipe.view", None),
+                 (reverse("catalog:lot_list"), "material.view", None)]
         for u in (self.w.admin, self.w.sales, self.w.planner, self.w.foreman, self.w.depot):
             self.client.force_login(u)
-            for url in (reverse("core:home"), reverse("orders:order_list"), reverse("orders:progress_list"),
-                        reverse("production:workorder_list"), reverse("production:workorder_detail", args=[wo.pk]),
-                        reverse("orders:order_detail", args=[wo.order_line.order.pk]),
-                        reverse("catalog:definition_list", args=["urunler"]),
-                        reverse("catalog:recipe_detail", args=[self.w.prod_a.pk]), reverse("catalog:lot_list")):
-                self.assertEqual(self.client.get(url).status_code, 200, f"{u.role} {url}")
+            for url, perm, obj in pages:
+                code = self.client.get(url).status_code
+                if perm is None or can(u, perm, obj):
+                    self.assertEqual(code, 200, f"{u.personnel_no} {url}")
+                else:
+                    self.assertIn(code, (403, 404), f"{u.personnel_no} {url}")
+        # Satış reçeteyi göremez (reçete erişimi yalnız yönetici ve planlama)
+        self.client.force_login(self.w.sales)
+        self.assertEqual(self.client.get(reverse("catalog:recipe_detail", args=[self.w.prod_a.pk])).status_code, 403)

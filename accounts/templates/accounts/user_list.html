@@ -1,12 +1,17 @@
 {% extends "base.html" %}
+{% block title %}Kullanıcılar{% endblock %}
 {% block content %}
-<h1>Kullanıcılar</h1>
-<a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Yeni kullanıcı</a>
+<h1>Kullanıcılar ve personel</h1>
+<div class="toolbar"><a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Yeni kullanıcı</a>
+  <a class="btn" href="{% url 'accounts:role_list' %}">Roller</a><a class="btn" href="{% url 'accounts:shift_list' %}">Vardiyalar</a></div>
 <div class="table-wrap"><table class="table">
-  <thead><tr><th>Personel no</th><th>Ad soyad</th><th>Rol</th><th>Durum</th></tr></thead>
-  <tbody>{% for u in users %}<tr>
-    <td><a href="{% url 'accounts:user_edit' u.pk %}">{{ u.personnel_no }}</a></td><td>{{ u.full_name }}</td>
-    <td>{{ u.get_role_display }}</td><td>{% if u.is_active %}Aktif{% else %}<span class="muted">Pasif</span>{% endif %}</td>
+  <thead><tr><th>Personel no</th><th>Ad soyad</th><th>Roller</th><th>Ekip / vardiya</th><th>Durum</th></tr></thead>
+  <tbody>{% for u in users %}<tr class="{% if not u.is_active %}inactive{% endif %}">
+    <td data-label="Personel no"><a href="{% url 'accounts:user_edit' u.pk %}">{{ u.personnel_no }}</a></td><td data-label="Ad soyad">{{ u.full_name }}</td>
+    <td data-label="Roller">{% for a in u.role_assignments.all %}{% if not a.revoked_at %}<span class="status{% if a.role.status != 'aktif' %} status-blokeli{% endif %}">{{ a.role.name }}</span> {% endif %}{% empty %}—{% endfor %}
+      {% if u.pk in admins %}<span class="status status-uygun">Yönetici</span>{% endif %}</td>
+    <td data-label="Ekip / vardiya">{{ u.team|default:"—" }} · {{ u.shift.name|default:"—" }}</td>
+    <td data-label="Durum">{% if u.is_active %}Aktif{% else %}<span class="muted">Pasif</span>{% endif %}</td>
   </tr>{% endfor %}</tbody>
 </table></div>
 {% endblock %}

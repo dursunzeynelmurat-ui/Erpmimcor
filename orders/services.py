@@ -3,7 +3,9 @@ from django.db.models import Max
 from django.utils import timezone
 
 from accounts.permissions import check
-from catalog.models import RecipeRevision
+from accounts.scope import customer_in_scope
+from catalog.customers import order_snapshot
+from catalog.models import Customer, RecipeRevision
 from core.exceptions import BusinessRuleError
 from core.services import audit, next_code
 
@@ -23,10 +25,16 @@ def _validate_product(order, product):
 def create_order(actor, *, customer, order_date, due_date=None, customer_ref="", notes="", lines=()):
     """Sipariş kodu ilk kayıtta üretilir. lines: [{product, quantity, unit, due_date}]"""
     check(actor, "order.create")
+    customer = Customer.objects.get(pk=customer.pk)  # anlık kopya güncel karttan alınır
     if not customer.is_active:
         raise BusinessRuleError("Pasif müşteriye sipariş açılamaz.", field="customer")
+    if not customer_in_scope(actor, "order.create", customer):
+        raise BusinessRuleError("Bu müşteriye erişiminiz yok.", field="customer")
+    if customer.po_required and not customer_ref:
+        raise BusinessRuleError("Bu müşteri için müşteri PO/referans numarası zorunludur.", field="customer_ref")
     order = SalesOrder.objects.create(code=next_code("SIP"), customer=customer, order_date=order_date,
-                                      due_date=due_date, customer_ref=customer_ref, notes=notes, created_by=actor)
+                                      due_date=due_date, customer_ref=customer_ref, notes=notes, created_by=actor,
+                                      **order_snapshot(customer))
     audit(actor, "order.create", order, {"customer": (None, customer), "order_date": (None, order_date)})
     for line in lines:
         add_line(actor, order, **line)
@@ -35,7 +43,7 @@ def create_order(actor, *, customer, order_date, due_date=None, customer_ref="",
 
 @transaction.atomic
 def add_line(actor, order, *, product, quantity, unit, due_date=None):
-    check(actor, "order.create")
+    check(actor, "order.create", order)
     order = SalesOrder.objects.select_for_update(of=("self",)).select_related("customer").get(pk=order.pk)
     if order.status != OrderStatus.OPEN:
         raise BusinessRuleError("Kapalı/iptal siparişe kalem eklenemez.")

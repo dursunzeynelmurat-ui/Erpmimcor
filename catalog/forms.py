@@ -4,15 +4,78 @@ from django import forms
 
 from core.forms import IdemForm, IdemModelForm
 
-from .models import Customer, Machine, Material, MaterialLot, Product, RecipeRevision
+from .models import (Customer, CustomerAddress, CustomerContact, DocumentKind, DocumentVisibility, Machine, Material,
+                     MaterialLot, Product, RecipeRevision)
 
 DEC = {"widget": forms.NumberInput(attrs={"step": "any", "inputmode": "decimal"})}
 
 
-class CustomerForm(IdemModelForm):
+class CustomerCreateForm(IdemModelForm):
+    """Kısa açılış; diğer bölümler kartta sonradan tamamlanır."""
+
+    confirm_similar = forms.BooleanField(label="Benzer ünvanlı kayıtların farklı firma olduğunu onaylıyorum",
+                                         required=False)
+
     class Meta:
         model = Customer
-        fields = ["code", "name", "contact"]
+        fields = ["code", "name", "short_name", "entity_type", "country", "tax_id_type", "tax_id", "tax_office"]
+
+
+SECTION_FIELDS = {
+    "firma": ("Firma", ["name", "short_name", "entity_type", "country", "language", "website", "notes"]),
+    "kimlik": ("Kimlik", ["tax_id_type", "tax_id", "tax_office"]),
+    "ticari": ("Ticari varsayılanlar", ["currency", "payment_method", "payment_term_days", "delivery_terms",
+                                        "delivery_place", "po_required"]),
+    "operasyon": ("Operasyon", ["receiving_hours", "appointment_required", "packing_instructions",
+                                "labeling_instructions"]),
+}
+
+
+def customer_section_form(section):
+    title, fields = SECTION_FIELDS[section]
+    meta = type("Meta", (), {"model": Customer, "fields": fields})
+    form = type(f"Customer{section.title()}Form", (IdemModelForm,), {"Meta": meta})
+    form.section_title = title
+    return form
+
+
+class ContactForm(IdemModelForm):
+    class Meta:
+        model = CustomerContact
+        fields = ["name", "department", "email", "phone", "is_primary", "is_active"]
+
+
+class AddressForm(IdemModelForm):
+    class Meta:
+        model = CustomerAddress
+        fields = ["purpose", "name", "country", "region", "city", "postal_code", "line", "default_billing",
+                  "default_shipping", "is_active"]
+        widgets = {"line": forms.Textarea(attrs={"rows": 2})}
+
+
+class DocumentForm(IdemForm):
+    kind = forms.ChoiceField(label="Belge türü", choices=DocumentKind.choices)
+    title = forms.CharField(label="Başlık", max_length=120)
+    version = forms.CharField(label="Sürüm", max_length=20, initial="1")
+    valid_from = forms.DateField(label="Geçerlilik tarihi", required=False, widget=forms.DateInput(attrs={"type": "date"}))
+    visibility = forms.ChoiceField(label="Görünürlük", choices=DocumentVisibility.choices)
+    file = forms.FileField(label="Dosya", help_text="PDF, PNG veya JPG; en fazla 10 MB.")
+
+
+class AccessForm(IdemForm):
+    user = forms.ModelChoiceField(label="Kullanıcı", queryset=None)
+    valid_from = forms.DateField(label="Başlangıç", widget=forms.DateInput(attrs={"type": "date"}))
+    valid_until = forms.DateField(label="Bitiş (boşsa kalıcı)", required=False,
+                                  widget=forms.DateInput(attrs={"type": "date"}))
+    reason = forms.CharField(label="Gerekçe", required=False)
+
+    def __init__(self, *args, **kwargs):
+        from django.utils import timezone
+
+        from accounts.models import User
+        super().__init__(*args, **kwargs)
+        self.fields["user"].queryset = User.objects.filter(is_active=True)
+        self.fields["valid_from"].initial = timezone.localdate
 
 
 class ProductForm(IdemModelForm):
@@ -20,14 +83,17 @@ class ProductForm(IdemModelForm):
         model = Product
         fields = ["code", "customer", "name", "unit", "units_per_box", "notes"]
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, user=None, **kwargs):
+        self._user = user
         super().__init__(*args, **kwargs)
         if self.instance.pk:
             # Ürün kodu ve müşterisi kalıcıdır.
             for name in ("code", "customer"):
                 self.fields[name].disabled = True
         else:
-            self.fields["customer"].queryset = Customer.objects.active()
+            from accounts.permissions import scoped
+            qs = Customer.objects.active()
+            self.fields["customer"].queryset = scoped(qs, self._user, "product.create") if self._user else qs.none()
 
 
 class MachineForm(IdemModelForm):

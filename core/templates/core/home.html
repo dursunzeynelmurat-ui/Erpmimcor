@@ -1,21 +1,21 @@
 {% extends "base.html" %}{% load mimcor %}
 {% block content %}
-<p class="eyebrow">{{ user.get_role_display }} · İş alanı</p>
+<p class="eyebrow">{{ user.role_names }} · İş alanı</p>
 <h1>Merhaba, {{ user.get_short_name }}</h1>
 <p class="muted">Bekleyen işleri takip edin, kayıttan ilgili işleme geçin.</p>
 <div class="tiles">
   {% if can.order_create %}<a class="tile" href="{% url 'orders:order_create' %}">Yeni sipariş</a>{% endif %}
-  <a class="tile" href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
+  {% if can.order_view %}<a class="tile" href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>{% endif %}
   {% if can.planning_approve %}<a class="tile" href="{% url 'orders:planning_queue' %}">Planlama kuyruğu{% if waiting_planning %} <span class="badge">{{ waiting_planning }}</span>{% endif %}</a>{% endif %}
   {% if can.workorder_create %}<a class="tile" href="{% url 'production:workorder_create_stock' %}">Stok için iş emri</a>{% endif %}
-  <a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>
+  {% if can.workorder_view %}<a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>{% endif %}
   {% include "partials/home_warehouse_tiles.html" %}
 </div>
 <div class="dashboard-grid">
-{% if can.production_execute or can.planning_approve %}
+{% if active_work_orders is not None %}
 <section class="card">
   <h2>Aktif iş emirleri <span class="muted">· İlk 10</span></h2>
-<p class="muted">Planlanan ve başlayan işler. Kişiye atama bu sürümde bulunmuyor.</p>
+<p class="muted">Yetki kapsamınızdaki planlanan ve başlayan işler.</p>
   <ul class="list">
   {% for wo in active_work_orders %}
     <li><a href="{% url 'production:workorder_detail' wo.pk %}"><strong>{{ wo.code }}</strong> {{ wo.product.code }} · {{ wo.target_quantity|qty }} {{ wo.get_unit_display }}</a>
@@ -24,7 +24,7 @@
   </ul>
 </section>
 {% endif %}
-{% if can.order_create %}<section class="card"><h2>Son açık siparişler</h2><ul class="list">
+{% if recent_orders is not None %}<section class="card"><h2>Son açık siparişler</h2><ul class="list">
 {% for o in recent_orders %}<li><a href="{% url 'orders:order_detail' o.pk %}"><strong>{{ o.code }}</strong></a> · {{ o.customer.name }}<br><span class="muted">Teslim: {{ o.due_date|date:"d.m.Y"|default:"Belirtilmedi" }}</span></li>{% empty %}<li class="muted">Açık sipariş yok. Yeni sipariş ile başlayabilirsiniz.</li>{% endfor %}</ul></section>{% endif %}
 {% if can.planning_approve %}<section class="card"><h2>Teknik onay bekleyenler <span class="badge">{{ waiting_planning }}</span></h2><ul class="list">
 {% for line in planning_lines %}<li><a href="{% url 'orders:line_approve' line.pk %}">{{ line.code }}</a><br>{{ line.product.code }} · {{ line.order.customer.name }}</li>{% empty %}<li class="muted">Teknik onay bekleyen kalem yok.</li>{% endfor %}</ul></section>{% endif %}

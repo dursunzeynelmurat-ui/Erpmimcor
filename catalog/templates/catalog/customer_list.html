@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Müşteriler{% endblock %}
+{% block content %}
+<h1>Müşteriler</h1>
+<div class="toolbar">
+  {% if can.customer_create %}<a class="btn btn-primary" href="{% url 'catalog:customer_create' %}">Yeni müşteri</a>{% endif %}
+  <form method="get" class="search" role="search"><label class="visually-hidden" for="musteri-ara">Müşteri ara</label>
+    <input id="musteri-ara" type="search" name="q" value="{{ q }}" placeholder="Kod, ünvan, kısa ad veya vergi no">
+    <input type="hidden" name="durum" value="{{ show }}"><button class="btn">Ara</button></form>
+  <nav class="filters" aria-label="Durum filtresi">
+    <a href="?durum=aktif&q={{ q|urlencode }}" {% if show == "aktif" %}class="active"{% endif %}>Aktif</a>
+    <a href="?durum=pasif&q={{ q|urlencode }}" {% if show == "pasif" %}class="active"{% endif %}>Pasif</a>
+    <a href="?durum=tumu&q={{ q|urlencode }}" {% if show == "tumu" %}class="active"{% endif %}>Tümü</a>
+  </nav>
+</div>
+<p class="muted">Yalnız erişiminiz olan müşteriler listelenir.</p>
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Kod</th><th>Ünvan</th><th>Ülke</th><th>Tür</th><th>Durum</th></tr></thead>
+  <tbody>{% for c in customers %}
+    <tr class="{% if not c.is_active %}inactive{% endif %}">
+      <td data-label="Kod"><a href="{% url 'catalog:customer_detail' c.pk %}">{{ c.code }}</a></td>
+      <td data-label="Ünvan">{{ c.name }}{% if c.short_name %} <span class="muted">({{ c.short_name }})</span>{% endif %}</td>
+      <td data-label="Ülke">{{ c.get_country_display }}</td><td data-label="Tür">{{ c.get_entity_type_display }}</td>
+      <td data-label="Durum">{% if c.is_active %}<span class="status status-uygun">Aktif</span>{% else %}<span class="status status-blokeli">Pasif</span>{% endif %}</td>
+    </tr>
+  {% empty %}<tr><td colspan="5" class="muted">Kayıt yok.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

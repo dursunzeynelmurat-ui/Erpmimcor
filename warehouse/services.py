@@ -177,7 +177,7 @@ def _lock_started_wo(wo, message):
 
 @transaction.atomic
 def create_pallet_from_production(actor, wo, box_count, coils):
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_started_wo(wo, "Palet yalnız üretimdeki iş emrinden oluşturulabilir.")
     _positive(box_count)
     locked_coils = _lock_production_coils(wo, coils)
@@ -190,7 +190,7 @@ def create_pallet_from_production(actor, wo, box_count, coils):
 @transaction.atomic
 def add_production_to_pallet(actor, pallet, wo, box_count, coils):
     """Var olan palete aynı ürünün üretimini ekler. Farklı ürün kodu aynı palete konamaz."""
-    check(actor, "production.execute")
+    check(actor, "production.execute", wo)
     wo = _lock_started_wo(wo, "Yalnız üretimdeki iş emrinden ekleme yapılabilir.")
     _positive(box_count)
     locked_coils = _lock_production_coils(wo, coils)
@@ -309,7 +309,7 @@ def reweigh_pallet(actor, pallet, data):
 @transaction.atomic
 def record_label_print(actor, pallet):
     """Etiket (yeniden) basımı yalnız kayıt oluşturur; yeni palet oluşmaz."""
-    check(actor, "view.warehouse")
+    check(actor, "label.print")
     reprint = pallet.label_prints.exists()
     lp = LabelPrint.objects.create(pallet=pallet, is_reprint=reprint, box_count_at_print=pallet.box_count, user=actor)
     audit(actor, "pallet.label_reprint" if reprint else "pallet.label_print", pallet, {})
@@ -320,7 +320,7 @@ def record_label_print(actor, pallet):
 
 @transaction.atomic
 def set_pallet_quality(actor, pallet, status, reason):
-    check(actor, "quality.block" if status == QualityStatus.BLOCKED else "quality.decide")
+    check(actor, "quality.block" if status == QualityStatus.BLOCKED else "quality.decide", pallet)
     if not reason:
         raise BusinessRuleError("Kalite değişikliği için gerekçe zorunludur.", field="reason")
     (pallet,) = _lock(pallet)
@@ -421,7 +421,7 @@ def separate_damaged(actor, pallet, quantity, reason):
 @transaction.atomic
 def reserve(actor, pallet, order_line, quantity):
     """Paletten sipariş kalemine kutu ayırır. Fiziksel stok (box_count) değişmez."""
-    check(actor, "reservation.manage")
+    check(actor, "reservation.manage", order_line)
     _positive(quantity)
     (pallet,) = _lock(pallet)
     line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=order_line.pk)
@@ -445,7 +445,7 @@ def reserve(actor, pallet, order_line, quantity):
 
 @transaction.atomic
 def cancel_reservation(actor, reservation, reason):
-    check(actor, "reservation.manage")
+    check(actor, "reservation.manage", reservation)
     if not reason:
         raise BusinessRuleError("İptal gerekçesi zorunludur.", field="reason")
     res = Reservation.objects.select_for_update().get(pk=reservation.pk)

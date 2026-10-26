@@ -15,23 +15,26 @@
     <summary>Menü</summary>
     <nav aria-label="Ana gezinme">
       <a href="{% url 'core:home' %}">Ana sayfa</a>
-      <a href="{% url 'orders:order_list' %}">Siparişler</a>
-      <a href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
+      {% if can.order_view %}<a href="{% url 'orders:order_list' %}">Siparişler</a>
+      <a href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>{% endif %}
       {% if can.planning_approve %}<a href="{% url 'orders:planning_queue' %}">Planlama</a>{% endif %}
-      <a href="{% url 'production:workorder_list' %}">İş emirleri</a>
+      {% if can.workorder_view %}<a href="{% url 'production:workorder_list' %}">İş emirleri</a>{% endif %}
       {% block nav_extra %}{% include "partials/nav_warehouse.html" %}{% endblock %}
       <span class="nav-sep">Tanımlar</span>
-      <a href="{% url 'catalog:definition_list' 'musteriler' %}">Müşteriler</a>
-      <a href="{% url 'catalog:definition_list' 'urunler' %}">Ürünler ve reçeteler</a>
-      <a href="{% url 'catalog:definition_list' 'makineler' %}">Makineler</a>
-      <a href="{% url 'catalog:definition_list' 'malzemeler' %}">Hammadde / katkı</a>
-      <a href="{% url 'catalog:lot_list' %}">Malzeme lotları</a>
-      {% if can.user_manage %}<a href="{% url 'accounts:user_list' %}">Kullanıcılar</a>{% endif %}
+      {% if can.customer_view %}<a href="{% url 'catalog:customer_list' %}">Müşteriler</a>{% endif %}
+      {% if can.product_view %}<a href="{% url 'catalog:definition_list' 'urunler' %}">Ürünler{% if can.recipe_view %} ve reçeteler{% endif %}</a>{% endif %}
+      {% if can.machine_view %}<a href="{% url 'catalog:definition_list' 'makineler' %}">Makineler</a>{% endif %}
+      {% if can.material_view %}<a href="{% url 'catalog:definition_list' 'malzemeler' %}">Hammadde / katkı</a>
+      <a href="{% url 'catalog:lot_list' %}">Malzeme lotları</a>{% endif %}
+      {% if can.user_manage or can.hr_user_manage %}<span class="nav-sep">Personel ve erişim</span>
+      <a href="{% url 'accounts:user_list' %}">Kullanıcılar</a>{% endif %}
+      {% if can.role_manage or can.role_draft or can.user_manage or can.hr_user_manage %}<a href="{% url 'accounts:role_list' %}">Roller</a>{% endif %}
+      {% if can.shift_manage or can.user_manage or can.hr_user_manage %}<a href="{% url 'accounts:shift_list' %}">Vardiyalar</a>{% endif %}
       <a href="{% url 'accounts:password_change' %}">Parola değiştir</a>
     </nav>
   </details>
   <span class="environment-label">Üretim ve depo · Demo</span>
-  <span class="whoami">{{ user.full_name }} · {{ user.get_role_display }}</span>
+  <span class="whoami">{{ user.full_name }} · {{ user.role_names }}</span>
   <form method="post" action="{% url 'accounts:logout' %}" class="logout">{% csrf_token %}{% idem_input %}<button type="submit" class="btn-link">Çıkış</button></form>
 </header>
 {% endif %}

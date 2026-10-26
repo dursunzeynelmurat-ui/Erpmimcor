@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ target.personnel_no }}{% endblock %}
+{% block content %}
+<p class="eyebrow">Kullanıcı</p>
+<h1>{{ target }} {% if is_admin_account %}<span class="status status-uygun">Yönetici</span>{% endif %}</h1>
+<form method="post" class="card form" novalidate>{% csrf_token %}<input type="hidden" name="form" value="user">
+  <h2>Hesap, ekip ve vardiya</h2>
+  {% include "partials/form_fields.html" %}
+  <p class="muted">Hesabı pasife almak açık oturumları sonraki istekte sonlandırır. Yönetici hesaplarını yalnız yönetici değiştirebilir.</p>
+  <div class="actions"><button type="submit" class="btn btn-primary">Kaydet</button><a class="btn" href="{% url 'accounts:user_list' %}">Listeye dön</a></div>
+</form>
+<section class="card"><h2>Rol atamaları</h2>
+  <p class="muted">Birden fazla rol varsa yetkiler birleşir; bir işlemin kapsamı, o işlemi veren rollerin kapsamlarının birleşimidir. Kaldırılan rol açık oturumda da hemen etkisizleşir.</p>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Rol</th><th>Veriliş</th><th>Kaldırılış</th><th></th></tr></thead><tbody>
+  {% for a in assignments %}<tr class="{% if a.revoked_at %}inactive{% endif %}"><td>{{ a.role.name }}{% if a.role.status != "aktif" %} <span class="status status-blokeli">{{ a.role.get_status_display }}</span>{% endif %}</td>
+    <td>{{ a.granted_at|date:"d.m.Y H:i" }} · {{ a.granted_by.full_name|default:"Kurulum" }}{% if a.reason %} · {{ a.reason }}{% endif %}</td>
+    <td>{% if a.revoked_at %}{{ a.revoked_at|date:"d.m.Y H:i" }} · {{ a.revoked_by.full_name }} · {{ a.revoke_reason }}{% else %}—{% endif %}</td>
+    <td>{% if not a.revoked_at %}<form method="post" action="{% url 'accounts:user_role_revoke' a.pk %}" class="inline-form">{% csrf_token %}{% idem_input %}
+      <label class="visually-hidden" for="revoke-{{ a.pk }}">Kaldırma gerekçesi</label><input id="revoke-{{ a.pk }}" name="reason" placeholder="Gerekçe" required>
+      <button class="btn btn-danger" type="submit">Rolü kaldır</button></form>{% endif %}</td></tr>
+  {% empty %}<tr><td colspan="4" class="muted">Rol yok.</td></tr>{% endfor %}</tbody></table></div>
+  <form method="post" class="form" novalidate>{% csrf_token %}<input type="hidden" name="form" value="grant">
+    {% with form=grant %}{% include "partials/form_fields.html" %}{% endwith %}
+    <button type="submit" class="btn">Rol ata</button></form>
+</section>
+{% include "partials/history.html" %}
+{% endblock %}

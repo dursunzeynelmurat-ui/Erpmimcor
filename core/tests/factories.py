@@ -11,6 +11,8 @@ PASSWORD = "Test-Parola-2026"
 
 
 def user(role, no=None):
+    from accounts.bootstrap import install_defaults
+    install_defaults()
     no = no or {Role.ADMIN: "9001", Role.SALES: "9002", Role.PLANNING: "9003",
                 Role.PRODUCTION: "9004", Role.WAREHOUSE: "9005"}[role]
     return User.objects.filter(personnel_no=no).first() or User.objects.create_user(
@@ -29,6 +31,9 @@ class World:
         a = self.admin
         self.cust_a = cat.create_definition(a, Customer, {"code": "C-A", "name": "Kurgu A"})
         self.cust_b = cat.create_definition(a, Customer, {"code": "C-B", "name": "Kurgu B"})
+        from catalog import customers as cs
+        for c in (self.cust_a, self.cust_b):
+            cs.grant_access(a, c, self.sales, timezone.localdate(), None, "Test")
         self.prod_a = cat.create_definition(a, Product, {"code": "A-FILM", "customer": self.cust_a, "name": "Film",
                                                          "unit": Unit.BOX})
         self.prod_b = cat.create_definition(a, Product, {"code": "B-FILM", "customer": self.cust_b, "name": "Film",
@@ -64,7 +69,7 @@ class World:
         from production import services as prod
         line = line or self.approved_line()
         return prod.create_work_order(self.planner, order_line=line, machines=machines or [self.ext, self.prn],
-                                      target_quantity=qty, unit=Unit.BOX)
+                                      target_quantity=qty, unit=Unit.BOX, foreman=self.foreman)
 
     # --- M2 yardımcıları ---------------------------------------------------------
     def started_wo(self, product=None, line=None, machines=None, stock=False):
@@ -72,7 +77,8 @@ class World:
         product = product or self.prod_a
         if stock:
             wo = prod.create_work_order(self.planner, product=product, revision=product.current_revision,
-                                        machines=machines or [self.ext], target_quantity=D("40"), unit=Unit.BOX)
+                                        machines=machines or [self.ext], target_quantity=D("40"), unit=Unit.BOX,
+                                        foreman=self.foreman)
         else:
             wo = self.work_order(line=line or self.approved_line(product=product), machines=machines or [self.ext])
         prod.start_work_order(self.foreman, wo)

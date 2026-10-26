@@ -11,6 +11,13 @@
   <dt>Durum</dt><dd>{{ order.get_status_display }}</dd>
   {% if order.notes %}<dt>Not</dt><dd>{{ order.notes }}</dd>{% endif %}
 </dl>
+<section class="card"><h2>Teslimat ve ticari koşullar <span class="muted">· sipariş anındaki kopya</span></h2>
+  <dl class="kv"><dt>Teslimat adresi</dt><dd>{{ order.shipping_address|default:"—" }}</dd>
+  {% if commercial %}<dt>Fatura adresi</dt><dd>{{ order.billing_address|default:"—" }}</dd>
+  <dt>Para birimi</dt><dd>{{ order.currency|default:"—" }}</dd><dt>Ödeme</dt><dd>{{ order.payment_method|default:"—" }}</dd>
+  <dt>Vade</dt><dd>{% if order.payment_term_days is not None %}{{ order.payment_term_days }} gün{% else %}—{% endif %}</dd>{% endif %}
+  <dt>Teslim şekli / yeri</dt><dd>{{ order.delivery_terms|default:"—" }} · {{ order.delivery_place|default:"—" }}</dd></dl>
+  <p class="muted">Müşteri kartındaki sonraki değişiklikler bu siparişi değiştirmez.</p></section>
 <h2>Kalemler</h2>
 {% for p in progress %}{% include "orders/_progress_card.html" with show_actions=True %}{% endfor %}
 {% include "partials/order_extra.html" %}

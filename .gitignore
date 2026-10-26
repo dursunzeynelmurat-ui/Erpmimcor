@@ -5,3 +5,4 @@ __pycache__/
 /staticfiles/
 .venv/
 venv/
+/media/

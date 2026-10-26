@@ -37,6 +37,15 @@ def idem_input():
 
 
 ACTION_LABELS = {
+    "user.role_grant": "Rol atandı", "user.role_revoke": "Rol kaldırıldı", "user.deactivate": "Hesap kapatıldı",
+    "role.create": "Rol oluşturuldu", "role.update": "Rol yetkileri değişti", "role.approve": "Rol taslağı onaylandı",
+    "role.status": "Rol durumu değişti", "shift.create": "Vardiya oluşturuldu", "shift.update": "Vardiya güncellendi",
+    "customer.create": "Müşteri açıldı", "customer.update": "Müşteri kartı güncellendi",
+    "customer.activate": "Müşteri aktifleştirildi", "customer.deactivate": "Müşteri pasife alındı",
+    "customer.access_grant": "Müşteri erişimi verildi", "customer.access_revoke": "Müşteri erişimi kaldırıldı",
+    "customer.contact_add": "İlgili kişi eklendi", "customer.contact_update": "İlgili kişi güncellendi",
+    "customer.address_add": "Adres eklendi", "customer.address_update": "Adres güncellendi",
+    "customer.document_add": "Belge yüklendi", "customer.document_status": "Belge durumu değişti",
     "user.create": "Kullanıcı oluşturuldu", "user.update": "Kullanıcı güncellendi", "user.password_change": "Parola değiştirildi",
     "customer.create": "Müşteri oluşturuldu", "customer.update": "Müşteri güncellendi",
     "customer.deactivate": "Pasife alındı", "customer.activate": "Aktifleştirildi",

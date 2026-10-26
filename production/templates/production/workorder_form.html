@@ -13,6 +13,7 @@
   {% if form.product %}{% with field=form.product %}{% include "partials/field.html" %}{% endwith %}{% with field=form.revision %}{% include "partials/field.html" %}{% endwith %}{% endif %}
   <div class="row-2">{% with field=form.target_quantity %}{% include "partials/field.html" %}{% endwith %}{% with field=form.unit %}{% include "partials/field.html" %}{% endwith %}</div>
   {% with field=form.planned_start %}{% include "partials/field.html" %}{% endwith %}
+  {% with field=form.foreman %}{% include "partials/field.html" %}{% endwith %}
   <h2>Operasyon sırası ve makine ataması</h2>
   {% for field in form.machine_fields %}{% include "partials/field.html" %}{% endfor %}
   {% with field=form.notes %}{% include "partials/field.html" %}{% endwith %}

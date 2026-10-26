@@ -28,6 +28,11 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         with patch.dict(os.environ, {"DEMO_USER_PASSWORD": self.password}):
             call_command("seed_demo", verbosity=0)
         self.empty_customer = Customer.objects.create(code="M-BOS", name="Ürünsüz Müşteri (kurgusal)")
+        from accounts.models import User
+        from catalog.models import CustomerAccess
+        from django.utils import timezone
+        CustomerAccess.objects.create(customer=self.empty_customer, user=User.objects.get(personnel_no="2001"),
+                                      valid_from=timezone.localdate(), reason="Test")
         guard = patch.dict(os.environ, {"DJANGO_ALLOW_ASYNC_UNSAFE": "true"})  # yalnız test süreci
         guard.start()
         self.addCleanup(guard.stop)

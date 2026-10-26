@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Roller{% endblock %}
+{% block content %}
+<h1>Roller ve yetkiler</h1>
+<div class="toolbar">{% if can.role_manage or can.role_draft %}<a class="btn btn-primary" href="{% url 'accounts:role_create' %}">{% if can.role_manage %}Yeni rol{% else %}Rol taslağı hazırla{% endif %}</a>{% endif %}</div>
+<p class="muted">Başlangıç şablonları kod değiştirmeden düzenlenebilir. Yetkiler veri bütünlüğü kurallarını (negatif stok, hareketli kaydı silme vb.) aşamaz.</p>
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Rol</th><th>Durum</th><th>Yetki sayısı</th><th>Kullanıcı</th><th>İK atayabilir</th></tr></thead>
+  <tbody>{% for r in roles %}<tr class="{% if r.status == 'pasif' %}inactive{% endif %}">
+    <td data-label="Rol"><a href="{% url 'accounts:role_edit' r.pk %}">{{ r.name }}</a>{% if r.is_template %} <span class="muted">(şablon)</span>{% endif %}</td>
+    <td data-label="Durum"><span class="status{% if r.status == 'aktif' %} status-uygun{% elif r.status == 'taslak' %} status-kontrol_bekliyor{% else %} status-blokeli{% endif %}">{{ r.get_status_display }}</span></td>
+    <td data-label="Yetki sayısı">{{ r.permissions.all|length }}</td><td data-label="Kullanıcı">{{ r.user_count }}</td>
+    <td data-label="İK atayabilir">{{ r.hr_assignable|yesno:"Evet,Hayır" }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

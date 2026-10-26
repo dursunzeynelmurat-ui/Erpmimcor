@@ -20,6 +20,8 @@ class ProductFilterTests(TestCase):
                                                              "name": "Eski", "unit": Unit.BOX})
         cat.set_active(a, self.inactive_b, False, "Üretimden kalktı")
         self.cust_c = cat.create_definition(a, Customer, {"code": "C-C", "name": "Kurgu C (ürünsüz)"})
+        from catalog import customers as cs
+        cs.grant_access(a, self.cust_c, self.w.sales, timezone.localdate(), None, "Test")
         self.url = reverse("orders:order_create")
 
     def products_url(self, customer):
@@ -39,7 +41,7 @@ class ProductFilterTests(TestCase):
     def test_endpoint_requires_order_permission(self):
         for user in (self.w.depot, self.w.foreman, self.w.planner):
             self.client.force_login(user)
-            self.assertEqual(self.client.get(self.products_url(self.w.cust_a)).status_code, 403, user.role)
+            self.assertEqual(self.client.get(self.products_url(self.w.cust_a)).status_code, 403, user.personnel_no)
 
     def test_endpoint_lists_only_customers_active_products(self):
         self.client.force_login(self.w.sales)
@@ -69,9 +71,9 @@ class ProductFilterTests(TestCase):
         self.assertContains(resp, "Önce müşteri seçin.")
 
     def test_bound_form_lists_only_selected_customers_products(self):
-        form = OrderCreateForm(data={"customer": self.w.cust_b.pk})
+        form = OrderCreateForm(data={"customer": self.w.cust_b.pk}, user=self.w.sales)
         self.assertEqual(list(form.fields["product"].queryset), [self.w.prod_b])
-        form_c = OrderCreateForm(data={"customer": self.cust_c.pk})
+        form_c = OrderCreateForm(data={"customer": self.cust_c.pk}, user=self.w.sales)
         self.assertEqual(form_c.fields["product"].help_text, "Bu müşteriye ait aktif ürün bulunmuyor.")
 
     def test_direct_post_of_other_customers_product_rejected(self):

@@ -47,6 +47,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.PermissionCacheMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "accounts.middleware.SessionIdleTimeoutMiddleware",
     "accounts.middleware.LoginRequiredMiddleware",
@@ -126,3 +127,10 @@ import sys  # noqa: E402
 if "test" in sys.argv:
     # Testleri hızlandırmak için (yalnız test veritabanı); üretimde varsayılan güçlü hash kullanılır.
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+
+# Yüklenen müşteri belgeleri: statik dosyalar dışında, yalnız yetkili indirme view'ı üzerinden sunulur
+# (MEDIA_URL bilinçli olarak urls.py'de yayınlanmaz).
+MEDIA_ROOT = Path(env("MEDIA_ROOT", str(BASE_DIR / "media")))
+CUSTOMER_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
+DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
+FILE_UPLOAD_PERMISSIONS = 0o640

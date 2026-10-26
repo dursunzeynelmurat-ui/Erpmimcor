@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{% if role %}{{ role.name }}{% else %}Yeni rol{% endif %}{% endblock %}
+{% block content %}
+<p class="eyebrow">Rol</p>
+<h1>{% if role %}{{ role.name }} <span class="status">{{ role.get_status_display }}</span>{% else %}{% if admin %}Yeni rol{% else %}Yeni rol taslağı{% endif %}{% endif %}</h1>
+{% if not admin %}<p class="msg msg-warning">Taslak rol, yönetici onaylayana kadar atanamaz. Yöneticiye özel yetkiler taslakta seçilemez.</p>{% endif %}
+<form method="post" class="card form" novalidate>{% csrf_token %}{{ form.idem_key }}
+  {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+  {% with field=form.code %}{% include "partials/field.html" %}{% endwith %}
+  {% with field=form.name %}{% include "partials/field.html" %}{% endwith %}
+  {% with field=form.description %}{% include "partials/field.html" %}{% endwith %}
+  {% if form.hr_assignable %}{% with field=form.hr_assignable %}{% include "partials/field.html" %}{% endwith %}{% endif %}
+  <p class="muted">Kapsamlar: tüm kayıtlar · erişim verilen müşteriler · kendisine atanmış işler · atandığı makineler · kendi vardiyası. “Yok” yetkiyi kaldırır.</p>
+  {% for group, fields in form.group_fields %}
+  <details class="card" {% if forloop.first %}open{% endif %}><summary><strong>{{ group }}</strong></summary>
+    {% for field in fields %}{% include "partials/field.html" %}{% endfor %}
+  </details>
+  {% endfor %}
+  {% if role %}{% with field=form.reason %}{% include "partials/field.html" %}{% endwith %}{% endif %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Kaydet</button><a class="btn" href="{% url 'accounts:role_list' %}">Listeye dön</a></div>
+</form>
+{% if role and can.role_approve and role.status == "taslak" %}
+  {% url 'accounts:role_action' role.pk 'onayla' as u %}{% include "partials/confirm_button.html" with action=u label="Taslağı onayla ve etkinleştir" %}
+{% endif %}
+{% if role and can.role_manage %}
+<form method="post" action="{% if role.status == 'pasif' %}{% url 'accounts:role_action' role.pk 'aktif' %}{% else %}{% url 'accounts:role_action' role.pk 'pasif' %}{% endif %}" class="card form">{% csrf_token %}
+  <h2>{% if role.status == "pasif" %}Rolü yeniden etkinleştir{% else %}Rolü pasife al{% endif %}</h2>
+  <p class="muted">Pasif rolün yetkileri tüm kullanıcılarda hemen kalkar. Sistemi yöneticisiz bırakacak değişiklik reddedilir.</p>
+  {% with form=status_form %}{% include "partials/form_fields.html" %}{% endwith %}
+  <button type="submit" class="btn {% if role.status == 'pasif' %}btn-primary{% else %}btn-danger{% endif %}">{% if role.status == "pasif" %}Etkinleştir{% else %}Pasife al{% endif %}</button>
+</form>
+{% endif %}
+{% if users %}<section class="card"><h2>Bu role sahip kullanıcılar</h2><ul class="list">{% for a in users %}<li>{{ a.user }}</li>{% endfor %}</ul></section>{% endif %}
+{% if history %}{% include "partials/history.html" %}{% endif %}
+{% endblock %}

@@ -78,9 +78,11 @@ class ReserveForm(IdemForm):
                                                   "kg/adet/rulo kalemleri stoktan ayrılamaz.")
     quantity = forms.IntegerField(label="Ayrılacak kutu", min_value=1, widget=INT)
 
-    def __init__(self, pallet, *args, **kwargs):
+    def __init__(self, pallet, *args, user=None, **kwargs):
+        from accounts.permissions import scoped
         super().__init__(*args, **kwargs)
-        self.fields["order_line"].queryset = (OrderLine.objects.filter(product=pallet.product, unit=Unit.BOX)
+        lines = scoped(OrderLine.objects.all(), user, "reservation.manage") if user else OrderLine.objects.none()
+        self.fields["order_line"].queryset = (lines.filter(product=pallet.product, unit=Unit.BOX)
                                               .exclude(status__in=[LineStatus.CANCELLED, LineStatus.SHIPPED])
                                               .select_related("order"))
         self.fields["order_line"].label_from_instance = lambda ln: f"{ln.code} – {qty(ln.quantity)} {ln.get_unit_display()}"
