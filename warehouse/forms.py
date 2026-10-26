@@ -110,3 +110,35 @@ class ShipmentLineForm(IdemForm):
 class PalletFilterForm(forms.Form):
     q = forms.CharField(label="Palet / ürün", required=False)
     status = forms.ChoiceField(label="Durum", required=False, choices=[("", "Tümü (boş hariç)")] + PalletStatus.choices)
+    quality = forms.ChoiceField(label="Kalite", required=False, choices=[("", "Tümü")] + QualityStatus.choices)
+
+
+class LocationForm(IdemForm):
+    location = forms.CharField(label="Yeni depo yeri", max_length=60)
+    reason = forms.CharField(label="Not", required=False)
+
+
+class ReduceReservationForm(IdemForm):
+    quantity = forms.IntegerField(label="Yeni rezervasyon miktarı (kutu)", min_value=0)
+    reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))
+
+
+class ScanForm(IdemForm):
+    raw = forms.CharField(label="QR / palet no", max_length=300,
+                          widget=forms.TextInput(attrs={"autofocus": True, "autocomplete": "off"}),
+                          help_text="El okuyucuyla QR okutun veya palet numarasını yazın. Okutma stok değiştirmez.")
+
+
+class ReturnForm(IdemForm):
+    quantity = forms.IntegerField(label="İade kutu adedi", min_value=1)
+    reason = forms.CharField(label="İade nedeni", widget=forms.Textarea(attrs={"rows": 2}))
+    location = forms.CharField(label="Konulduğu yer", required=False, initial="İade alanı")
+
+
+class PackageLabelForm(IdemForm):
+    copies = forms.IntegerField(label="Etiket adedi", min_value=1, max_value=500)
+
+
+class StockLevelForm(IdemForm):
+    min_boxes = forms.IntegerField(label="Alt seviye (kutu)", min_value=0)
+    target_boxes = forms.IntegerField(label="Hedef seviye (kutu)", min_value=0)

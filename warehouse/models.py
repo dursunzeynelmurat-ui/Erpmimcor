@@ -86,6 +86,8 @@ class MovementKind(models.TextChoices):
     DAMAGE_OUT = "hasar_ayirma", "Hasarlı ürün ayırma (çıkış)"
     DAMAGE_IN = "hasar_girisi", "Hasarlı ürün paleti (giriş)"
     CORRECTION = "duzeltme", "Onaylı üretim kaydı düzeltmesi"
+    SHIPMENT_UNDO = "sevk_geri_alma", "Sevk geri alma (çıkış öncesi)"
+    RETURN_IN = "iade_girisi", "Müşteri iadesi (giriş)"
 
 
 class PalletMovement(models.Model):
@@ -130,10 +132,30 @@ class PalletWeighing(models.Model):
         ]
 
 
+class LabelKind(models.TextChoices):
+    PALLET = "palet", "Palet etiketi"
+    PACKAGE = "paket", "Kutu/rulo etiketi"
+
+
+class PrintStatus(models.TextChoices):
+    REQUESTED = "talep", "Basım talebi (sonuç bildirilmedi)"
+    PRINTED = "basildi", "Basıldı (kullanıcı onayı)"
+    FAILED = "basilamadi", "Basılamadı"
+
+
 class LabelPrint(models.Model):
+    """Basım talebi kaydı. Tarayıcıdan yazıcıya gönderim doğrulanamaz; 'basıldı' yalnız kullanıcının onayıdır.
+    Yeniden basım yeni palet/kimlik veya stok hareketi üretmez."""
+
     pallet = models.ForeignKey(Pallet, on_delete=models.PROTECT, related_name="label_prints")
+    kind = models.CharField(max_length=10, choices=LabelKind.choices, default=LabelKind.PALLET)
     is_reprint = models.BooleanField(default=False)
     box_count_at_print = models.PositiveIntegerField()
+    copies = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=12, choices=PrintStatus.choices, default=PrintStatus.REQUESTED)
+    confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                     related_name="+")
+    confirmed_at = models.DateTimeField(null=True, blank=True)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     at = models.DateTimeField(auto_now_add=True)
 
@@ -181,8 +203,14 @@ class Reservation(models.Model):
 
 class ShipmentStatus(models.TextChoices):
     DRAFT = "taslak", "Hazırlanıyor"
-    SHIPPED = "sevk_edildi", "Sevk edildi"
+    PREPARED = "hazirlandi", "Hazırlandı – yükleme kontrolü"
+    SHIPPED = "sevk_edildi", "Sevk onaylandı – çıkış bekliyor"
+    EXITED = "cikis_yapildi", "Çıkış yapıldı"
     CANCELLED = "iptal", "İptal"
+
+
+SHIPPED_STATES = (ShipmentStatus.SHIPPED, ShipmentStatus.EXITED)
+OPEN_SHIPMENT_STATES = (ShipmentStatus.DRAFT, ShipmentStatus.PREPARED)
 
 
 class Shipment(models.Model):
@@ -195,6 +223,10 @@ class Shipment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     shipped_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     shipped_at = models.DateTimeField(null=True, blank=True)
+    prepared_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    prepared_at = models.DateTimeField(null=True, blank=True)
+    exited_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    exited_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -215,3 +247,65 @@ class ShipmentLine(models.Model):
             models.CheckConstraint(condition=Q(quantity__gt=0), name="shipment_line_qty_positive"),
             models.UniqueConstraint(fields=["shipment", "reservation"], name="uniq_shipment_reservation"),
         ]
+
+
+class ScanResult(models.TextChoices):
+    OK = "dogru", "Doğru palet"
+    WRONG = "yanlis", "Bu sevkiyatta olmayan palet"
+    DUPLICATE = "mukerrer", "Aynı palet ikinci kez okutuldu"
+    UNKNOWN = "bilinmeyen", "Tanınmayan / erişilemeyen QR"
+
+
+class ShipmentScan(models.Model):
+    """Yükleme kontrolünde okutulan QR. Okutma stok değiştirmez; eksik/fazla kontrolü bu kayıtlardan yapılır."""
+
+    shipment = models.ForeignKey(Shipment, on_delete=models.PROTECT, related_name="scans")
+    pallet = models.ForeignKey(Pallet, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    raw = models.CharField(max_length=300)
+    result = models.CharField(max_length=12, choices=ScanResult.choices)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-at", "-id"]
+
+
+class ReturnReceipt(models.Model):
+    """Müşteri iadesi: eski sevkiyat satırına bağlı, ayrı bir iade paletine girer; varsayılan kontrol bekliyor."""
+
+    code = models.CharField("İade no", max_length=30, unique=True, editable=False)
+    shipment_line = models.ForeignKey(ShipmentLine, on_delete=models.PROTECT, related_name="returns")
+    quantity = models.PositiveIntegerField("Kutu")
+    reason = models.TextField("İade nedeni")
+    pallet = models.ForeignKey(Pallet, on_delete=models.PROTECT, related_name="return_receipts")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [models.CheckConstraint(condition=Q(quantity__gt=0), name="return_qty_positive")]
+
+
+class PalletLocationChange(models.Model):
+    pallet = models.ForeignKey(Pallet, on_delete=models.PROTECT, related_name="location_changes")
+    old_location = models.CharField(max_length=60, blank=True)
+    new_location = models.CharField(max_length=60)
+    reason = models.CharField(max_length=200, blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-at", "-id"]
+
+
+class StockLevel(models.Model):
+    """Ürün için alt ve hedef stok (kutu). Planlama ihtiyaç listesi sevke uygun serbest stoktan hesaplanır."""
+
+    product = models.OneToOneField(Product, on_delete=models.PROTECT, related_name="stock_level")
+    min_boxes = models.PositiveIntegerField("Alt seviye (kutu)")
+    target_boxes = models.PositiveIntegerField("Hedef seviye (kutu)")
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=Q(target_boxes__gte=F("min_boxes")), name="stock_target_gte_min")]

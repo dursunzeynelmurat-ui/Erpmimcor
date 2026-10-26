@@ -106,6 +106,12 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         depot.locator('[name=reservation]').select_option(reservation)
         depot.locator('[name=quantity]').fill(str(quantity))
         self.submit(depot, 'Ekle')
+        self.submit(depot, 'Hazırlandı – yükleme kontrolüne geç')
+        for line in shipment.lines.select_related('pallet'):
+            # El okuyucusu QR bağlantısını yazar gibi: tam bağlantı okutulur (stok değişmez)
+            depot.locator('[name=raw]').fill(self.live_server_url + f'/q/{line.pallet.qr_token}/')
+            self.submit(depot, 'Okut')
+        expect(depot.locator('#yukleme')).to_contain_text('Eksik yok')
         self.shot(depot, 'sevkiyat-onay')
         form = depot.locator(f'form[action="/sevkiyatlar/{shipment.pk}/onayla/"]')
         payload = form.locator('input').evaluate_all('(nodes) => Object.fromEntries(nodes.map(n => [n.name,n.value]))')

@@ -81,7 +81,7 @@ class AccessForm(IdemForm):
 class ProductForm(IdemModelForm):
     class Meta:
         model = Product
-        fields = ["code", "customer", "name", "unit", "units_per_box", "notes"]
+        fields = ["code", "customer", "name", "unit", "package_type", "units_per_box", "nominal_package_kg", "notes"]
 
     def __init__(self, *args, user=None, **kwargs):
         self._user = user

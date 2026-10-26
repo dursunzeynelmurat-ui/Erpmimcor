@@ -11,7 +11,7 @@ from accounts.models import Role, User
 from catalog.models import Unit
 from core.models import AuditLog
 from core.exceptions import BusinessRuleError
-from core.tests.factories import PASSWORD, World
+from core.tests.factories import PASSWORD, World, load
 from orders import services as orders
 from orders.models import LineStatus, OrderStatus, SalesOrder
 
@@ -118,7 +118,7 @@ class ChangeCopyCancelTests(TestCase):
         self.assertEqual(res.status, "iptal")
         shipment = wh.create_shipment(self.w.depot, order, "34 KRG 01", "")
         wh.add_shipment_line(self.w.depot, shipment, line.reservations.get(), 10)
-        wh.confirm_shipment(self.w.depot, shipment)
+        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.DONE)
 

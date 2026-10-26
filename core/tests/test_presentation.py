@@ -2,7 +2,7 @@ from html.parser import HTMLParser
 from decimal import Decimal
 from django.test import TestCase
 from django.urls import reverse
-from core.tests.factories import World
+from core.tests.factories import World, load
 from core.templatetags.mimcor import field_label, history_value
 from orders.selectors import line_progress
 from warehouse import services as wh
@@ -46,7 +46,7 @@ class PresentationTests(TestCase):
         self.assertEqual((row['produced'], row['reserved'], row['shipped']), (0, 10, 0))
         shipment = wh.create_shipment(self.w.depot, line.order)
         wh.add_shipment_line(self.w.depot, shipment, reservation, 4)
-        wh.confirm_shipment(self.w.depot, shipment)
+        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
         row = line_progress(line)
         self.assertEqual((row['produced'], row['reserved'], row['shipped']), (0, 6, 4))
 

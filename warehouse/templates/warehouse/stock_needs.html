@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Stok seviyeleri ve ihtiyaç{% endblock %}
+{% block content %}
+<h1>Stok seviyeleri ve üretim ihtiyacı</h1>
+<p class="muted">İhtiyaç = hedef seviye − sevke uygun serbest stok − açık stok iş emirlerinin hedefi. Otomatik iş emri açılmaz; planlama karar verir.</p>
+<section class="card"><h2>Alt seviyenin altındakiler</h2>
+<div class="table-wrap"><table class="table table-responsive"><thead><tr><th>Ürün</th><th>Serbest</th><th>Alt / hedef</th><th>Açık stok iş emri</th><th>Üretim ihtiyacı</th></tr></thead><tbody>
+{% for r in rows %}<tr><td data-label="Ürün">{{ r.level.product.code }} · {{ r.level.product.customer.name }}</td><td data-label="Serbest">{{ r.available }}</td><td data-label="Alt / hedef">{{ r.level.min_boxes }} / {{ r.level.target_boxes }}</td>
+<td data-label="Açık iş emri">{% for wo in r.work_orders %}<a href="{% url 'production:workorder_detail' wo.pk %}">{{ wo.code }}</a> {% empty %}—{% endfor %}</td><td data-label="İhtiyaç"><strong>{{ r.need }} kutu</strong>{% if r.need and can.workorder_create %} · <a href="{% url 'production:workorder_create_stock' %}">Stok iş emri aç</a>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="5" class="muted">Alt seviyenin altında ürün yok.</td></tr>{% endfor %}</tbody></table></div></section>
+<section class="card"><h2>Tanımlı seviyeler</h2><ul class="list">{% for l in levels %}<li>{{ l.product.code }}: alt {{ l.min_boxes }}, hedef {{ l.target_boxes }} kutu <small class="muted">({{ l.updated_by.full_name }}, {{ l.updated_at|date:"d.m.Y" }})</small></li>{% empty %}<li class="muted">Tanımlı seviye yok.</li>{% endfor %}</ul></section>
+{% if form %}<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Seviye tanımla / güncelle</h2>{% include "partials/form_fields.html" %}<button type="submit" class="btn btn-primary">Kaydet</button></form>{% endif %}
+{% endblock %}

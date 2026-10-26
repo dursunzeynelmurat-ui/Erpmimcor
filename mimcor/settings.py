@@ -138,3 +138,7 @@ FILE_UPLOAD_PERMISSIONS = 0o640
 
 # Düzeltme talebini açan kişinin kendi talebini onaylaması (varsayılan kapalı).
 CORRECTION_SELF_APPROVAL = os.environ.get("CORRECTION_SELF_APPROVAL", "0") == "1"
+
+# QR etiketlerindeki bağlantının tabanı (ör. https://uretim.mimcor.local). Boşsa etiketi basan tarayıcının adresi
+# kullanılır; bu durumda etiket ekranı uyarı gösterir.
+APP_BASE_URL = os.environ.get("APP_BASE_URL", "").strip()

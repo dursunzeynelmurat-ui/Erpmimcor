@@ -18,8 +18,9 @@ from orders.services import (committed_quantity, compatibility_problem, line_lim
 from production.models import Coil, CoilLink, CoilStatus, WorkOrder, WorkOrderStatus
 from production.services import final_operation
 
-from .models import (LabelPrint, MovementKind, Pallet, PalletCoil, PalletMovement, PalletStatus, PalletWeighing,
-                     Reservation, ReservationStatus, Shipment, ShipmentLine, ShipmentStatus, WeightStatus)
+from .models import (LabelKind, LabelPrint, MovementKind, Pallet, PalletCoil, PalletLocationChange, PalletMovement,
+                     PalletStatus, PalletWeighing, PrintStatus, ReturnReceipt, ScanResult, ShipmentScan, StockLevel,
+                     OPEN_SHIPMENT_STATES, Reservation, ReservationStatus, SHIPPED_STATES, Shipment, ShipmentLine, ShipmentStatus, WeightStatus)
 
 
 def _lock(*pallets):
@@ -297,7 +298,11 @@ def accept_pallet(actor, pallet, data):
     pallet.status = PalletStatus.IN_STOCK
     pallet.accepted_by = actor
     pallet.accepted_at = timezone.now()
-    pallet.location = data.get("location", "") or pallet.location
+    new_location = data.get("location", "") or pallet.location
+    if new_location and new_location != pallet.location:
+        PalletLocationChange.objects.create(pallet=pallet, old_location=pallet.location, new_location=new_location,
+                                            reason="Depo kabulü", user=actor)
+    pallet.location = new_location
     pallet.save()
     audit(actor, "pallet.accept", pallet, {"status": (PalletStatus.AWAITING_ACCEPTANCE, PalletStatus.IN_STOCK),
                                            "location": (None, pallet.location)})
@@ -316,11 +321,7 @@ def reweigh_pallet(actor, pallet, data):
 @transaction.atomic
 def record_label_print(actor, pallet):
     """Etiket (yeniden) basımı yalnız kayıt oluşturur; yeni palet oluşmaz."""
-    check(actor, "label.print")
-    reprint = pallet.label_prints.exists()
-    lp = LabelPrint.objects.create(pallet=pallet, is_reprint=reprint, box_count_at_print=pallet.box_count, user=actor)
-    audit(actor, "pallet.label_reprint" if reprint else "pallet.label_print", pallet, {})
-    return lp
+    return request_label_print(actor, pallet)
 
 
 # --- Kalite --------------------------------------------------------------------------
@@ -490,7 +491,7 @@ def cancel_reservation(actor, reservation, reason):
     res = Reservation.objects.select_for_update().get(pk=reservation.pk)
     if res.status != ReservationStatus.ACTIVE:
         raise BusinessRuleError("Yalnız aktif rezervasyon iptal edilebilir.")
-    if res.shipment_lines.filter(shipment__status=ShipmentStatus.DRAFT).exists():
+    if res.shipment_lines.filter(shipment__status__in=OPEN_SHIPMENT_STATES).exists():
         raise BusinessRuleError("Rezervasyon hazırlanan bir sevkiyatta; önce sevkiyattan çıkarın.")
     if res.shipped_quantity:
         # Kısmen sevk edilmiş: kalan kısım serbest bırakılır, kayıt sevk edilen miktarla kapanır.
@@ -538,7 +539,7 @@ def add_shipment_line(actor, shipment, reservation, quantity):
     _require_compatible(res.order_line, res.pallet, field="reservation")
     if shipment.lines.filter(reservation=res).exists():
         raise BusinessRuleError("Bu rezervasyon zaten sevkiyatta.", field="reservation")
-    in_drafts = (ShipmentLine.objects.filter(reservation=res, shipment__status=ShipmentStatus.DRAFT)
+    in_drafts = (ShipmentLine.objects.filter(reservation=res, shipment__status__in=OPEN_SHIPMENT_STATES)
                  .aggregate(s=Sum("quantity"))["s"] or 0)
     if quantity > res.open_quantity - in_drafts:
         raise BusinessRuleError(f"Rezervasyonda sevk edilebilecek {res.open_quantity - in_drafts} kutu var.",
@@ -565,13 +566,19 @@ def remove_shipment_line(actor, line):
 def confirm_shipment(actor, shipment):
     """Sevkiyatı onaylar: her satır için fiziksel stoktan düşer, rezervasyonu kapatır.
     Uygun olmayan ürün sevk edilemez; ikinci onay reddedilir."""
-    check(actor, "shipment.manage")
+    check(actor, "shipment.approve")
     shipment = Shipment.objects.select_for_update().get(pk=shipment.pk)
-    if shipment.status != ShipmentStatus.DRAFT:
+    if shipment.status in SHIPPED_STATES:
         raise BusinessRuleError(f"{shipment.code} zaten sevk edildi.")
+    if shipment.status != ShipmentStatus.PREPARED:
+        raise BusinessRuleError("Sevk onayından önce sevkiyat 'hazırlandı' yapılmalı ve yükleme kontrolü tamamlanmalı.")
     lines = list(shipment.lines.select_related("reservation", "order_line").order_by("pallet_id"))
     if not lines:
         raise BusinessRuleError("Sevkiyatta satır yok.")
+    check_result = load_check(shipment)
+    if check_result["missing"]:
+        raise BusinessRuleError("Yükleme kontrolü tamamlanmadı; okutulmayan palet: " +
+                                ", ".join(p.code for p in check_result["missing"]))
     # Kilit sırası: sevkiyat → paletler (pk sırası) → rezervasyonlar. Bobin satırları kilitlenmez, okunur:
     # bobin blokajı servisi bobin → palet sırasıyla kilitlediği için sevkle birlikte serileşir.
     pallets = {p.pk: p for p in _lock(*[ln.pallet for ln in lines])}
@@ -597,7 +604,7 @@ def confirm_shipment(actor, shipment):
     order_lines = {ol.pk: ol for ol in OrderLine.objects.select_for_update(of=("self",))
                    .filter(pk__in={ln.order_line_id for ln in lines}).order_by("pk")}
     for ol in order_lines.values():
-        shipped = ShipmentLine.objects.filter(order_line=ol, shipment__status=ShipmentStatus.SHIPPED).aggregate(
+        shipped = ShipmentLine.objects.filter(order_line=ol, shipment__status__in=SHIPPED_STATES).aggregate(
             s=Sum("quantity"))["s"] or 0
         now = sum(ln.quantity for ln in lines if ln.order_line_id == ol.pk)
         if shipped + now > line_limit(ol):
@@ -617,11 +624,11 @@ def confirm_shipment(actor, shipment):
     shipment.shipped_by = actor
     shipment.shipped_at = timezone.now()
     shipment.save()
-    audit(actor, "shipment.confirm", shipment, {"status": (ShipmentStatus.DRAFT, ShipmentStatus.SHIPPED)})
+    audit(actor, "shipment.confirm", shipment, {"status": (ShipmentStatus.PREPARED, ShipmentStatus.SHIPPED)})
     for line in {ln.order_line_id: ln.order_line for ln in lines}.values():
         if line.unit != Unit.BOX:  # Kutu sayısı başka birimdeki sipariş miktarıyla karşılaştırılmaz.
             continue
-        shipped = ShipmentLine.objects.filter(order_line=line, shipment__status=ShipmentStatus.SHIPPED).aggregate(
+        shipped = ShipmentLine.objects.filter(order_line=line, shipment__status__in=SHIPPED_STATES).aggregate(
             s=Sum("quantity"))["s"] or 0
         if shipped >= line.quantity:
             set_line_status(actor, line, LineStatus.SHIPPED, reason=shipment.code)
@@ -636,10 +643,321 @@ def cancel_shipment(actor, shipment, reason):
         raise BusinessRuleError("İptal gerekçesi zorunludur.", field="reason")
     shipment = Shipment.objects.select_for_update(of=("self",)).select_related("order").get(pk=shipment.pk)
     check(actor, "shipment.manage", shipment)
-    if shipment.status != ShipmentStatus.DRAFT:
-        raise BusinessRuleError("Yalnız hazırlanan sevkiyat iptal edilebilir.")
+    if shipment.status not in OPEN_SHIPMENT_STATES:
+        raise BusinessRuleError("Yalnız stok düşmemiş (hazırlanan/yükleme kontrolündeki) sevkiyat iptal edilebilir.")
+    old_status = shipment.status
     shipment.status = ShipmentStatus.CANCELLED
     shipment.notes = (shipment.notes + f"\nİptal: {reason}").strip()
     shipment.save()
-    audit(actor, "shipment.cancel", shipment, {"status": (ShipmentStatus.DRAFT, ShipmentStatus.CANCELLED)}, reason=reason)
+    audit(actor, "shipment.cancel", shipment, {"status": (old_status, ShipmentStatus.CANCELLED)}, reason=reason)
     return shipment
+
+
+
+# --- Aşama 4: sevkiyat hazırlığı, yükleme kontrolü, çıkış, geri alma, iade --------------------
+
+def _lock_shipment(shipment):
+    return Shipment.objects.select_for_update(of=("self",)).select_related("order").get(pk=shipment.pk)
+
+
+@transaction.atomic
+def prepare_shipment(actor, shipment):
+    """Hazırlık tamam: satır eklenmez/çıkarılmaz; yükleme kontrolü (QR okutma) başlar. Stok değişmez."""
+    shipment = _lock_shipment(shipment)
+    check(actor, "shipment.manage", shipment)
+    if shipment.status != ShipmentStatus.DRAFT:
+        raise BusinessRuleError("Yalnız hazırlanan (taslak) sevkiyat 'hazırlandı' yapılabilir.")
+    if not shipment.lines.exists():
+        raise BusinessRuleError("Sevkiyatta satır yok.")
+    shipment.status, shipment.prepared_by, shipment.prepared_at = ShipmentStatus.PREPARED, actor, timezone.now()
+    shipment.save()
+    audit(actor, "shipment.prepare", shipment, {"status": (ShipmentStatus.DRAFT, ShipmentStatus.PREPARED)})
+    return shipment
+
+
+@transaction.atomic
+def reopen_shipment(actor, shipment, reason):
+    """Yükleme kontrolünden hazırlığa dönüş (satır değişikliği için); önceki okutmalar geçersiz sayılır."""
+    shipment = _lock_shipment(shipment)
+    check(actor, "shipment.manage", shipment)
+    if shipment.status != ShipmentStatus.PREPARED:
+        raise BusinessRuleError("Yalnız 'hazırlandı' durumundaki sevkiyat yeniden açılabilir.")
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    shipment.status, shipment.prepared_at = ShipmentStatus.DRAFT, None
+    shipment.save()
+    audit(actor, "shipment.reopen", shipment, {"status": (ShipmentStatus.PREPARED, ShipmentStatus.DRAFT)}, reason=reason)
+    return shipment
+
+
+def _token_from(raw):
+    """Okutulan değer QR bağlantısı (…/q/<token>/) veya doğrudan belirteç/palet no olabilir."""
+    raw = (raw or "").strip()
+    if "/q/" in raw:
+        return raw.rstrip("/").rsplit("/q/", 1)[1].split("/")[0]
+    return raw
+
+
+@transaction.atomic
+def scan_pallet(actor, shipment, raw):
+    """Yükleme kontrolü okutması. Stok değişmez. Doğru/yanlış/mükerrer/bilinmeyen sonucu kaydedilir."""
+    from accounts.permissions import scoped
+    shipment = _lock_shipment(shipment)
+    check(actor, "shipment.manage", shipment)
+    if shipment.status != ShipmentStatus.PREPARED:
+        raise BusinessRuleError("Okutma yalnız 'hazırlandı' (yükleme kontrolü) durumunda yapılır.")
+    token = _token_from(raw)
+    if not token:
+        raise BusinessRuleError("Okutulan değer boş.", field="raw")
+    visible = scoped(Pallet.objects.all(), actor, "stock.view")
+    pallet = visible.filter(qr_token=token).first() or visible.filter(code=token.upper()).first()
+    expected = set(shipment.lines.values_list("pallet_id", flat=True))
+    if pallet is None:
+        result = ScanResult.UNKNOWN
+    elif pallet.pk not in expected:
+        result = ScanResult.WRONG
+    elif _round_scans(shipment).filter(pallet=pallet, result=ScanResult.OK).exists():
+        result = ScanResult.DUPLICATE
+    else:
+        result = ScanResult.OK
+    scan = ShipmentScan.objects.create(shipment=shipment, pallet=pallet, raw=raw[:300], result=result, user=actor)
+    audit(actor, "shipment.scan", shipment, {"okutma": (None, f"{pallet.code if pallet else raw[:40]}: {result}")})
+    return scan
+
+
+def _round_scans(shipment):
+    """Son 'hazırlandı' anından sonraki okutmalar (yeniden açılan sevkiyatta eski okutmalar sayılmaz)."""
+    qs = shipment.scans.all()
+    return qs.filter(at__gte=shipment.prepared_at) if shipment.prepared_at else qs.none()
+
+
+def load_check(shipment):
+    shipment = Shipment.objects.get(pk=shipment.pk)  # güncel hazırlık zamanı (yeniden açma/geri alma sonrası)
+    expected = {ln.pallet_id: ln.pallet for ln in shipment.lines.select_related("pallet")}
+    scans = list(_round_scans(shipment).select_related("pallet"))
+    ok = {s.pallet_id for s in scans if s.result == ScanResult.OK}
+    return {"expected": list(expected.values()), "scanned": [p for pk, p in expected.items() if pk in ok],
+            "missing": [p for pk, p in expected.items() if pk not in ok],
+            "wrong": [s for s in scans if s.result in (ScanResult.WRONG, ScanResult.UNKNOWN)],
+            "duplicates": [s for s in scans if s.result == ScanResult.DUPLICATE], "scans": scans}
+
+
+@transaction.atomic
+def mark_exited(actor, shipment):
+    """Araç çıkışı: bundan sonra sevk geri alınamaz; değişiklik ancak iade ile yapılır."""
+    shipment = _lock_shipment(shipment)
+    check(actor, "shipment.approve", shipment)
+    if shipment.status != ShipmentStatus.SHIPPED:
+        raise BusinessRuleError("Yalnız sevk onaylı sevkiyat için çıkış kaydedilir.")
+    shipment.status, shipment.exited_by, shipment.exited_at = ShipmentStatus.EXITED, actor, timezone.now()
+    shipment.save()
+    audit(actor, "shipment.exit", shipment, {"status": (ShipmentStatus.SHIPPED, ShipmentStatus.EXITED)})
+    return shipment
+
+
+def _previous_line_status(line):
+    from core.models import AuditLog
+    for log in AuditLog.objects.filter(action="order.line_status", object_type="orders.orderline",
+                                       object_id=str(line.pk)).order_by("-at", "-pk"):
+        old, new = (log.changes or {}).get("status", (None, None))
+        if new == LineStatus.SHIPPED and old:
+            return old
+    return LineStatus.APPROVED
+
+
+@transaction.atomic
+def undo_shipment(actor, shipment, reason):
+    """Çıkış öncesi kontrollü geri alma: ters stok hareketi, rezervasyon geri, kalem/sipariş durumu yeniden hesap.
+    Sevkiyat 'hazırlandı'ya döner (yeniden yükleme kontrolü gerekir). Hareketler silinmez."""
+    if not reason:
+        raise BusinessRuleError("Geri alma gerekçesi zorunludur.", field="reason")
+    shipment = _lock_shipment(shipment)
+    check(actor, "shipment.approve", shipment)
+    if shipment.status == ShipmentStatus.EXITED:
+        raise BusinessRuleError("Araç çıkışı yapılmış sevkiyat geri alınamaz; müşteri iadesi olarak kaydedin.")
+    if shipment.status != ShipmentStatus.SHIPPED:
+        raise BusinessRuleError("Yalnız sevk onaylı sevkiyat geri alınabilir.")
+    lines = list(shipment.lines.select_related("order_line").order_by("pallet_id"))
+    pallets = {p.pk: p for p in _lock(*[ln.pallet for ln in lines])}
+    reservations = {r.pk: r for r in Reservation.objects.select_for_update(of=("self",))
+                    .filter(pk__in=[ln.reservation_id for ln in lines]).order_by("pk")}
+    for ln in lines:
+        pallet, res = pallets[ln.pallet_id], reservations[ln.reservation_id]
+        if pallet.status == PalletStatus.EMPTY:
+            pallet.status = PalletStatus.IN_STOCK
+        _move(actor, pallet, MovementKind.SHIPMENT_UNDO, ln.quantity, shipment_line=ln, reason=f"{shipment.code}: {reason}")
+        old = res.shipped_quantity
+        res.shipped_quantity -= ln.quantity
+        res.status = ReservationStatus.ACTIVE
+        res.save()
+        audit(actor, "reservation.unship", res, {"shipped_quantity": (old, res.shipped_quantity)}, reason=reason)
+    shipment.status, shipment.shipped_at, shipment.shipped_by = ShipmentStatus.PREPARED, None, None
+    shipment.prepared_at = timezone.now()  # yeniden yükleme kontrolü
+    shipment.save()
+    audit(actor, "shipment.undo", shipment, {"status": (ShipmentStatus.SHIPPED, ShipmentStatus.PREPARED)}, reason=reason)
+    for line in {ln.order_line_id: ln.order_line for ln in lines}.values():
+        if line.status == LineStatus.SHIPPED:
+            set_line_status(actor, line, _previous_line_status(line), reason=f"{shipment.code} geri alındı")
+    order = shipment.order
+    if order.status == OrderStatus.DONE:  # türetilmiş durum: yeniden hesap için açığa çek
+        order.status = OrderStatus.PARTIAL
+        order.save(update_fields=["status"])
+    refresh_order_status(actor, order)
+    return shipment
+
+
+def returnable_quantity(shipment_line):
+    returned = shipment_line.returns.aggregate(s=Sum("quantity"))["s"] or 0
+    return shipment_line.quantity - returned
+
+
+@transaction.atomic
+def receive_return(actor, shipment_line, quantity, reason, location=""):
+    """Müşteri iadesi: eski sevkiyat satırına bağlı ayrı bir iade paleti açılır, varsayılan 'kontrol bekliyor'.
+    Sipariş/sevk geçmişi değişmez; iade kalite kararı verilmeden sevk edilemez."""
+    check(actor, "shipment.manage", shipment_line.shipment)
+    _positive(quantity)
+    if not reason:
+        raise BusinessRuleError("İade nedeni zorunludur.", field="reason")
+    line = ShipmentLine.objects.select_for_update(of=("self",)).select_related("shipment", "pallet", "order_line").get(
+        pk=shipment_line.pk)
+    if line.shipment.status not in SHIPPED_STATES:
+        raise BusinessRuleError("Yalnız sevk edilmiş satır için iade alınır.")
+    if quantity > returnable_quantity(line):
+        raise BusinessRuleError(f"Bu satırdan en fazla {returnable_quantity(line)} kutu iade alınabilir.",
+                                field="quantity")
+    src = line.pallet
+    pallet = Pallet.objects.create(code=next_code("PLT"), product=src.product, work_order=src.work_order,
+                                   status=PalletStatus.IN_STOCK, quality_status=QualityStatus.PENDING,
+                                   location=location or "İade alanı", created_by=actor, accepted_by=actor,
+                                   accepted_at=timezone.now())
+    receipt = ReturnReceipt.objects.create(code=next_code("IAD"), shipment_line=line, quantity=quantity, reason=reason,
+                                           pallet=pallet, created_by=actor)
+    audit(actor, "pallet.create", pallet, {"iade": (None, f"{receipt.code} ← {line.shipment.code}/{src.code}")},
+          reason=reason)
+    _move(actor, pallet, MovementKind.RETURN_IN, quantity, related=src, reason=f"{receipt.code}: {reason}")
+    audit(actor, "shipment.return", line.shipment, {"iade": (None, f"{receipt.code} {quantity} kutu → {pallet.code}")},
+          reason=reason)
+    audit(actor, "order.return", line.order_line.order, {"iade": (None, f"{receipt.code} {line.order_line.code} "
+                                                                       f"{quantity} kutu")}, reason=reason)
+    return receipt
+
+
+# --- Konum, rezervasyon azaltma ---------------------------------------------------------
+
+@transaction.atomic
+def change_location(actor, pallet, location, reason=""):
+    check(actor, "warehouse.operate")
+    location = (location or "").strip()
+    if not location:
+        raise BusinessRuleError("Yeni depo yeri yazılmalı.", field="location")
+    (pallet,) = _lock(pallet)
+    if pallet.status == PalletStatus.EMPTY:
+        raise BusinessRuleError("Boş paletin yeri değiştirilemez.")
+    if pallet.location == location:
+        raise BusinessRuleError("Palet zaten bu yerde.", field="location")
+    change = PalletLocationChange.objects.create(pallet=pallet, old_location=pallet.location, new_location=location,
+                                                 reason=reason, user=actor)
+    old = pallet.location
+    pallet.location = location
+    pallet.save(update_fields=["location", "updated_at"])
+    audit(actor, "pallet.location", pallet, {"location": (old, location)}, reason=reason)
+    return change
+
+
+@transaction.atomic
+def reduce_reservation(actor, reservation, new_quantity, reason):
+    """Rezervasyonu kısmen azaltır; sevk edilen + hazırlanan sevkiyatlardaki miktarın altına inemez.
+    Sevk edilenle eşitlenirse rezervasyon kapanır."""
+    check(actor, "reservation.manage", reservation)
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    res = Reservation.objects.select_for_update(of=("self",)).select_related("pallet", "order_line").get(pk=reservation.pk)
+    if res.status != ReservationStatus.ACTIVE:
+        raise BusinessRuleError("Yalnız aktif rezervasyon azaltılabilir.")
+    in_drafts = (ShipmentLine.objects.filter(reservation=res, shipment__status__in=[ShipmentStatus.DRAFT,
+                                                                                   ShipmentStatus.PREPARED])
+                 .aggregate(s=Sum("quantity"))["s"] or 0)
+    floor = res.shipped_quantity + in_drafts
+    if new_quantity is None or new_quantity < floor or new_quantity >= res.quantity:
+        raise BusinessRuleError(f"Yeni miktar {floor} ile {res.quantity - 1} arasında olmalı (sevk edilen {res.shipped_quantity}, "
+                                f"hazırlanan sevkiyatta {in_drafts}).", field="quantity")
+    old = res.quantity
+    res.quantity = new_quantity
+    changes = {"quantity": (old, new_quantity)}
+    if new_quantity == 0:
+        res.status = ReservationStatus.CANCELLED
+        changes["status"] = (ReservationStatus.ACTIVE, res.status)
+    elif new_quantity == res.shipped_quantity:
+        res.status = ReservationStatus.SHIPPED
+        changes["status"] = (ReservationStatus.ACTIVE, res.status)
+    res.save()
+    audit(actor, "reservation.reduce", res, changes, reason=reason)
+    return res
+
+
+# --- Etiket -------------------------------------------------------------------------------
+
+@transaction.atomic
+def request_label_print(actor, pallet, kind=LabelKind.PALLET, copies=1):
+    """Basım talebi kaydı. Yeni palet, kimlik veya stok hareketi oluşmaz; yazıcı sonucu ayrıca onaylanır."""
+    check(actor, "label.print")
+    if kind not in LabelKind.values:
+        raise BusinessRuleError("Geçersiz etiket türü.")
+    if copies is None or copies < 1 or copies > 500:
+        raise BusinessRuleError("Kopya sayısı 1–500 arası olmalı.", field="copies")
+    reprint = pallet.label_prints.filter(kind=kind).exists()
+    lp = LabelPrint.objects.create(pallet=pallet, kind=kind, is_reprint=reprint, box_count_at_print=pallet.box_count,
+                                   copies=copies, user=actor)
+    audit(actor, "pallet.label_reprint" if reprint else "pallet.label_print", pallet,
+          {"etiket": (None, f"{lp.get_kind_display()} × {copies}")})
+    return lp
+
+
+@transaction.atomic
+def confirm_label_print(actor, label_print, printed):
+    check(actor, "label.print")
+    lp = LabelPrint.objects.select_for_update().get(pk=label_print.pk)
+    if lp.status != PrintStatus.REQUESTED:
+        raise BusinessRuleError("Bu basım için sonuç zaten bildirildi.")
+    lp.status = PrintStatus.PRINTED if printed else PrintStatus.FAILED
+    lp.confirmed_by, lp.confirmed_at = actor, timezone.now()
+    lp.save()
+    audit(actor, "pallet.label_result", lp.pallet, {"etiket": (PrintStatus.REQUESTED, lp.status)})
+    return lp
+
+
+# --- Stok seviyeleri ve ihtiyaç listesi ------------------------------------------------------
+
+@transaction.atomic
+def set_stock_level(actor, product, min_boxes, target_boxes):
+    check(actor, "stocklevel.manage")
+    if min_boxes is None or target_boxes is None or min_boxes < 0 or target_boxes < min_boxes:
+        raise BusinessRuleError("Hedef seviye alt seviyeden küçük olamaz; değerler negatif olamaz.", field="target_boxes")
+    level, created = StockLevel.objects.select_for_update().get_or_create(
+        product=product, defaults={"min_boxes": min_boxes, "target_boxes": target_boxes, "updated_by": actor})
+    old = None if created else (level.min_boxes, level.target_boxes)
+    level.min_boxes, level.target_boxes, level.updated_by = min_boxes, target_boxes, actor
+    level.save()
+    audit(actor, "product.stock_level", product, {"seviye": (old, (min_boxes, target_boxes))})
+    return level
+
+
+def planning_needs(user):
+    """Sevke uygun serbest stok alt seviyenin altındaki ürünler; açık stok iş emirlerinin kalan hedefi düşülür."""
+    from production.lifecycle import OPEN_STATUSES
+    from production.models import WorkOrder, WorkOrderPurpose
+
+    from .selectors import stock_breakdown
+    free = {r["product"].pk: r["shippable"] for r in stock_breakdown(user)}
+    rows = []
+    for level in StockLevel.objects.select_related("product__customer").order_by("product__code"):
+        available = free.get(level.product_id, 0)
+        if available >= level.min_boxes:
+            continue
+        open_wos = WorkOrder.objects.filter(product=level.product, purpose=WorkOrderPurpose.STOCK,
+                                            status__in=OPEN_STATUSES, unit="kutu")
+        planned = sum(int(wo.target_quantity) for wo in open_wos)
+        rows.append({"level": level, "available": available, "planned": planned,
+                     "need": max(level.target_boxes - available - planned, 0), "work_orders": list(open_wos)})
+    return rows

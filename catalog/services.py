@@ -34,7 +34,10 @@ def create_definition(actor, model, data):
         if not customer_in_scope(actor, "product.create", data["customer"]):
             raise BusinessRuleError("Bu müşteriye erişiminiz yok.", field="customer")
         if data.get("units_per_box") is not None and data["units_per_box"] <= 0:
-            raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
+            raise BusinessRuleError("Paket içi adet sıfırdan büyük olmalı.", field="units_per_box")
+        if data.get("nominal_package_kg") is not None and data["nominal_package_kg"] <= 0:
+            raise BusinessRuleError("Tahmini paket ağırlığı sıfırdan büyük olmalı (bilinmiyorsa boş bırakın).",
+                                    field="nominal_package_kg")
     if model is Material:
         _validate_material_unit(data.get("unit", MaterialUnit.KG))
     obj = model.objects.create(**data)
@@ -52,7 +55,9 @@ def update_definition(actor, obj, data, reason=""):
     if blocked & set(changes):
         raise BusinessRuleError(f"Şu alanlar sonradan değiştirilemez: {', '.join(sorted(blocked & set(changes)))}")
     if model is Product and data.get("units_per_box") is not None and data["units_per_box"] <= 0:
-        raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
+        raise BusinessRuleError("Paket içi adet sıfırdan büyük olmalı.", field="units_per_box")
+    if model is Product and data.get("nominal_package_kg") is not None and data["nominal_package_kg"] <= 0:
+        raise BusinessRuleError("Tahmini paket ağırlığı sıfırdan büyük olmalı.", field="nominal_package_kg")
     if model is Material and "unit" in changes:
         _validate_material_unit(data["unit"])
         if LotMovement.objects.filter(lot__material=obj).exists():

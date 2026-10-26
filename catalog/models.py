@@ -223,6 +223,11 @@ class Unit(models.TextChoices):
     ROLL = "rulo", "Rulo"
 
 
+class PackageType(models.TextChoices):
+    BOX = "kutu", "Kutu"
+    ROLL = "rulo", "Rulo"
+
+
 class Product(models.Model):
     """Ürün kodu. Her kod tek müşteriye aittir; teknik olarak aynı ürün başka müşteride farklı koddur."""
 
@@ -230,7 +235,11 @@ class Product(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="products", verbose_name="Müşteri")
     name = models.CharField("Ürün adı", max_length=200)
     unit = models.CharField("Satış birimi", max_length=10, choices=Unit.choices, default=Unit.BOX)
-    units_per_box = models.PositiveIntegerField("Kutu içi adet/rulo", null=True, blank=True)
+    units_per_box = models.PositiveIntegerField("Paket içi adet/rulo", null=True, blank=True)
+    package_type = models.CharField("Paket tipi", max_length=10, choices=PackageType.choices, default=PackageType.BOX)
+    nominal_package_kg = models.DecimalField("Tahmini paket ağırlığı (kg)", max_digits=10, decimal_places=3, null=True,
+                                             blank=True, help_text="Yalnız bilgi amaçlı tahmin; sevk/stok kg'ye "
+                                                                   "çevrilmez, tartım yerine geçmez.")
     notes = models.TextField("Açıklama", blank=True)
     is_active = models.BooleanField("Aktif", default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -14,7 +14,7 @@ from django.test import TransactionTestCase
 from core.exceptions import BusinessRuleError
 from core.models import QualityStatus
 from core.services import perform_once
-from core.tests.factories import World
+from core.tests.factories import World, load
 from production import services as prod
 from production.models import Coil, CoilLink, WorkOrder
 from warehouse import services as wh
@@ -97,6 +97,7 @@ class ConcurrentShipmentTests(ConcurrencyTestCase):
         res = wh.reserve(self.w.sales, self.pallet, self.order.lines.get(), 10)
         self.shipment = wh.create_shipment(self.w.depot, self.order)
         wh.add_shipment_line(self.w.depot, self.shipment, res, 10)
+        load(self.w.depot, self.shipment)  # hazırlandı + yükleme kontrolü; yarış yalnız sevk onayında
 
     def assert_single_shipment(self):
         self.assertEqual(PalletMovement.objects.filter(kind=MovementKind.SHIPMENT).count(), 1)
@@ -147,7 +148,7 @@ class ConcurrentShipmentTests(ConcurrencyTestCase):
         self.assert_one_success_one_rule_error(a, b, "bobin blokeli")
         self.assertEqual(PalletMovement.objects.filter(kind=MovementKind.SHIPMENT).count(), 0)
         self.assertEqual(Pallet.objects.get(pk=self.pallet.pk).box_count, 40)
-        self.assertEqual(Shipment.objects.get(pk=self.shipment.pk).status, ShipmentStatus.DRAFT)
+        self.assertEqual(Shipment.objects.get(pk=self.shipment.pk).status, ShipmentStatus.PREPARED)
 
 
 class ConcurrentCoilConsumptionTests(ConcurrencyTestCase):

@@ -13,7 +13,7 @@ def produced_quantity_for_line(line):
     """
     from catalog.models import Unit
     from core.models import QualityStatus
-    from warehouse.models import MovementKind, PalletMovement, ShipmentLine, ShipmentStatus
+    from warehouse.models import SHIPPED_STATES, MovementKind, PalletMovement, ShipmentLine
 
     from .models import Coil
 
@@ -33,7 +33,7 @@ def produced_quantity_for_line(line):
     else:
         # adet/rulo: ölçüm kaydı yok; kutu hareketi bu birime çevrilmez (bulgu 11).
         qty = None
-    shipped_lines = ShipmentLine.objects.filter(order_line=line, shipment__status=ShipmentStatus.SHIPPED)
+    shipped_lines = ShipmentLine.objects.filter(order_line=line, shipment__status__in=SHIPPED_STATES)
     shipped = Decimal(shipped_lines.aggregate(s=Sum("quantity"))["s"] or 0)
     last_ship = shipped_lines.order_by("-shipment__shipped_at").first()
     if last_ship:

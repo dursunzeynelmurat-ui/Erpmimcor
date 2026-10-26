@@ -11,6 +11,10 @@
   {% if can.workorder_view %}<a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>{% endif %}
   {% include "partials/home_warehouse_tiles.html" %}
 </div>
+{% if tasks %}<section class="card tasks"><h2>Bekleyen işlerim</h2>
+<div class="dashboard-grid">{% for t in tasks %}<div><h3><a href="{{ t.url }}">{{ t.title }}</a> <span class="badge">{{ t.count }}</span></h3>
+<ul class="list">{% for label, obj in t.items %}<li>{{ label }}</li>{% endfor %}</ul></div>{% endfor %}</div>
+<p class="muted">Bildirimler yalnız uygulama içindedir; e-posta veya mesaj gönderilmez.</p></section>{% endif %}
 <div class="dashboard-grid">
 {% if active_work_orders is not None %}
 <section class="card">

@@ -2,26 +2,57 @@
 {% block title %}{{ shipment.code }}{% endblock %}
 {% block content %}
 <h1>Sevkiyat {{ shipment.code }} <span class="status status-{{ shipment.status }}">{{ shipment.get_status_display }}</span></h1>
+<ol class="steps no-print" aria-label="Sevkiyat aşamaları">
+  <li class="{% if shipment.status == 'taslak' %}current{% endif %}">1. Hazırlık</li>
+  <li class="{% if shipment.status == 'hazirlandi' %}current{% endif %}">2. Yükleme kontrolü (QR)</li>
+  <li class="{% if shipment.status == 'sevk_edildi' %}current{% endif %}">3. Sevk onayı (stok düşer)</li>
+  <li class="{% if shipment.status == 'cikis_yapildi' %}current{% endif %}">4. Araç çıkışı</li>
+</ol>
 <dl class="kv card">
   <dt>Sipariş</dt><dd><a href="{% url 'orders:order_detail' shipment.order.pk %}">{{ shipment.order.code }}</a> · {{ shipment.order.customer.name }}</dd>
   <dt>Araç</dt><dd>{{ shipment.vehicle|default:"—" }}</dd>
   <dt>Oluşturan</dt><dd>{{ shipment.created_by.full_name }} · {{ shipment.created_at|date:"d.m.Y H:i" }}</dd>
-  {% if shipment.shipped_at %}<dt>Sevk eden</dt><dd>{{ shipment.shipped_by.full_name }} · {{ shipment.shipped_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  {% if shipment.prepared_at %}<dt>Hazırlayan</dt><dd>{{ shipment.prepared_by.full_name }} · {{ shipment.prepared_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  {% if shipment.shipped_at %}<dt>Sevk onayı</dt><dd>{{ shipment.shipped_by.full_name }} · {{ shipment.shipped_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  {% if shipment.exited_at %}<dt>Araç çıkışı</dt><dd>{{ shipment.exited_by.full_name }} · {{ shipment.exited_at|date:"d.m.Y H:i" }}</dd>{% endif %}
 </dl>
 <section class="card"><h2>Satırlar</h2>
 <div class="table-wrap"><table class="table compact"><thead><tr><th>Palet</th><th>Kalem</th><th>Ürün</th><th>Kutu</th><th>Palet kalite</th><th></th></tr></thead><tbody>
 {% for l in lines %}<tr><td><a href="{% url 'warehouse:pallet_detail' l.pallet.pk %}">{{ l.pallet.code }}</a></td><td>{{ l.order_line.code }}</td><td>{{ l.order_line.product.code }}</td><td>{{ l.quantity }}</td>
 <td><span class="status status-{{ l.pallet.quality_status }}">{{ l.pallet.get_quality_status_display }}</span></td>
-<td>{% if shipment.status == "taslak" and can.shipment_manage %}{% url 'warehouse:shipment_line_remove' l.pk as u %}{% include "partials/confirm_button.html" with action=u label="Çıkar" btn_class="btn" %}{% endif %}</td></tr>
+<td>{% if shipment.status == "taslak" and can.shipment_manage %}{% url 'warehouse:shipment_line_remove' l.pk as u %}{% include "partials/confirm_button.html" with action=u label="Çıkar" btn_class="btn" %}{% endif %}
+{% if l.returnable and can.shipment_manage %}<a class="btn" href="{% url 'warehouse:shipment_return' l.pk %}">İade al</a>{% endif %}
+{% for r in l.returns.all %}<div class="muted">İade {{ r.code }}: {{ r.quantity }} kutu → <a href="{% url 'warehouse:pallet_detail' r.pallet.pk %}">{{ r.pallet.code }}</a></div>{% endfor %}</td></tr>
 {% empty %}<tr><td colspan="6" class="muted">Satır yok. Önce paletten siparişe ayırma (rezervasyon) yapılmalı.</td></tr>{% endfor %}</tbody></table></div>
 </section>
 {% if form %}
 <form method="post" class="card form" novalidate>{% csrf_token %}<h2>Satır ekle</h2>{% include "partials/form_fields.html" %}<button class="btn" type="submit">Ekle</button></form>
-{% if lines %}{% url 'warehouse:shipment_confirm' shipment.pk as u %}
-<section class="card"><h2>Sevki onayla</h2><p class="muted">Onayla birlikte kutular fiziksel stoktan düşülür. Yalnız kalite durumu “Uygun” olan paletler sevk edilebilir.</p>
-<ul class="list">{% for l in lines %}<li><strong>{{ l.quantity }} kutu</strong> · {{ l.pallet.code }} → {{ l.order_line.code }} · {{ l.order_line.product.code }}</li>{% endfor %}</ul>
-{% include "partials/confirm_button.html" with action=u label="Sevk et" %}</section>{% endif %}
+{% if lines %}<section class="card"><h2>Hazırlık tamam mı?</h2><p class="muted">Hazırlandı dedikten sonra satır eklenmez; araca yüklenen her palet okutulur. Stok bu adımda değişmez.</p>
+{% url 'warehouse:shipment_prepare' shipment.pk as u %}{% include "partials/confirm_button.html" with action=u label="Hazırlandı – yükleme kontrolüne geç" %}</section>{% endif %}
 {% endif %}
-{% if shipment.status == "taslak" and can.shipment_manage %}{% url 'warehouse:shipment_cancel' shipment.pk as u %}<div class="actions no-print">{% include "partials/reason_button.html" with action=u label="Sevkiyatı iptal et" btn_class="btn-danger" hint="Stok düşmemiş taslak sevkiyat iptal edilir; satırlar serbest kalır, kayıt geçmişte korunur." %}</div>{% endif %}
+{% if check %}
+<section class="card" id="yukleme"><h2>Yükleme kontrolü</h2>
+  {% if can.shipment_manage %}<form method="post" action="{% url 'warehouse:shipment_scan' shipment.pk %}" class="form" novalidate>{% csrf_token %}
+    {% with form=scan_form %}{% include "partials/form_fields.html" %}{% endwith %}<button class="btn btn-primary" type="submit">Okut</button></form>{% endif %}
+  <dl class="kv">
+    <dt>Okutulan</dt><dd>{{ check.scanned|length }} / {{ check.expected|length }} palet</dd>
+    <dt>Eksik (okutulmadı)</dt><dd>{% for p in check.missing %}<span class="status status-blokeli">{{ p.code }}</span> {% empty %}<span class="status status-uygun">Eksik yok</span>{% endfor %}</dd>
+    <dt>Yanlış / tanınmayan</dt><dd>{% for s in check.wrong %}<span class="status status-blokeli">{{ s.pallet.code|default:s.raw|truncatechars:24 }}</span> {% empty %}Yok{% endfor %}{% if check.wrong %}<br><small>Bu paletleri araçtan indirin; sevkiyata ait değiller.</small>{% endif %}</dd>
+    <dt>Mükerrer okutma</dt><dd>{% for s in check.duplicates %}{{ s.pallet.code }} {% empty %}Yok{% endfor %}</dd>
+  </dl>
+  <div class="actions">
+  {% if can.shipment_approve and not check.missing %}{% url 'warehouse:shipment_confirm' shipment.pk as u %}
+    <p class="muted">Onayla birlikte kutular fiziksel stoktan düşülür. Yalnız kalite durumu “Uygun” ve bobin bekletmesi olmayan paletler sevk edilebilir.</p>
+    {% include "partials/confirm_button.html" with action=u label="Sevk et" %}{% endif %}
+  {% if can.shipment_manage %}{% url 'warehouse:shipment_reopen' shipment.pk as u %}{% include "partials/reason_button.html" with action=u label="Hazırlığa geri dön" %}{% endif %}
+  </div>
+</section>
+{% endif %}
+{% if shipment.status == "sevk_edildi" and can.shipment_approve %}
+<section class="card"><h2>Araç çıkışı</h2><p class="muted">Çıkış kaydedilene kadar sevk kontrollü olarak geri alınabilir (ters stok hareketi). Çıkıştan sonra değişiklik yalnız müşteri iadesiyle yapılır.</p>
+<div class="actions">{% url 'warehouse:shipment_exit' shipment.pk as u %}{% include "partials/confirm_button.html" with action=u label="Araç çıktı" %}
+{% url 'warehouse:shipment_undo' shipment.pk as u %}{% include "partials/reason_button.html" with action=u label="Sevki geri al" btn_class="btn-danger" hint="Kutular aynı paletlere ve rezervasyona döner; sevkiyat yeniden yükleme kontrolüne alınır." %}</div></section>
+{% endif %}
+{% if shipment.status == "taslak" or shipment.status == "hazirlandi" %}{% if can.shipment_manage %}{% url 'warehouse:shipment_cancel' shipment.pk as u %}<div class="actions no-print">{% include "partials/reason_button.html" with action=u label="Sevkiyatı iptal et" btn_class="btn-danger" hint="Stok düşmemiş sevkiyat iptal edilir; satırlar serbest kalır, kayıt geçmişte korunur." %}</div>{% endif %}{% endif %}
 {% include "partials/history.html" %}
 {% endblock %}

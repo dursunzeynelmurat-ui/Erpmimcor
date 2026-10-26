@@ -13,9 +13,11 @@
   </div>
 </div>
 <div class="no-print">
+  {% if base_url_missing %}<p class="msg msg-warning">QR taban adresi (APP_BASE_URL) ayarlı değil; QR bu ekranı açtığınız adresi içerir.</p>{% endif %}
+  {% if last_print and last_print.status == "talep" %}<p>Son basım talebi sonucu bildirilmedi:</p>{% url 'warehouse:label_result' last_print.pk 'basildi' as u %}{% include "partials/confirm_button.html" with action=u label="Basıldı" btn_class="btn" %}{% url 'warehouse:label_result' last_print.pk 'basilamadi' as u %}{% include "partials/confirm_button.html" with action=u label="Basılamadı" btn_class="btn" %}{% endif %}
   <p class="muted">QR yalnızca paletin kaydına giden tahmin edilemez bağlantıyı taşır; miktar/sipariş bilgisi QR içinde yoktur. Okutmak stok hareketi oluşturmaz. Yeniden basım yeni palet oluşturmaz. Bu palet için {{ prints }} basım kaydı var.</p>
   {% url 'warehouse:pallet_label_print' pallet.pk as u %}{% include "partials/confirm_button.html" with action=u label="Yazdır (basımı kaydet)" %}
   <a class="btn" href="{% url 'warehouse:pallet_detail' pallet.pk %}">Palete dön</a>
 </div>
-{% if do_print %}<script>window.addEventListener("load", function () { window.print(); });</script>{% endif %}
+{% if do_print %}<div data-autoprint hidden></div>{% endif %}
 {% endblock %}

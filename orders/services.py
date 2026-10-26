@@ -119,22 +119,22 @@ def _lock_order(order):
 
 def shipped_quantity(line):
     from django.db.models import Sum
-    from warehouse.models import ShipmentLine, ShipmentStatus
-    return ShipmentLine.objects.filter(order_line=line, shipment__status=ShipmentStatus.SHIPPED).aggregate(
+    from warehouse.models import SHIPPED_STATES, ShipmentLine
+    return ShipmentLine.objects.filter(order_line=line, shipment__status__in=SHIPPED_STATES).aggregate(
         s=Sum("quantity"))["s"] or 0
 
 
 def line_impacts(line):
     """Kalem değişikliğinin etkilediği kayıtlar (kullanıcıya gösterilir, sessiz değişiklik yok)."""
     from production.models import WorkOrderStatus
-    from warehouse.models import ReservationStatus, ShipmentStatus
+    from warehouse.models import OPEN_SHIPMENT_STATES, ReservationStatus
     impacts = []
     for wo in line.work_orders.exclude(status__in=[WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED]):
         impacts.append(f"İş emri {wo.code} ({wo.get_status_display()}, hedef {num(wo.target_quantity)}) — hedefi "
                        "kendiliğinden değişmez; planlama gözden geçirmeli")
     for r in line.reservations.filter(status=ReservationStatus.ACTIVE).select_related("pallet"):
         impacts.append(f"Rezervasyon {r.pallet.code}: {r.open_quantity} kutu")
-    for sl in line.shipment_lines.filter(shipment__status=ShipmentStatus.DRAFT).select_related("shipment"):
+    for sl in line.shipment_lines.filter(shipment__status__in=OPEN_SHIPMENT_STATES).select_related("shipment"):
         impacts.append(f"Hazırlanan sevkiyat {sl.shipment.code}: {sl.quantity} kutu")
     return impacts
 
@@ -240,7 +240,7 @@ def copy_order(actor, order):
 @transaction.atomic
 def cancel_line(actor, line, reason):
     from production.models import WorkOrderStatus
-    from warehouse.models import ReservationStatus, ShipmentStatus
+    from warehouse.models import OPEN_SHIPMENT_STATES, ReservationStatus
     line = OrderLine.objects.select_for_update(of=("self",)).select_related("order").get(pk=line.pk)
     check(actor, "order.cancel", line.order)
     if not reason:
@@ -253,7 +253,7 @@ def cancel_line(actor, line, reason):
     if open_wos.exists():
         raise BusinessRuleError("Açık iş emri var: " + ", ".join(open_wos.values_list("code", flat=True)) +
                                 ". Planlama iş emrini iptal etmeden kalem iptal edilemez.")
-    if line.shipment_lines.filter(shipment__status=ShipmentStatus.DRAFT).exists():
+    if line.shipment_lines.filter(shipment__status__in=OPEN_SHIPMENT_STATES).exists():
         raise BusinessRuleError("Kalem hazırlanan bir sevkiyatta; önce sevkiyattan çıkarın.")
     released = []
     for r in line.reservations.select_for_update().filter(status=ReservationStatus.ACTIVE):

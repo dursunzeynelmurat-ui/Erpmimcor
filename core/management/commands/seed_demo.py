@@ -166,6 +166,7 @@ class Command(BaseCommand):
         wh.record_label_print(depot, pallet)
         wh.set_pallet_quality(foreman, pallet, QualityStatus.OK, "Görsel ve ölçü kontrolü uygun (kurgusal)")
         self.stdout.write(f"Demo B stok paleti: {pallet.code} ({product.code}, 40 kutu)")
+        wh.set_stock_level(planner, product, 60, 100)  # ihtiyaç listesi örneği (kurgusal seviye)
 
     def seed_customer_cards(self, admin, customers):
         """Kurgusal kart bilgileri, kişiler, adresler ve satışçı erişimleri (yalnız ilk kurulumda)."""

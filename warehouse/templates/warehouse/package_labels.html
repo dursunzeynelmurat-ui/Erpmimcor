@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Kutu/rulo etiketleri {{ pallet.code }}{% endblock %}
+{% block content %}
+<div class="no-print">
+<h1>Kutu/rulo etiketleri: {{ pallet.code }}</h1>
+{% if base_url_missing %}<p class="msg msg-warning">QR taban adresi (APP_BASE_URL) ayarlı değil; QR bu ekranı açtığınız adresi içerir. Telefonların erişebildiği uygulama adresini ayarlatın.</p>{% endif %}
+<p class="muted">Her etiket {{ pallet.product.get_package_type_display|lower }} üzerine yapıştırılır ve palete giden QR'ı taşır; paket başına ayrı stok kimliği oluşmaz. Yeniden basım stok veya kimlik üretmez.</p>
+{% if can.label_print %}<form method="post" class="card form" novalidate>{% csrf_token %}{% include "partials/form_fields.html" %}
+<div class="actions"><button type="submit" class="btn btn-primary">Basım talebi oluştur</button><a class="btn" href="{% url 'warehouse:pallet_detail' pallet.pk %}">Palete dön</a></div></form>{% endif %}
+{% if lp %}<section class="card"><h2>Basım sonucu</h2><p>{{ lp.copies }} etiket için basım talebi ({{ lp.at|date:"d.m.Y H:i" }}). Durum: <strong>{{ lp.get_status_display }}</strong></p>
+<div class="actions"><button type="button" class="btn" data-print>Yazdır</button>
+{% if lp.status == "talep" %}{% url 'warehouse:label_result' lp.pk 'basildi' as u %}{% include "partials/confirm_button.html" with action=u label="Etiketler basıldı" %}{% url 'warehouse:label_result' lp.pk 'basilamadi' as u %}{% include "partials/confirm_button.html" with action=u label="Basılamadı" btn_class="btn" %}{% endif %}</div></section>{% endif %}
+</div>
+{% if total %}<div class="package-labels">{% for n in labels %}
+<div class="package-label"><div>{{ qr_svg }}</div><div><div class="no">{{ n }}/{{ total }}</div><div>{{ pallet.product.code }}</div><small>{{ pallet.product.name }}</small><br><small>Palet {{ pallet.code }}{% if pallet.work_order %} · {{ pallet.work_order.code }}{% endif %}</small></div></div>
+{% endfor %}</div>{% endif %}
+{% endblock %}

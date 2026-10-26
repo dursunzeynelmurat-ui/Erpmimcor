@@ -132,3 +132,19 @@ class World:
             wh.set_pallet_quality(self.foreman, pallet, QualityStatus.OK, "Kontrol edildi")
         pallet.refresh_from_db()
         return pallet
+
+
+def load(actor, shipment):
+    """Test yardımcısı: sevkiyatı 'hazırlandı' yapar ve satırlardaki paletleri okutur (idempotent).
+    Sevk onayı ayrıca confirm_shipment ile verilir."""
+    from warehouse import services as wh
+    from warehouse.models import ShipmentStatus
+    shipment.refresh_from_db()
+    if shipment.status == ShipmentStatus.DRAFT and shipment.lines.exists():
+        wh.prepare_shipment(actor, shipment)
+        shipment.refresh_from_db()
+    if shipment.status == ShipmentStatus.PREPARED:
+        for p in wh.load_check(shipment)["missing"]:
+            wh.scan_pallet(actor, shipment, p.qr_token)
+    shipment.refresh_from_db()
+    return shipment

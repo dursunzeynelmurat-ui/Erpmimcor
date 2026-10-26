@@ -23,5 +23,7 @@ def home(request):
     if can(u, "warehouse.operate"):
         ctx["acceptance_pallets"] = Pallet.objects.filter(status=PalletStatus.AWAITING_ACCEPTANCE).select_related("product__customer")[:6]
         ctx["reweigh_pallets"] = Pallet.objects.filter(status=PalletStatus.IN_STOCK, weight_status=WeightStatus.REWEIGH).select_related("product")[:6]
-        ctx["draft_shipments"] = Shipment.objects.filter(status=ShipmentStatus.DRAFT).select_related("order__customer")[:6]
+        ctx["draft_shipments"] = scoped(Shipment.objects.filter(status=ShipmentStatus.DRAFT), u, "shipment.view").select_related("order__customer")[:6]
+    from .tasks import task_lists
+    ctx["tasks"] = task_lists(u)
     return render(request, "core/home.html", ctx)
