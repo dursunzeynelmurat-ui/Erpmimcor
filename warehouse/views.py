@@ -1,3 +1,4 @@
+from django.core.paginator import Paginator
 import segno
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
@@ -35,7 +36,8 @@ def pallet_list(request):
             qs = qs.exclude(status=PalletStatus.EMPTY)
     else:
         qs = qs.exclude(status=PalletStatus.EMPTY)
-    return render(request, "warehouse/pallet_list.html", {"pallets": qs[:300], "form": form})
+    page = Paginator(qs.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
+    return render(request, "warehouse/pallet_list.html", {"pallets": page, "page_obj": page, "form": form})
 
 
 def qr_open(request, token):
@@ -69,6 +71,7 @@ def pallet_detail(request, pk):
         "coils": pallet.pallet_coils.select_related("coil__machine"),
         "label_prints": pallet.label_prints.select_related("user"),
         "history": history_for(pallet),
+        "quality_reason": history_for(pallet).filter(action="pallet.quality").values_list("reason", flat=True).first(),
     }
     if can(u, "warehouse.operate"):
         if pallet.status == PalletStatus.AWAITING_ACCEPTANCE:
@@ -84,6 +87,9 @@ def pallet_detail(request, pk):
     if can(u, "reservation.manage") and pallet.status != PalletStatus.EMPTY:
         ctx["reserve_form"] = ReserveForm(pallet)
         ctx["cancel_form"] = ReasonForm()
+    for key, value in ctx.items():
+        if key.endswith("_form"):
+            value.auto_id = key + "_%s"
     return render(request, "warehouse/pallet_detail.html", ctx)
 
 
@@ -97,7 +103,14 @@ def _pallet_action(request, pk, *, perm, form_cls, action, fn, success, form_kwa
                                url_for=lambda _: _pallet_url(pallet))
         if resp:
             return resp
-    return render(request, "core/form_page.html", {"form": form, "title": f"{pallet.code}: işlem", "submit": "Kaydet",
+    labels = {
+        "pallet.accept": "Depo kabulü", "pallet.weigh": "Yeniden tartım",
+        "pallet.transfer": "Başka palete aktarım", "pallet.count": "Sayım düzeltmesi",
+        "pallet.damage": "Hasarlı ürün ayırma", "pallet.quality": "Kalite durumu",
+        "pallet.reserve": "Siparişe ayırma",
+    }
+    return render(request, "core/form_page.html", {"form": form, "title": f"{pallet.code}: {labels[action]}", "submit": "Kaydet",
+                                                   "review_title": f"{pallet.code} · {pallet.product.code}",
                                                    "back": _pallet_url(pallet)})
 
 
@@ -149,10 +162,16 @@ def pallet_reserve(request, pk):
 @require_perm("reservation.manage")
 def reservation_cancel(request, pk):
     res = get_object_or_404(Reservation, pk=pk)
-    resp = run_form_action(request, ReasonForm(request.POST), action="reservation.cancel",
+    form = ReasonForm(request.POST)
+    resp = run_form_action(request, form, action="reservation.cancel",
                            fn=lambda d: services.cancel_reservation(request.user, res, d["reason"]),
                            success_message="Rezervasyon iptal edildi.", url_for=lambda _: _pallet_url(res.pallet))
-    return resp or redirect(_pallet_url(res.pallet))
+    if resp:
+        return resp
+    return render(request, "core/form_page.html", {
+        "form": form, "title": f"{res.code}: rezervasyon iptali", "submit": "Rezervasyonu iptal et",
+        "back": _pallet_url(res.pallet),
+    })
 
 
 def pallet_label(request, pk):
@@ -183,7 +202,8 @@ def pallet_label_print(request, pk):
 def shipment_list(request):
     check(request.user, "view.warehouse")
     shipments = Shipment.objects.select_related("order__customer").prefetch_related("lines")
-    return render(request, "warehouse/shipment_list.html", {"shipments": shipments[:200]})
+    page = Paginator(shipments.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
+    return render(request, "warehouse/shipment_list.html", {"shipments": page, "page_obj": page})
 
 
 @require_perm("shipment.manage")

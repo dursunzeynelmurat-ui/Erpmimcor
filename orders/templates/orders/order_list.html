@@ -4,14 +4,15 @@
 <h1>Satış siparişleri</h1>
 <div class="toolbar">
   {% if can.order_create %}<a class="btn btn-primary" href="{% url 'orders:order_create' %}">Yeni sipariş</a>{% endif %}
-  <form method="get" class="search"><input type="search" name="q" value="{{ q }}" placeholder="Sipariş no / müşteri"><button class="btn">Ara</button></form>
+  <form method="get" class="search"><input type="search" name="q" value="{{ q }}" aria-label="Sipariş no veya müşteri ara" placeholder="Sipariş no / müşteri"><button class="btn">Ara</button></form>
 </div>
-<div class="table-wrap"><table class="table">
+<div class="table-wrap"><table class="table table-responsive">
   <thead><tr><th>Sipariş no</th><th>Müşteri</th><th>Termin</th><th>Kalemler</th><th>Durum</th></tr></thead>
   <tbody>{% for o in orders %}<tr>
-    <td><a href="{% url 'orders:order_detail' o.pk %}">{{ o.code }}</a></td><td>{{ o.customer.name }}</td><td>{{ o.due_date|date:"d.m.Y"|default:"—" }}</td>
-    <td>{% for l in o.lines.all %}<div>{{ l.product.code }} · {{ l.quantity|qty }} {{ l.get_unit_display }} <span class="status status-{{ l.status }}">{{ l.get_status_display }}</span></div>{% endfor %}</td>
-    <td>{{ o.get_status_display }}</td></tr>
+    <td data-label="Sipariş no"><a href="{% url 'orders:order_detail' o.pk %}">{{ o.code }}</a></td><td data-label="Müşteri">{{ o.customer.name }}</td><td data-label="Teslim tarihi">{{ o.due_date|date:"d.m.Y"|default:"—" }}</td>
+    <td data-label="Ürün ve ilerleme">{% for l in o.lines.all %}<div>{{ l.product.code }} · {{ l.quantity|qty }} {{ l.get_unit_display }} <span class="status status-{{ l.status }}">{{ l.get_status_display }}</span></div>{% endfor %}</td>
+    <td data-label="Durum">{{ o.get_status_display }}</td></tr>
   {% empty %}<tr><td colspan="5" class="muted">Sipariş yok.</td></tr>{% endfor %}</tbody>
 </table></div>
+{% include "partials/pagination.html" %}
 {% endblock %}

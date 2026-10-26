@@ -7,7 +7,7 @@
     <li>
       <div class="meta"><time>{{ h.at|date:"d.m.Y H:i:s" }}</time> · {{ h.user.full_name|default:"Sistem" }}{% if h.user %} ({{ h.user.personnel_no }}){% endif %}</div>
       <div><strong>{{ h.action|action_label }}</strong> {{ h.object_code }}</div>
-      {% if h.changes %}<ul class="changes">{% for k, v in h.changes.items %}<li>{{ k }}: <s>{{ v.0|default_if_none:"—" }}</s> → {{ v.1|default_if_none:"—" }}</li>{% endfor %}</ul>{% endif %}
+      {% if h.changes %}<ul class="changes">{% for k, v in h.changes.items %}<li>{{ k|field_label }}: <s>{% history_value v.0 k %}</s> → {% history_value v.1 k %}</li>{% endfor %}</ul>{% endif %}
       {% if h.reason %}<div class="reason">Gerekçe: {{ h.reason }}</div>{% endif %}
     </li>
     {% endfor %}

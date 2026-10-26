@@ -8,8 +8,8 @@
 <dt>Onaylı reçete</dt><dd>Rev.{{ line.approved_revision.rev_no }} (iş emrine sabitlenir)</dd></dl>
 {% else %}<p class="muted">Stok üretimi için satış siparişi oluşturulmaz. Üretilen paletler daha sonra siparişlere ayrılabilir.</p>{% endif %}
 <form method="post" class="card form" novalidate>{% csrf_token %}
-  {{ form.idem_key }}
-  {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
+  {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları kontrol edin.</strong>{{ form.non_field_errors }}</div>{% endif %}
   {% if form.product %}{% with field=form.product %}{% include "partials/field.html" %}{% endwith %}{% with field=form.revision %}{% include "partials/field.html" %}{% endwith %}{% endif %}
   <div class="row-2">{% with field=form.target_quantity %}{% include "partials/field.html" %}{% endwith %}{% with field=form.unit %}{% include "partials/field.html" %}{% endwith %}</div>
   {% with field=form.planned_start %}{% include "partials/field.html" %}{% endwith %}

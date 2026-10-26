@@ -1,5 +1,5 @@
-<details class="card"><summary><strong>{{ title }}</strong></summary>
-<form method="post" action="{{ action }}" class="form" novalidate>{% csrf_token %}
+<details class="card"{% if form.errors %} open{% endif %}><summary><strong>{{ title }}</strong></summary>
+<form method="post" action="{{ action }}" class="form" data-review="{{ title }} · {{ pallet.code }}" novalidate>{% csrf_token %}
   {% if note %}<p class="muted">{{ note }}</p>{% endif %}
   {% include "partials/form_fields.html" %}<button type="submit" class="btn {{ btn|default:'btn-primary' }}">{{ submit }}</button>
 </form></details>

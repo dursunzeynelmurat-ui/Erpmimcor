@@ -1,3 +1,4 @@
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 
@@ -17,7 +18,8 @@ def order_list(request):
     q = request.GET.get("q", "").strip()
     if q:
         orders = orders.filter(code__icontains=q) | orders.filter(customer__name__icontains=q)
-    return render(request, "orders/order_list.html", {"orders": orders[:200], "q": q})
+    page = Paginator(orders.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
+    return render(request, "orders/order_list.html", {"orders": page, "page_obj": page, "q": q})
 
 
 @require_perm("order.create")

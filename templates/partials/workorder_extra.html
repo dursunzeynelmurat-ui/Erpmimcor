@@ -1,6 +1,6 @@
 {% load mimcor %}
 {% if can_execute and wo.status == "basladi" %}
-<section class="card"><h2>Üretim kayıtları</h2>
+<section class="card" id="uretim-kayitlari"><h2>Üretim kayıtları</h2>
   <div class="actions">
     {% for op in operations %}{% if op.status == "devam_ediyor" %}<a class="btn btn-primary" href="{% url 'production:coil_create' op.pk %}">{{ op.seq }}. {{ op.get_machine_type_display }}: bobin kaydet</a>{% endif %}{% endfor %}
     <a class="btn" href="{% url 'production:material_issue' wo.pk %}">Malzeme çıkışı</a>

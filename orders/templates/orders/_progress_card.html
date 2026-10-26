@@ -3,12 +3,17 @@
   <header><strong>{{ p.line.code }}</strong> · {{ p.line.product.code }} <span class="status status-{{ p.line.status }}">{{ p.line.get_status_display }}</span></header>
   <dl class="kv">
     <dt>Sipariş miktarı</dt><dd>{{ p.line.quantity|qty }} {{ p.line.get_unit_display }}</dd>
-    <dt>Gerçekleşen</dt><dd><strong>{{ p.produced|qty }} {{ p.produced_unit }}</strong> <progress max="100" value="{{ p.ratio }}">{{ p.ratio }}%</progress></dd>
-    {% if p.shipped %}<dt>Sevk edilen</dt><dd>{{ p.shipped|qty }} {{ p.produced_unit }}</dd>{% endif %}
+    {% if p.production_supported %}<dt>Gerçekleşen üretim</dt><dd><strong>{{ p.produced|qty }} {{ p.produced_unit }}</strong></dd>{% else %}<dt>Gerçekleşen üretim</dt><dd>Bu birimde üretim özeti desteklenmiyor.</dd>{% endif %}
+    {% if p.shipping_supported %}<dt>Siparişe ayrılan (kalan)</dt><dd>{{ p.reserved|qty }} kutu</dd>
+    <dt>Sevk edilen</dt><dd>{{ p.shipped|qty }} kutu</dd>{% endif %}
+    <dt>Teslim tarihi</dt><dd>{{ p.line.due_date|default:p.line.order.due_date|date:"d.m.Y"|default:"Belirtilmedi" }}</dd>
     <dt>Aşama</dt><dd>{{ p.stage }}</dd>
     <dt>Son güncelleme</dt><dd>{{ p.last_update|date:"d.m.Y H:i" }}</dd>
     {% if p.line.approved_revision %}<dt>Onaylı reçete</dt><dd>Rev.{{ p.line.approved_revision.rev_no }}</dd>{% endif %}
   </dl>
+  {% if p.waiting_reason %}<p class="msg msg-warning">{{ p.waiting_reason }}</p>{% endif %}
+  {% if p.line.planning_note %}<p><strong>Planlama notu:</strong> {{ p.line.planning_note }}</p>{% endif %}
+  {% if not p.shipping_supported %}<p class="msg msg-warning">Rezervasyon ve sevkiyat bu demoda yalnız kutu biriminde kullanılabilir.</p>{% endif %}
   {% if p.work_orders %}<p>İş emirleri: {% for wo in p.work_orders %}<a href="{% url 'production:workorder_detail' wo.pk %}">{{ wo.code }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
   {% if show_actions %}
     {% if can.planning_approve and p.line.status == "planlama_bekliyor" %}<a class="btn btn-primary" href="{% url 'orders:line_approve' p.line.pk %}">Teknik onay</a>{% endif %}

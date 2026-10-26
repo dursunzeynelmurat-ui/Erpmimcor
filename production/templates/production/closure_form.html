@@ -7,8 +7,9 @@
   <dt>Sağlam çıktı (son operasyon)</dt><dd>{{ summary.good|qty }} kg · {{ summary.boxes }} kutu palette</dd>
   <dt>Blokeli çıktı</dt><dd>{{ summary.blocked|qty }} kg</dd>
   <dt>Ara stokta kalan bobin</dt><dd>{{ summary.wip|qty }} kg</dd>
-  <dt>Tolerans</dt><dd>±%{{ summary.tolerance_pct|qty }}</dd>
+  <dt>Tolerans</dt><dd>±%{{ summary.tolerance_pct|qty }} · Ayarlanabilir demo varsayılanı</dd>
 </dl>
+<p class="muted">Bu tolerans onaylanmış bir fabrika standardı değildir.</p>
 <p class="muted">Denge: verilen ≈ sağlam + blokeli + ara stok + fire. Fark toleransı aşarsa gerekçe zorunludur.
 Kalan malzemeyi kapatmadan önce <a href="{% url 'production:material_return' wo.pk %}">lota iade edin</a>.</p>
 </section>

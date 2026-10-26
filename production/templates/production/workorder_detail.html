@@ -2,6 +2,11 @@
 {% block title %}{{ wo.code }}{% endblock %}
 {% block content %}
 <h1>İş emri {{ wo.code }} <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span></h1>
+{% if can_execute and wo.status == "planlandi" %}
+  {% url 'production:workorder_start' wo.pk as start_url %}
+  {% include "partials/confirm_button.html" with action=start_url label="Üretimi başlat" %}
+{% endif %}
+{% if can_execute and wo.status == "basladi" %}<div class="actions"><a class="btn btn-primary" href="#uretim-kayitlari">Bobin / malzeme / palet kaydı</a><a class="btn" href="#operasyonlar">Operasyon işlemleri</a></div>{% endif %}
 <dl class="kv card">
   <dt>Amaç</dt><dd>{{ wo.get_purpose_display }}{% if wo.order_line %} – <a href="{% url 'orders:order_detail' wo.order_line.order.pk %}">{{ wo.order_line.code }}</a>{% endif %}</dd>
   <dt>Ürün</dt><dd>{{ wo.product }} ({{ wo.product.customer.name }})</dd>
@@ -13,11 +18,8 @@
   {% if wo.started_at %}<dt>Başlatan</dt><dd>{{ wo.started_by.full_name }} · {{ wo.started_at|date:"d.m.Y H:i" }}</dd>{% endif %}
   {% if wo.notes %}<dt>Not</dt><dd>{{ wo.notes }}</dd>{% endif %}
 </dl>
-{% if can_execute and wo.status == "planlandi" %}
-  {% url 'production:workorder_start' wo.pk as start_url %}
-  {% include "partials/confirm_button.html" with action=start_url label="Üretimi başlat" %}
-{% endif %}
-<section class="card"><h2>Operasyonlar</h2>
+
+<section class="card" id="operasyonlar"><h2>Operasyonlar</h2>
 <ul class="ops list">{% for op in operations %}
   <li class="op op-{{ op.status }}">
     <div><strong>{{ op.seq }}. {{ op.get_machine_type_display }}</strong> · {{ op.machine.code }} {{ op.machine.name }}

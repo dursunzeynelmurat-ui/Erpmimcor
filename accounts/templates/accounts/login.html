@@ -1,10 +1,10 @@
-{% extends "base.html" %}
+{% extends "base.html" %}{% load mimcor %}
 {% block title %}Giriş{% endblock %}
 {% block content %}
 <div class="login-box">
   <h1>Mimcor Plastik</h1>
   <p class="muted">Üretim ve depo uygulaması – personel no ve kişisel parolanızla giriş yapın.</p>
-  <form method="post" class="card form" novalidate>{% csrf_token %}
+  <form method="post" class="card form" novalidate>{% csrf_token %}{% idem_input %}
     <input type="hidden" name="next" value="{{ next }}">
     {% include "partials/form_fields.html" %}
     <button type="submit" class="btn btn-primary btn-block">Giriş yap</button>

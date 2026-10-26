@@ -1,6 +1,8 @@
 {% extends "base.html" %}{% load mimcor %}
 {% block content %}
+<p class="eyebrow">{{ user.get_role_display }} · İş alanı</p>
 <h1>Merhaba, {{ user.get_short_name }}</h1>
+<p class="muted">Bekleyen işleri takip edin, kayıttan ilgili işleme geçin.</p>
 <div class="tiles">
   {% if can.order_create %}<a class="tile" href="{% url 'orders:order_create' %}">Yeni sipariş</a>{% endif %}
   <a class="tile" href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
@@ -9,15 +11,26 @@
   <a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>
   {% include "partials/home_warehouse_tiles.html" %}
 </div>
-{% if active_work_orders %}
+<div class="dashboard-grid">
+{% if can.production_execute or can.planning_approve %}
 <section class="card">
-  <h2>Aktif iş emirleri</h2>
+  <h2>Aktif iş emirleri <span class="muted">· İlk 10</span></h2>
+<p class="muted">Planlanan ve başlayan işler. Kişiye atama bu sürümde bulunmuyor.</p>
   <ul class="list">
   {% for wo in active_work_orders %}
     <li><a href="{% url 'production:workorder_detail' wo.pk %}"><strong>{{ wo.code }}</strong> {{ wo.product.code }} · {{ wo.target_quantity|qty }} {{ wo.get_unit_display }}</a>
       <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span></li>
-  {% endfor %}
+  {% empty %}<li class="muted">Aktif iş emri yok.</li>{% endfor %}
   </ul>
 </section>
 {% endif %}
+{% if can.order_create %}<section class="card"><h2>Son açık siparişler</h2><ul class="list">
+{% for o in recent_orders %}<li><a href="{% url 'orders:order_detail' o.pk %}"><strong>{{ o.code }}</strong></a> · {{ o.customer.name }}<br><span class="muted">Teslim: {{ o.due_date|date:"d.m.Y"|default:"Belirtilmedi" }}</span></li>{% empty %}<li class="muted">Açık sipariş yok. Yeni sipariş ile başlayabilirsiniz.</li>{% endfor %}</ul></section>{% endif %}
+{% if can.planning_approve %}<section class="card"><h2>Teknik onay bekleyenler <span class="badge">{{ waiting_planning }}</span></h2><ul class="list">
+{% for line in planning_lines %}<li><a href="{% url 'orders:line_approve' line.pk %}">{{ line.code }}</a><br>{{ line.product.code }} · {{ line.order.customer.name }}</li>{% empty %}<li class="muted">Teknik onay bekleyen kalem yok.</li>{% endfor %}</ul></section>{% endif %}
+{% if can.warehouse_operate %}<section class="card"><h2>Depo kabulü bekleyenler</h2><ul class="list">
+{% for p in acceptance_pallets %}<li><a href="{% url 'warehouse:pallet_detail' p.pk %}">{{ p.code }}</a> · {{ p.box_count }} kutu<br>{{ p.product.code }} · {{ p.product.customer.name }}</li>{% empty %}<li class="muted">Kabul bekleyen palet yok.</li>{% endfor %}</ul></section>
+<section class="card"><h2>Yeniden tartım bekleyenler</h2><ul class="list">{% for p in reweigh_pallets %}<li><a href="{% url 'warehouse:pallet_detail' p.pk %}">{{ p.code }}</a> · {{ p.product.code }} · {{ p.box_count }} kutu</li>{% empty %}<li class="muted">Yeniden tartım bekleyen palet yok.</li>{% endfor %}</ul></section>
+<section class="card"><h2>Hazırlanan sevkiyatlar</h2><ul class="list">{% for s in draft_shipments %}<li><a href="{% url 'warehouse:shipment_detail' s.pk %}">{{ s.code }}</a> · {{ s.order.customer.name }}</li>{% empty %}<li class="muted">Hazırlanan sevkiyat yok.</li>{% endfor %}</ul></section>{% endif %}
+</div><p class="muted">Listeler en son 6 kaydı gösterir; tüm kayıtlar ilgili menüdedir. Demo · Yalnız kurgusal veriler.</p>
 {% endblock %}

@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Bu işlem için yetkiniz yok{% endblock %}
+{% block content %}<section class="card"><p class="eyebrow">403</p><h1>Bu işlem için yetkiniz yok</h1><p>Bu ekrana veya işleme rolünüzle erişilemiyor. Yetkili bir kullanıcıdan destek isteyin.</p><a class="btn btn-primary" href="{% url 'core:home' %}">Ana sayfaya dön</a></section>{% endblock %}

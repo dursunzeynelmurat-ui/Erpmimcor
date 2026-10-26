@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Kayıt bulunamadı{% endblock %}
+{% block content %}<section class="card"><p class="eyebrow">404</p><h1>Kayıt bulunamadı</h1><p>Bağlantı eksik veya kayıt bu adreste bulunmuyor. İlgili listeden kaydı yeniden açın.</p><a class="btn btn-primary" href="{% url 'core:home' %}">Ana sayfaya dön</a></section>{% endblock %}

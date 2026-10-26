@@ -7,4 +7,5 @@
 {% for s in shipments %}<tr><td><a href="{% url 'warehouse:shipment_detail' s.pk %}">{{ s.code }}</a></td><td>{{ s.order.code }}</td><td>{{ s.order.customer.name }}</td>
 <td>{{ s.lines.all|length }}</td><td><span class="status status-{{ s.status }}">{{ s.get_status_display }}</span></td><td>{{ s.shipped_at|date:"d.m.Y H:i"|default:"—" }}</td></tr>
 {% empty %}<tr><td colspan="6" class="muted">Sevkiyat yok.</td></tr>{% endfor %}</tbody></table></div>
+{% include "partials/pagination.html" %}
 {% endblock %}

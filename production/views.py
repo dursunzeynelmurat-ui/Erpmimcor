@@ -1,3 +1,4 @@
+from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -58,8 +59,8 @@ def workorder_list(request):
         qs = qs.filter(status__in=[WorkOrderStatus.PLANNED, WorkOrderStatus.STARTED])
     elif status in WorkOrderStatus.values:
         qs = qs.filter(status=status)
-    return render(request, "production/workorder_list.html", {"work_orders": qs[:200], "status": status,
-                                                              "statuses": WorkOrderStatus.choices})
+    page = Paginator(qs.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
+    return render(request, "production/workorder_list.html", {"work_orders": page, "page_obj": page, "status": status, "statuses": WorkOrderStatus.choices})
 
 
 def workorder_detail(request, pk):

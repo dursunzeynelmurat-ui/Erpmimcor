@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+{% load static mimcor %}<!doctype html>
 <html lang="tr">
 <head>
   <meta charset="utf-8">
@@ -6,13 +6,14 @@
   <title>{% block title %}{{ title|default:"Mimcor Üretim" }}{% endblock %} · Mimcor</title>
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
 </head>
-<body>
+<body class="{% if user.is_authenticated %}app-shell{% endif %}">
+<a class="skip-link" href="#main">İçeriğe geç</a>
 {% if user.is_authenticated %}
 <header class="topbar">
   <a class="brand" href="{% url 'core:home' %}">Mimcor</a>
-  <details class="menu">
+  <details class="menu" open>
     <summary>Menü</summary>
-    <nav>
+    <nav aria-label="Ana gezinme">
       <a href="{% url 'core:home' %}">Ana sayfa</a>
       <a href="{% url 'orders:order_list' %}">Siparişler</a>
       <a href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
@@ -29,13 +30,14 @@
       <a href="{% url 'accounts:password_change' %}">Parola değiştir</a>
     </nav>
   </details>
+  <span class="environment-label">Üretim ve depo · Demo</span>
   <span class="whoami">{{ user.full_name }} · {{ user.get_role_display }}</span>
-  <form method="post" action="{% url 'accounts:logout' %}" class="logout">{% csrf_token %}<button type="submit" class="btn-link">Çıkış</button></form>
+  <form method="post" action="{% url 'accounts:logout' %}" class="logout">{% csrf_token %}{% idem_input %}<button type="submit" class="btn-link">Çıkış</button></form>
 </header>
 {% endif %}
-<main class="container">
+<main class="container" id="main" tabindex="-1">
   {% if messages %}
-  <ul class="messages">{% for m in messages %}<li class="msg msg-{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
+  <ul class="messages" aria-live="polite">{% for m in messages %}<li class="msg msg-{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
   {% endif %}
   {% block content %}{% endblock %}
 </main>

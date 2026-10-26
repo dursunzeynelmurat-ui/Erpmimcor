@@ -5,17 +5,16 @@
 <p><span class="status status-{{ pallet.status }}">{{ pallet.get_status_display }}</span>
    <span class="status status-{{ pallet.quality_status }}">Kalite: {{ pallet.get_quality_status_display }}</span>
    <span class="status status-{{ pallet.weight_status }}">Ağırlık: {{ pallet.get_weight_status_display }}</span></p>
+<dl class="summary-grid"><div class="metric"><dt>Fiziksel stok</dt><dd>{{ pallet.box_count }} kutu</dd></div><div class="metric"><dt>Ayrılan</dt><dd>{{ pallet.reserved_boxes }} kutu</dd></div><div class="metric"><dt>Serbest</dt><dd>{{ pallet.available_boxes }} kutu</dd></div></dl>
 <dl class="kv card">
   <dt>Ürün</dt><dd>{{ pallet.product.code }} – {{ pallet.product.name }}</dd>
   <dt>Müşteri</dt><dd>{{ pallet.product.customer.name }}</dd>
-  <dt>Fiziksel stok</dt><dd><strong>{{ pallet.box_count }} kutu</strong></dd>
-  <dt>Siparişe ayrılan</dt><dd>{{ pallet.reserved_boxes }} kutu</dd>
-  <dt>Serbest</dt><dd>{{ pallet.available_boxes }} kutu</dd>
   <dt>Kaynak</dt><dd>{% if pallet.work_order %}<a href="{% url 'production:workorder_detail' pallet.work_order.pk %}">{{ pallet.work_order.code }}</a> · {{ pallet.work_order.get_purpose_display }}{% if pallet.work_order.order_line %} ({{ pallet.work_order.order_line.code }}){% endif %}{% else %}—{% endif %}</dd>
   <dt>Depo yeri</dt><dd>{{ pallet.location|default:"—" }}</dd>
   <dt>Oluşturan</dt><dd>{{ pallet.created_by.full_name }} · {{ pallet.created_at|date:"d.m.Y H:i" }}</dd>
   {% if pallet.accepted_at %}<dt>Depo kabulü</dt><dd>{{ pallet.accepted_by.full_name }} · {{ pallet.accepted_at|date:"d.m.Y H:i" }}</dd>{% endif %}
 </dl>
+{% if quality_reason %}<p class="msg {% if pallet.quality_status == "blokeli" %}msg-warning{% endif %}"><strong>Kalite gerekçesi:</strong> {{ quality_reason }}</p>{% endif %}
 {% if coil_holds %}<p class="msg msg-warning">İlişkili bobin blokeli ({{ coil_holds|join:", " }}): bu palet sevk edilemez. Aktarımla gelen kutuların kaynağı ayrılamadığı için ilişkili paletler ihtiyatlı olarak bekletilir.</p>{% endif %}
 <div class="actions"><a class="btn" href="{% url 'warehouse:pallet_label' pallet.pk %}">Etiket / QR</a></div>
 
@@ -38,7 +37,7 @@
 <ul class="list">{% for r in reservations %}<li>{{ r.code }} → <a href="{% url 'orders:order_detail' r.order_line.order.pk %}">{{ r.order_line.code }}</a> · {{ r.quantity }} kutu (sevk {{ r.shipped_quantity }})
   <span class="status status-{{ r.status }}">{{ r.get_status_display }}</span> <small class="muted">{{ r.created_by.full_name }} {{ r.created_at|date:"d.m.Y H:i" }}</small>
   {% if cancel_form and r.status == "aktif" %}<form method="post" action="{% url 'warehouse:reservation_cancel' r.pk %}" class="inline-form">{% csrf_token %}{% load mimcor %}{% idem_input %}
-    <input name="reason" placeholder="İptal gerekçesi" required> <button class="btn" type="submit">İptal</button></form>{% endif %}
+    <label for="cancel-reason-{{ r.pk }}">İptal gerekçesi</label><input id="cancel-reason-{{ r.pk }}" name="reason" required> <button class="btn" type="submit">İptal</button></form>{% endif %}
 </li>{% empty %}<li class="muted">Rezervasyon yok.</li>{% endfor %}</ul></section>
 
 <section class="card"><h2>Hareketler</h2>

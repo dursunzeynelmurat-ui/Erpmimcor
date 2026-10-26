@@ -2,9 +2,12 @@
 {% block content %}
 <h1>{{ title }}</h1>
 <p class="muted">{% if form.needs_source %}Dönüştürme/bölme: kaynak bobinden tüketilen miktarı girin. Kaynak kısmen tüketilebilir; çıktı ağırlığı tüketilen toplamı aşamaz.{% else %}Extruder çıkışı: bobin takibi burada başlar.{% endif %}</p>
-<form method="post" class="card form" novalidate>{% csrf_token %}{{ form.idem_key }}
-  {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
-  {% for s, q in form.source_rows %}<div class="row-2">{% with field=s %}{% include "partials/field.html" %}{% endwith %}{% with field=q %}{% include "partials/field.html" %}{% endwith %}</div>{% endfor %}
+<form method="post" class="card form" novalidate>{% csrf_token %}{% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
+  {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları kontrol edin.</strong>{{ form.non_field_errors }}</div>{% endif %}
+  {% for s, q in form.source_rows %}
+  {% if not forloop.first %}<details class="card"{% if s.value or q.value or s.errors or q.errors %} open{% endif %}><summary>Ek kaynak bobin {{ forloop.counter }} (isteğe bağlı)</summary>{% endif %}
+  <div class="row-2">{% with field=s %}{% include "partials/field.html" %}{% endwith %}{% with field=q %}{% include "partials/field.html" %}{% endwith %}</div>
+  {% if not forloop.first %}</details>{% endif %}{% endfor %}
   <div class="row-2">{% with field=form.weight_kg %}{% include "partials/field.html" %}{% endwith %}{% with field=form.weight_source %}{% include "partials/field.html" %}{% endwith %}</div>
   {% with field=form.length_m %}{% include "partials/field.html" %}{% endwith %}
   {% with field=form.notes %}{% include "partials/field.html" %}{% endwith %}

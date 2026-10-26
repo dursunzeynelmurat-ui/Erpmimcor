@@ -3,7 +3,7 @@
 {% block content %}
 <h1>{{ product.code }} – {% if current %}Rev.{{ current.rev_no|add:1 }} oluştur{% else %}İlk reçete (Rev.1){% endif %}</h1>
 <form method="post" class="card form" novalidate>{% csrf_token %}
-  {{ form.idem_key }}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
   {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
   <h2>Teknik bilgiler</h2>
   {% for field in form.spec_fields %}{% include "partials/field.html" %}{% endfor %}

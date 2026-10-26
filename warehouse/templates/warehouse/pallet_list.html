@@ -2,7 +2,7 @@
 {% block title %}Paletler{% endblock %}
 {% block content %}
 <h1>Paletler</h1>
-<form method="get" class="toolbar">{{ form.q }} {{ form.status }} <button class="btn" type="submit">Filtrele</button></form>
+<form method="get" class="toolbar"><div class="field"><label for="{{ form.q.id_for_label }}">Palet / ürün ara</label>{{ form.q }}</div> <div class="field"><label for="{{ form.status.id_for_label }}">Durum</label>{{ form.status }}</div> <button class="btn" type="submit">Filtrele</button></form>
 <div class="cards">{% for p in pallets %}
 <a class="card link-card" href="{% url 'warehouse:pallet_detail' p.pk %}">
   <strong>{{ p.code }}</strong> <span class="status status-{{ p.status }}">{{ p.get_status_display }}</span><br>
@@ -11,4 +11,5 @@
   <span class="status status-{{ p.quality_status }}">{{ p.get_quality_status_display }}</span>
   <span class="status status-{{ p.weight_status }}">{{ p.get_weight_status_display }}</span>
 </a>{% empty %}<p class="muted">Palet yok.</p>{% endfor %}</div>
+{% include "partials/pagination.html" %}
 {% endblock %}

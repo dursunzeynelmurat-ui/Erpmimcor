@@ -19,6 +19,7 @@
 <form method="post" class="card form" novalidate>{% csrf_token %}<h2>Satır ekle</h2>{% include "partials/form_fields.html" %}<button class="btn" type="submit">Ekle</button></form>
 {% if lines %}{% url 'warehouse:shipment_confirm' shipment.pk as u %}
 <section class="card"><h2>Sevki onayla</h2><p class="muted">Onayla birlikte kutular fiziksel stoktan düşülür. Yalnız kalite durumu “Uygun” olan paletler sevk edilebilir.</p>
+<ul class="list">{% for l in lines %}<li><strong>{{ l.quantity }} kutu</strong> · {{ l.pallet.code }} → {{ l.order_line.code }} · {{ l.order_line.product.code }}</li>{% endfor %}</ul>
 {% include "partials/confirm_button.html" with action=u label="Sevk et" %}</section>{% endif %}
 {% endif %}
 {% include "partials/history.html" %}

@@ -94,7 +94,7 @@ def definition_edit(request, kind, pk):
             return resp
     obj.refresh_from_db()
     ctx = {"form": form, "title": f"{cfg['singular']}: {obj}", "submit": "Kaydet" if manage else None,
-           "obj": obj, "kind": kind, "history": history_for(obj), "toggle_form": ActiveToggleForm() if manage else None,
+           "obj": obj, "kind": kind, "history": history_for(obj), "toggle_form": ActiveToggleForm(auto_id="toggle_%s") if manage else None,
            "back": reverse("catalog:definition_list", args=[kind])}
     if kind == "urunler":
         ctx["recipe"] = Recipe.objects.filter(product=obj).first()

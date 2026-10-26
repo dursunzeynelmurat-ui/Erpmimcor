@@ -71,3 +71,52 @@ ACTION_LABELS = {
 @register.filter
 def action_label(code):
     return ACTION_LABELS.get(code, code)
+
+
+FIELD_LABELS = {
+    "revizyon": "Reçete revizyonu", "bileşenler": "Reçete bileşenleri (%)",
+    "operations": "Operasyon makineleri", "good_kg": "Sağlam çıktı (kg)", "units_per_box": "Kutu içi adet",
+    "box_count": "Kutu adedi", "quality_status": "Kalite durumu", "weight_status": "Tartım durumu",
+    "remaining_kg": "Kalan ağırlık (kg)", "weight_kg": "Bobin ağırlığı (kg)", "weight_source": "Ağırlık kaynağı",
+    "gross_kg": "Brüt ağırlık (kg)", "pallet_tare_kg": "Palet darası (kg)", "box_tare_kg": "Kutu darası (kg)",
+    "core_tare_kg": "Masura darası (kg)", "issued_kg": "Verilen malzeme (kg)", "scrap_kg": "Fire (kg)",
+    "difference_kg": "Denge farkı (kg)", "accounted_kg": "Hesaplanan toplam (kg)",
+    "shipped_quantity": "Sevk edilen kutu", "approved_revision": "Onaylı reçete revizyonu",
+    "recipe_revision": "Reçete revizyonu", "revision": "Revizyon", "rev_no": "Revizyon no",
+    "product": "Ürün", "customer": "Müşteri", "order": "Sipariş", "order_line": "Sipariş kalemi",
+    "order_date": "Sipariş tarihi", "work_order": "İş emri", "machine": "Makine", "pallet": "Palet",
+    "quantity": "Miktar", "target_quantity": "Hedef miktar", "unit": "Birim", "status": "Durum",
+    "role": "Rol", "full_name": "Ad soyad", "password": "Parola", "is_active": "Aktiflik",
+    "code": "Kod", "name": "Ad", "location": "Depo yeri", "notes": "Notlar", "note": "Not",
+    "kaynak": "Kaynak palet", "ayrilan": "Siparişe ayrılan", "satir": "Sevkiyat satırı",
+    "bobin": "Bağlı bobin durumu", "coil": "Bobin", "coil_hold": "Bobin blokajı", "machine_type": "Makine türü", "kind": "Tür",
+    "width_mm": "En (mm)", "thickness_micron": "Kalınlık (mikron)", "length_m": "Uzunluk (m)",
+    "color": "Renk", "print_spec": "Baskı bilgisi", "perforation_spec": "Perfore bilgisi",
+    "process_notes": "Üretim notları", "phone": "Telefon", "email": "E-posta", "address": "Adres",
+    "contact": "İlgili kişi", "tax_no": "Vergi no", "purpose": "Üretim amacı",
+}
+
+@register.filter
+def field_label(key):
+    return FIELD_LABELS.get(key, "Ek bilgi")
+
+@register.simple_tag
+def history_value(value, key):
+    if value is None:
+        return "—"
+    if isinstance(value, bool):
+        return "Evet" if value else "Hayır"
+    if isinstance(value, dict):
+        return "; ".join(f"{k}: {qty(v)}" for k, v in value.items())
+    if isinstance(value, list):
+        return " → ".join(str(v) for v in value)
+    from django.apps import apps
+    for model in apps.get_models():
+        for field in model._meta.fields:
+            if field.name == key and field.choices:
+                label = dict(field.flatchoices).get(value)
+                if label:
+                    return label
+    if key.endswith("_kg") or key in ("quantity", "target_quantity", "width_mm", "thickness_micron", "length_m"):
+        return qty(value)
+    return value
