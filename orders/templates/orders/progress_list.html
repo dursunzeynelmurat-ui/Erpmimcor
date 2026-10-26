@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Üretim ilerlemesi{% endblock %}
+{% block content %}
+<h1>Üretim ilerlemesi</h1>
+<p class="muted">Açık sipariş kalemleri. Bu ekran salt okunurdur; üretim miktarı yalnız üretim ekranlarından kaydedilir.</p>
+<div class="cards">{% for p in rows %}{% include "orders/_progress_card.html" with show_actions=False %}{% empty %}<p class="muted">Açık kalem yok.</p>{% endfor %}</div>
+{% endblock %}

@@ -1,0 +1,18 @@
+{% load mimcor %}
+<article class="card progress-card">
+  <header><strong>{{ p.line.code }}</strong> · {{ p.line.product.code }} <span class="status status-{{ p.line.status }}">{{ p.line.get_status_display }}</span></header>
+  <dl class="kv">
+    <dt>Sipariş miktarı</dt><dd>{{ p.line.quantity|qty }} {{ p.line.get_unit_display }}</dd>
+    <dt>Gerçekleşen</dt><dd><strong>{{ p.produced|qty }} {{ p.produced_unit }}</strong> <progress max="100" value="{{ p.ratio }}">{{ p.ratio }}%</progress></dd>
+    {% if p.shipped %}<dt>Sevk edilen</dt><dd>{{ p.shipped|qty }} {{ p.produced_unit }}</dd>{% endif %}
+    <dt>Aşama</dt><dd>{{ p.stage }}</dd>
+    <dt>Son güncelleme</dt><dd>{{ p.last_update|date:"d.m.Y H:i" }}</dd>
+    {% if p.line.approved_revision %}<dt>Onaylı reçete</dt><dd>Rev.{{ p.line.approved_revision.rev_no }}</dd>{% endif %}
+  </dl>
+  {% if p.work_orders %}<p>İş emirleri: {% for wo in p.work_orders %}<a href="{% url 'production:workorder_detail' wo.pk %}">{{ wo.code }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  {% if show_actions %}
+    {% if can.planning_approve and p.line.status == "planlama_bekliyor" %}<a class="btn btn-primary" href="{% url 'orders:line_approve' p.line.pk %}">Teknik onay</a>{% endif %}
+    {% if can.workorder_create and p.line.status == "onaylandi" or can.workorder_create and p.line.status == "uretimde" %}<a class="btn" href="{% url 'production:workorder_create_for_line' p.line.pk %}">İş emri oluştur</a>{% endif %}
+    {% include "partials/line_actions_extra.html" %}
+  {% endif %}
+</article>

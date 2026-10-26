@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Malzeme lotları{% endblock %}
+{% block content %}
+<h1>Malzeme lotları</h1>
+<div class="toolbar">{% if can.lot_receive %}<a class="btn btn-primary" href="{% url 'catalog:lot_receive' %}">Lot girişi</a>{% endif %}
+<a href="?tumu=1">Tükenenler dahil</a></div>
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Lot</th><th>Malzeme</th><th>Tedarikçi lot</th><th>Mevcut</th></tr></thead>
+  <tbody>{% for lot in lots %}<tr><td><a href="{% url 'catalog:lot_detail' lot.pk %}">{{ lot.code }}</a></td>
+  <td>{{ lot.material.code }} – {{ lot.material.name }}</td><td>{{ lot.supplier_lot|default:"—" }}</td><td>{{ lot.quantity|qty }} {{ lot.material.unit }}</td></tr>
+  {% empty %}<tr><td colspan="4" class="muted">Lot yok.</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

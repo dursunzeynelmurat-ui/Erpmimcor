@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Yeni iş emri{% endblock %}
+{% block content %}
+<h1>{% if line %}İş emri: {{ line.code }}{% else %}Müşteri stoğu için iş emri{% endif %}</h1>
+{% if line %}
+<dl class="kv card"><dt>Ürün</dt><dd>{{ line.product }}</dd><dt>Müşteri</dt><dd>{{ line.order.customer.name }}</dd>
+<dt>Sipariş miktarı</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
+<dt>Onaylı reçete</dt><dd>Rev.{{ line.approved_revision.rev_no }} (iş emrine sabitlenir)</dd></dl>
+{% else %}<p class="muted">Stok üretimi için satış siparişi oluşturulmaz. Üretilen paletler daha sonra siparişlere ayrılabilir.</p>{% endif %}
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {{ form.idem_key }}
+  {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
+  {% if form.product %}{% with field=form.product %}{% include "partials/field.html" %}{% endwith %}{% with field=form.revision %}{% include "partials/field.html" %}{% endwith %}{% endif %}
+  <div class="row-2">{% with field=form.target_quantity %}{% include "partials/field.html" %}{% endwith %}{% with field=form.unit %}{% include "partials/field.html" %}{% endwith %}</div>
+  {% with field=form.planned_start %}{% include "partials/field.html" %}{% endwith %}
+  <h2>Operasyon sırası ve makine ataması</h2>
+  {% for field in form.machine_fields %}{% include "partials/field.html" %}{% endfor %}
+  {% with field=form.notes %}{% include "partials/field.html" %}{% endwith %}
+  <button type="submit" class="btn btn-primary">İş emrini oluştur</button>
+</form>
+{% endblock %}

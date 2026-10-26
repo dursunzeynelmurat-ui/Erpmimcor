@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ lot.code }}{% endblock %}
+{% block content %}
+<h1>Lot {{ lot.code }}</h1>
+<dl class="kv card">
+  <dt>Malzeme</dt><dd>{{ lot.material }}</dd>
+  <dt>Tedarikçi lot</dt><dd>{{ lot.supplier_lot|default:"—" }}</dd>
+  <dt>Mevcut miktar</dt><dd><strong>{{ lot.quantity|qty }} {{ lot.material.unit }}</strong></dd>
+</dl>
+<p class="muted">Miktar doğrudan değiştirilemez; giriş, üretime çıkış, iade ve gerekçeli sayım hareketleriyle değişir.</p>
+{% if form %}
+<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Sayım düzeltmesi</h2>
+  {% include "partials/form_fields.html" %}<button type="submit" class="btn btn-primary">Düzeltmeyi kaydet</button></form>
+{% endif %}
+<section class="card"><h2>Hareketler</h2>
+<div class="table-wrap"><table class="table compact"><thead><tr><th>Zaman</th><th>Tür</th><th>Miktar</th><th>Bakiye</th><th>İş emri</th><th>Kullanıcı</th><th>Gerekçe</th></tr></thead>
+<tbody>{% for m in movements %}<tr><td>{{ m.at|date:"d.m.Y H:i" }}</td><td>{{ m.get_kind_display }}</td><td>{{ m.quantity|qty }}</td><td>{{ m.balance_after|qty }}</td>
+<td>{% if m.work_order %}<a href="{% url 'production:workorder_detail' m.work_order.pk %}">{{ m.work_order.code }}</a>{% else %}—{% endif %}</td><td>{{ m.user.full_name }}</td><td>{{ m.reason|default:"—" }}</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% load mimcor %}
+<section class="card history">
+  <h2>İşlem geçmişi</h2>
+  {% if history %}
+  <ul class="timeline">
+    {% for h in history %}
+    <li>
+      <div class="meta"><time>{{ h.at|date:"d.m.Y H:i:s" }}</time> · {{ h.user.full_name|default:"Sistem" }}{% if h.user %} ({{ h.user.personnel_no }}){% endif %}</div>
+      <div><strong>{{ h.action }}</strong> {{ h.object_code }}</div>
+      {% if h.changes %}<ul class="changes">{% for k, v in h.changes.items %}<li>{{ k }}: <s>{{ v.0|default_if_none:"—" }}</s> → {{ v.1|default_if_none:"—" }}</li>{% endfor %}</ul>{% endif %}
+      {% if h.reason %}<div class="reason">Gerekçe: {{ h.reason }}</div>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="muted">Kayıt yok.</p>{% endif %}
+</section>

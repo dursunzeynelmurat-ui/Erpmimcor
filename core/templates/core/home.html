@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block content %}
+<h1>Merhaba, {{ user.get_short_name }}</h1>
+<div class="tiles">
+  {% if can.order_create %}<a class="tile" href="{% url 'orders:order_create' %}">Yeni sipariş</a>{% endif %}
+  <a class="tile" href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
+  {% if can.planning_approve %}<a class="tile" href="{% url 'orders:planning_queue' %}">Planlama kuyruğu{% if waiting_planning %} <span class="badge">{{ waiting_planning }}</span>{% endif %}</a>{% endif %}
+  {% if can.workorder_create %}<a class="tile" href="{% url 'production:workorder_create_stock' %}">Stok için iş emri</a>{% endif %}
+  <a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>
+  {% include "partials/home_warehouse_tiles.html" %}
+</div>
+{% if active_work_orders %}
+<section class="card">
+  <h2>Aktif iş emirleri</h2>
+  <ul class="list">
+  {% for wo in active_work_orders %}
+    <li><a href="{% url 'production:workorder_detail' wo.pk %}"><strong>{{ wo.code }}</strong> {{ wo.product.code }} · {{ wo.target_quantity|qty }} {{ wo.get_unit_display }}</a>
+      <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span></li>
+  {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endblock %}

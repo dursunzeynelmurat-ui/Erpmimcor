@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ cfg.title }}{% endblock %}
+{% block content %}
+<h1>{{ cfg.title }}</h1>
+<div class="toolbar">
+  {% if can_manage %}<a class="btn btn-primary" href="{% url 'catalog:definition_create' kind %}">Yeni {{ cfg.singular|lower }}</a>{% endif %}
+  <nav class="filters">
+    <a href="?durum=aktif" {% if show == "aktif" %}class="active"{% endif %}>Aktif</a>
+    <a href="?durum=pasif" {% if show == "pasif" %}class="active"{% endif %}>Pasif</a>
+    <a href="?durum=tumu" {% if show == "tumu" %}class="active"{% endif %}>Tümü</a>
+  </nav>
+</div>
+<div class="table-wrap"><table class="table">
+  <thead><tr>{% for f, label in cfg.columns %}<th>{{ label }}</th>{% endfor %}{% if kind == "urunler" %}<th>Reçete</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for row in rows %}
+    <tr class="{% if not row.obj.is_active %}inactive{% endif %}">
+      {% for c in row.cells %}<td>{% if forloop.first %}<a href="{% url 'catalog:definition_edit' kind row.obj.pk %}">{{ c }}</a>{% else %}{{ c|default:"—" }}{% endif %}</td>{% endfor %}
+      {% if kind == "urunler" %}<td><a href="{% url 'catalog:recipe_detail' row.obj.pk %}">Reçete</a></td>{% endif %}
+    </tr>
+  {% empty %}<tr><td colspan="9" class="muted">Kayıt yok.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

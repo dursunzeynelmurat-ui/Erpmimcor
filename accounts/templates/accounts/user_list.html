@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Kullanıcılar</h1>
+<a class="btn btn-primary" href="{% url 'accounts:user_create' %}">Yeni kullanıcı</a>
+<div class="table-wrap"><table class="table">
+  <thead><tr><th>Personel no</th><th>Ad soyad</th><th>Rol</th><th>Durum</th></tr></thead>
+  <tbody>{% for u in users %}<tr>
+    <td><a href="{% url 'accounts:user_edit' u.pk %}">{{ u.personnel_no }}</a></td><td>{{ u.full_name }}</td>
+    <td>{{ u.get_role_display }}</td><td>{% if u.is_active %}Aktif{% else %}<span class="muted">Pasif</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% endblock %}

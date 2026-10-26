@@ -1,0 +1,44 @@
+{% load static %}<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title|default:"Mimcor Üretim" }}{% endblock %} · Mimcor</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+{% if user.is_authenticated %}
+<header class="topbar">
+  <a class="brand" href="{% url 'core:home' %}">Mimcor</a>
+  <details class="menu">
+    <summary>Menü</summary>
+    <nav>
+      <a href="{% url 'core:home' %}">Ana sayfa</a>
+      <a href="{% url 'orders:order_list' %}">Siparişler</a>
+      <a href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>
+      {% if can.planning_approve %}<a href="{% url 'orders:planning_queue' %}">Planlama</a>{% endif %}
+      <a href="{% url 'production:workorder_list' %}">İş emirleri</a>
+      {% block nav_extra %}{% include "partials/nav_warehouse.html" %}{% endblock %}
+      <span class="nav-sep">Tanımlar</span>
+      <a href="{% url 'catalog:definition_list' 'musteriler' %}">Müşteriler</a>
+      <a href="{% url 'catalog:definition_list' 'urunler' %}">Ürünler ve reçeteler</a>
+      <a href="{% url 'catalog:definition_list' 'makineler' %}">Makineler</a>
+      <a href="{% url 'catalog:definition_list' 'malzemeler' %}">Hammadde / katkı</a>
+      <a href="{% url 'catalog:lot_list' %}">Malzeme lotları</a>
+      {% if can.user_manage %}<a href="{% url 'accounts:user_list' %}">Kullanıcılar</a>{% endif %}
+      <a href="{% url 'accounts:password_change' %}">Parola değiştir</a>
+    </nav>
+  </details>
+  <span class="whoami">{{ user.full_name }} · {{ user.get_role_display }}</span>
+  <form method="post" action="{% url 'accounts:logout' %}" class="logout">{% csrf_token %}<button type="submit" class="btn-link">Çıkış</button></form>
+</header>
+{% endif %}
+<main class="container">
+  {% if messages %}
+  <ul class="messages">{% for m in messages %}<li class="msg msg-{{ m.tags }}">{{ m }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% block content %}{% endblock %}
+</main>
+<script src="{% static 'js/app.js' %}"></script>
+</body>
+</html>

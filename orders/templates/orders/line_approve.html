@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Teknik onay {{ line.code }}{% endblock %}
+{% block content %}
+<h1>Teknik onay: {{ line.code }}</h1>
+<dl class="kv card">
+  <dt>Müşteri</dt><dd>{{ line.order.customer.name }}</dd>
+  <dt>Ürün</dt><dd>{{ line.product }}</dd>
+  <dt>Miktar</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
+  <dt>Termin</dt><dd>{{ line.due_date|date:"d.m.Y"|default:"—" }}</dd>
+</dl>
+{% if revision %}
+<section class="card"><h2>Güncel reçete: Rev.{{ revision.rev_no }}</h2>
+  <p>{{ revision.width_mm|qty }} mm · {{ revision.thickness_micron|qty }} µ · {{ revision.color|default:"renk —" }} · Baskı: {{ revision.print_spec|default:"—" }} · Perfore: {{ revision.perforation_spec|default:"—" }}</p>
+  <p>{% for c in revision.components.all %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+  <a href="{% url 'catalog:recipe_detail' line.product.pk %}">Tüm revizyonlar</a>
+</section>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <button type="submit" class="btn btn-primary">Teknik bilgileri ve reçeteyi onayla</button>
+</form>
+{% else %}
+<p class="msg msg-warning">Bu ürünün reçetesi yok. Önce <a href="{% url 'catalog:recipe_detail' line.product.pk %}">reçete oluşturun</a>.</p>
+{% endif %}
+{% include "partials/history.html" %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}İş emirleri{% endblock %}
+{% block content %}
+<h1>İş emirleri</h1>
+<nav class="filters"><a href="?durum=aktif" {% if status == "aktif" %}class="active"{% endif %}>Aktif</a>
+{% for v, l in statuses %}<a href="?durum={{ v }}" {% if status == v %}class="active"{% endif %}>{{ l }}</a>{% endfor %}
+<a href="?durum=tumu" {% if status == "tumu" %}class="active"{% endif %}>Tümü</a></nav>
+<div class="cards">{% for wo in work_orders %}
+<a class="card link-card" href="{% url 'production:workorder_detail' wo.pk %}">
+  <strong>{{ wo.code }}</strong> <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span><br>
+  {{ wo.product.code }} · {{ wo.product.customer.name }}<br>
+  {{ wo.target_quantity|qty }} {{ wo.get_unit_display }} · {% if wo.order_line %}{{ wo.order_line.code }}{% else %}Stok üretimi{% endif %}<br>
+  <small>{{ wo.stage_display }}</small>
+</a>
+{% empty %}<p class="muted">İş emri yok.</p>{% endfor %}</div>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions">
+    {% if submit %}<button type="submit" class="btn btn-primary">{{ submit }}</button>{% endif %}
+    {% if back %}<a class="btn" href="{{ back }}">Geri</a>{% endif %}
+  </div>
+</form>
+{% if history %}{% include "partials/history.html" %}{% endif %}
+{% endblock %}

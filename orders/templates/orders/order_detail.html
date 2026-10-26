@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ order.code }}{% endblock %}
+{% block content %}
+<h1>Sipariş {{ order.code }}</h1>
+<dl class="kv card">
+  <dt>Müşteri</dt><dd>{{ order.customer }}</dd>
+  <dt>Müşteri ref.</dt><dd>{{ order.customer_ref|default:"—" }}</dd>
+  <dt>Sipariş tarihi</dt><dd>{{ order.order_date|date:"d.m.Y" }}</dd>
+  <dt>Termin</dt><dd>{{ order.due_date|date:"d.m.Y"|default:"—" }}</dd>
+  <dt>Oluşturan</dt><dd>{{ order.created_by.full_name }} · {{ order.created_at|date:"d.m.Y H:i" }}</dd>
+  <dt>Durum</dt><dd>{{ order.get_status_display }}</dd>
+  {% if order.notes %}<dt>Not</dt><dd>{{ order.notes }}</dd>{% endif %}
+</dl>
+<h2>Kalemler</h2>
+{% for p in progress %}{% include "orders/_progress_card.html" with show_actions=True %}{% endfor %}
+{% include "partials/order_extra.html" %}
+{% if form and order.status == "acik" %}
+<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Kalem ekle</h2>
+  {% include "partials/form_fields.html" %}<button type="submit" class="btn btn-primary">Kalemi ekle</button></form>
+{% endif %}
+{% include "partials/history.html" %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Planlama{% endblock %}
+{% block content %}
+<h1>Planlama</h1>
+<div class="toolbar"><a class="btn" href="{% url 'production:workorder_create_stock' %}">Müşteri stoğu için iş emri</a></div>
+<section class="card"><h2>Teknik onay bekleyen kalemler</h2>
+<ul class="list">{% for l in waiting %}
+  <li><a href="{% url 'orders:line_approve' l.pk %}"><strong>{{ l.code }}</strong> {{ l.order.customer.name }} · {{ l.product.code }} · {{ l.quantity|qty }} {{ l.get_unit_display }}</a>
+  <span class="muted">Termin {{ l.due_date|date:"d.m.Y"|default:"—" }}</span></li>
+{% empty %}<li class="muted">Bekleyen kalem yok.</li>{% endfor %}</ul></section>
+<section class="card"><h2>Onaylı, iş emri bekleyen kalemler</h2>
+<ul class="list">{% for l in approved %}
+  <li><strong>{{ l.code }}</strong> {{ l.product.code }} · Rev.{{ l.approved_revision.rev_no }} · {{ l.quantity|qty }} {{ l.get_unit_display }}
+  <a class="btn" href="{% url 'production:workorder_create_for_line' l.pk %}">İş emri oluştur</a></li>
+{% empty %}<li class="muted">Yok.</li>{% endfor %}</ul></section>
+{% endblock %}

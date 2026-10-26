@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+<p>{% if obj.is_active %}<span class="status status-uygun">Aktif</span>{% else %}<span class="status status-blokeli">Pasif</span>{% endif %}
+{% if kind == "urunler" %} · <a href="{% url 'catalog:recipe_detail' obj.pk %}">Reçete ve revizyonlar</a>{% endif %}</p>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions">
+    {% if submit %}<button type="submit" class="btn btn-primary">{{ submit }}</button>{% endif %}
+    <a class="btn" href="{{ back }}">Listeye dön</a>
+  </div>
+</form>
+{% if toggle_form %}
+<form method="post" action="{% url 'catalog:definition_toggle' kind obj.pk %}" class="card form">{% csrf_token %}
+  <h2>{% if obj.is_active %}Pasife al{% else %}Yeniden aktifleştir{% endif %}</h2>
+  <p class="muted">Kullanılmış tanımlar silinmez; pasife alınan kayıt yeni işlemlerde seçilemez, geçmiş kayıtlar korunur.</p>
+  {% with form=toggle_form %}{% include "partials/form_fields.html" %}{% endwith %}
+  <button type="submit" class="btn {% if obj.is_active %}btn-danger{% else %}btn-primary{% endif %}">{% if obj.is_active %}Pasife al{% else %}Aktifleştir{% endif %}</button>
+</form>
+{% endif %}
+{% include "partials/history.html" %}
+{% endblock %}
