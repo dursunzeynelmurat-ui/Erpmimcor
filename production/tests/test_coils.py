@@ -81,7 +81,8 @@ class ClosureTests(TestCase):
         self.assertEqual(self.wo.status, WorkOrderStatus.CLOSED)
         self.assertEqual(self.wo.closure.difference_kg, D("0"))
         self.assertEqual(self.wo.closure.good_boxes, 10)
-        self.assertEqual(self.wo.order_line.status, LineStatus.PRODUCED)
+        # 50 kutuluk kalemde 10 kutu üretildi: kapanış karşılama sayılmaz (bulgu 3)
+        self.assertEqual(self.wo.order_line.status, LineStatus.PRODUCED_SHORT)
 
     def test_unbalanced_closure_requires_reason(self):
         self._produce()

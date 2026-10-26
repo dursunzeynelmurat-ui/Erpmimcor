@@ -306,5 +306,5 @@ def remaining_target(wo):
     from catalog.models import Unit
     if wo.unit != Unit.BOX:
         return None
-    done = sum(m.quantity for m in wo.pallet_movements.filter(kind="uretim_girisi"))
+    done = sum(m.quantity for m in wo.pallet_movements.filter(kind__in=["uretim_girisi", "duzeltme"]))
     return max(wo.target_quantity - Decimal(done), Decimal("0"))

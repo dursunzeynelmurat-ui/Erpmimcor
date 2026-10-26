@@ -6,6 +6,7 @@ from django.utils import timezone
 
 from catalog.models import Customer, Product, RecipeRevision, Unit
 from core.forms import IdemForm
+from core.templatetags.mimcor import qty
 
 DEC = forms.NumberInput(attrs={"step": "any", "inputmode": "decimal"})
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
@@ -114,3 +115,20 @@ class LineChangeForm(IdemForm):
     def __init__(self, line, *args, **kwargs):
         kwargs.setdefault("initial", {"quantity": line.quantity, "due_date": line.due_date})
         super().__init__(*args, **kwargs)
+
+
+class CompatibilityForm(IdemForm):
+    revision = forms.ModelChoiceField(label="Kabul edilecek teknik revizyon", queryset=RecipeRevision.objects.none())
+    reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}),
+                             help_text="Ör. 'Müşteri 30 µ yerine 70 µ stoğu yazılı olarak kabul etti'.")
+
+    def __init__(self, line, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["revision"].queryset = RecipeRevision.objects.filter(recipe__product=line.product)
+        self.fields["revision"].label_from_instance = lambda r: (
+            f"Rev.{r.rev_no} · {qty(r.width_mm)} mm · {qty(r.thickness_micron)} µ · {r.color or '—'}")
+
+
+class OverDeliveryForm(IdemForm):
+    extra = forms.IntegerField(label="Ek miktar (kutu)", min_value=1)
+    reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))

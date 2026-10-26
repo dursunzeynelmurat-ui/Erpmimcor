@@ -273,3 +273,23 @@ class InstructionAck(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     kind = models.CharField(max_length=15, choices=AckKind.choices)
     at = models.DateTimeField(auto_now_add=True)
+
+
+class RouteException(models.Model):
+    """Operasyonun bir önceki operasyon yerine daha önceki bir operasyonun bobinini kaynak almasına yetkili izin."""
+
+    operation = models.ForeignKey(WorkOrderOperation, on_delete=models.PROTECT, related_name="route_exceptions")
+    reason = models.TextField("Gerekçe")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class MaterialDeviation(models.Model):
+    """Reçete dışı malzeme çıkışı; gerekçe ve yetkili kişi kapanışta listelenir."""
+
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name="material_deviations")
+    lot_movement = models.OneToOneField("catalog.LotMovement", on_delete=models.PROTECT, related_name="deviation")
+    material = models.ForeignKey("catalog.Material", on_delete=models.PROTECT, related_name="+")
+    reason = models.TextField("Gerekçe")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)

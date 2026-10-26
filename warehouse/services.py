@@ -11,9 +11,10 @@ from accounts.permissions import check
 from catalog.models import Unit
 from core.exceptions import BusinessRuleError
 from core.models import QualityStatus, ValueSource
-from core.services import audit, next_code
+from core.services import audit, next_code, num
 from orders.models import LineStatus, OrderLine, OrderStatus
-from orders.services import refresh_order_status, set_line_status
+from orders.services import (committed_quantity, compatibility_problem, line_limit, refresh_order_status,
+                             set_line_status, tech_signature)
 from production.models import Coil, CoilLink, CoilStatus, WorkOrder, WorkOrderStatus
 from production.services import final_operation
 
@@ -206,6 +207,12 @@ def add_production_to_pallet(actor, pallet, wo, box_count, coils):
 
 
 def _attach(actor, pallet, wo, box_count, locked_coils):
+    if pallet.quality_status == QualityStatus.OK and pallet.box_count > 0:
+        # Uygun palete kontrol edilmemiş yeni içerik: palet yeniden kontrol bekler.
+        pallet.quality_status = QualityStatus.PENDING
+        pallet.save()
+        audit(actor, "pallet.quality", pallet, {"quality_status": (QualityStatus.OK, QualityStatus.PENDING)},
+              reason=f"{wo.code} üretiminden {box_count} kutu eklendi; yeni içerik kontrol edilmeli")
     for coil in locked_coils:
         coil.status = CoilStatus.PALLETIZED
         coil.save()
@@ -318,12 +325,21 @@ def record_label_print(actor, pallet):
 
 # --- Kalite --------------------------------------------------------------------------
 
+def quality_permission(old, new):
+    """Blokelemek quality.block, blokajı kaldırmak quality.release, diğer kararlar quality.decide ister."""
+    if new == QualityStatus.BLOCKED:
+        return "quality.block"
+    if old == QualityStatus.BLOCKED:
+        return "quality.release"
+    return "quality.decide"
+
+
 @transaction.atomic
 def set_pallet_quality(actor, pallet, status, reason):
-    check(actor, "quality.block" if status == QualityStatus.BLOCKED else "quality.decide", pallet)
     if not reason:
         raise BusinessRuleError("Kalite değişikliği için gerekçe zorunludur.", field="reason")
     (pallet,) = _lock(pallet)
+    check(actor, quality_permission(pallet.quality_status, status), pallet)
     if pallet.quality_status == status:
         raise BusinessRuleError("Palet zaten bu kalite durumunda.")
     old = pallet.quality_status
@@ -370,6 +386,10 @@ def transfer_boxes(actor, source, quantity, reason, target=None):
         _require_in_stock(target)
         if target.quality_status != source.quality_status:
             raise BusinessRuleError("Kalite durumu farklı paletler arasında aktarım yapılamaz.", field="target_code")
+        a, b = pallet_revision(source), pallet_revision(target)
+        if a and b and a.pk != b.pk and tech_signature(a) != tech_signature(b):
+            raise BusinessRuleError(f"{source.code} (Rev.{a.rev_no}) ve {target.code} (Rev.{b.rev_no}) teknik olarak "
+                                    "farklı; aynı palette karıştırılamaz.", field="target_code")
     group = uuid.uuid4().hex
     _move(actor, source, MovementKind.TRANSFER_OUT, -quantity, reason=reason, related=target, group=group)
     _move(actor, target, MovementKind.TRANSFER_IN, quantity, reason=reason, related=source, group=group)
@@ -418,6 +438,16 @@ def separate_damaged(actor, pallet, quantity, reason):
 
 # --- Rezervasyon -----------------------------------------------------------------------
 
+def pallet_revision(pallet):
+    return pallet.work_order.recipe_revision if pallet.work_order_id else None
+
+
+def _require_compatible(line, pallet, field=None):
+    problem = compatibility_problem(line, pallet_revision(pallet))
+    if problem:
+        raise BusinessRuleError(f"{pallet.code}: {problem}", field=field)
+
+
 @transaction.atomic
 def reserve(actor, pallet, order_line, quantity):
     """Paletten sipariş kalemine kutu ayırır. Fiziksel stok (box_count) değişmez."""
@@ -437,7 +467,14 @@ def reserve(actor, pallet, order_line, quantity):
         raise BusinessRuleError("Boş paletten ayırma yapılamaz.")
     if pallet.quality_status == QualityStatus.BLOCKED:
         raise BusinessRuleError("Blokeli paletten ayırma yapılamaz.")
+    _require_compatible(line, pallet, field="order_line")
     _require_available(pallet, quantity)
+    # Kalem satırı kilitli: eş zamanlı ayırmalar sırayla kontrol edilir (bulgu 2).
+    committed, limit = committed_quantity(line), line_limit(line)
+    if committed + quantity > limit:
+        raise BusinessRuleError(f"{line.code}: kalem miktarı {num(limit)} kutu; sevk edilmiş + ayrılmış {committed} kutu. "
+                                f"En fazla {max(limit - committed, 0)} kutu daha ayrılabilir. Fazla teslim yalnız yetkili "
+                                "onayla yapılır.", field="quantity")
     res = Reservation.objects.create(pallet=pallet, order_line=line, quantity=quantity, created_by=actor)
     audit(actor, "reservation.create", res, {"pallet": (None, pallet.code), "order_line": (None, line.code),
                                              "quantity": (None, quantity)})
@@ -498,6 +535,7 @@ def add_shipment_line(actor, shipment, reservation, quantity):
     held = coil_holds(res.pallet)
     if held:
         raise BusinessRuleError(_hold_message(res.pallet, held), field="reservation")
+    _require_compatible(res.order_line, res.pallet, field="reservation")
     if shipment.lines.filter(reservation=res).exists():
         raise BusinessRuleError("Bu rezervasyon zaten sevkiyatta.", field="reservation")
     in_drafts = (ShipmentLine.objects.filter(reservation=res, shipment__status=ShipmentStatus.DRAFT)
@@ -553,6 +591,18 @@ def confirm_shipment(actor, shipment):
         _require_in_stock(pallet)
         if res.status != ReservationStatus.ACTIVE or ln.quantity > res.open_quantity:
             raise BusinessRuleError(f"{pallet.code} rezervasyonu sevk için yeterli değil.")
+        _require_compatible(ln.order_line, pallet)
+    # Kalem satırları en son kilitlenir (sevkiyat → paletler → rezervasyonlar → kalemler); sevk toplamı kalem
+    # sınırını (miktar + yetkili fazla teslim) aşamaz.
+    order_lines = {ol.pk: ol for ol in OrderLine.objects.select_for_update(of=("self",))
+                   .filter(pk__in={ln.order_line_id for ln in lines}).order_by("pk")}
+    for ol in order_lines.values():
+        shipped = ShipmentLine.objects.filter(order_line=ol, shipment__status=ShipmentStatus.SHIPPED).aggregate(
+            s=Sum("quantity"))["s"] or 0
+        now = sum(ln.quantity for ln in lines if ln.order_line_id == ol.pk)
+        if shipped + now > line_limit(ol):
+            raise BusinessRuleError(f"{ol.code}: sevk toplamı ({shipped + now}) kalem miktarını ({num(line_limit(ol))}) "
+                                    "aşıyor.")
     for ln in lines:
         pallet, res = pallets[ln.pallet_id], reservations[ln.reservation_id]
         _move(actor, pallet, MovementKind.SHIPMENT, -ln.quantity, shipment_line=ln,

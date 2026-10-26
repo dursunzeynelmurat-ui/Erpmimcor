@@ -52,6 +52,7 @@ class LineStatus(models.TextChoices):
     APPROVED = "onaylandi", "Teknik onaylı"
     IN_PRODUCTION = "uretimde", "Üretimde"
     PRODUCED = "uretim_tamamlandi", "Üretim tamamlandı"
+    PRODUCED_SHORT = "uretim_eksik", "Üretim kapandı – eksik"
     SHIPPED = "sevk_edildi", "Sevk edildi"
     CANCELLED = "iptal", "İptal"
 
@@ -87,3 +88,27 @@ class OrderLine(models.Model):
     @property
     def code(self):
         return f"{self.order.code}/{self.line_no:02d}"
+
+
+class CompatibilityException(models.Model):
+    """Kalemin onaylı revizyonundan teknik olarak farklı (ör. 30 µ yerine 70 µ) stokla karşılamaya yetkili onay."""
+
+    order_line = models.ForeignKey(OrderLine, on_delete=models.PROTECT, related_name="compatibility_exceptions")
+    revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, related_name="+",
+                                 verbose_name="Kabul edilen revizyon")
+    reason = models.TextField("Gerekçe")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["order_line", "revision"], name="uniq_compat_exception")]
+
+
+class OverDeliveryAllowance(models.Model):
+    """Kalem miktarının üzerinde ayırma/sevk için yetkili, gerekçeli ek miktar (varsayılan tolerans 0)."""
+
+    order_line = models.ForeignKey(OrderLine, on_delete=models.PROTECT, related_name="over_delivery")
+    extra_quantity = models.PositiveIntegerField("Ek miktar")
+    reason = models.TextField("Gerekçe")
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)

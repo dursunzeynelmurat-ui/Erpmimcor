@@ -6,6 +6,7 @@ app_name = "warehouse"
 urlpatterns = [
     path("q/<str:token>/", views.qr_open, name="qr_open"),
     path("paletler/", views.pallet_list, name="pallet_list"),
+    path("stok-ozeti/", views.stock_summary, name="stock_summary"),
     path("paletler/<int:pk>/", views.pallet_detail, name="pallet_detail"),
     path("paletler/<int:pk>/kabul/", views.pallet_accept, name="pallet_accept"),
     path("paletler/<int:pk>/tartim/", views.pallet_weigh, name="pallet_weigh"),

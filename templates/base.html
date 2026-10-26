@@ -20,6 +20,7 @@
       {% if can.planning_approve %}<a href="{% url 'orders:planning_queue' %}">Planlama</a>{% endif %}
       {% if can.workorder_view %}<a href="{% url 'production:workorder_list' %}">İş emirleri</a>
       <a href="{% url 'production:floor_plan' %}">Üretim planı</a>{% endif %}
+      {% if can.correction_request or can.correction_approve %}<a href="{% url 'corrections:correction_list' %}">Düzeltme talepleri</a>{% endif %}
       {% block nav_extra %}{% include "partials/nav_warehouse.html" %}{% endblock %}
       <span class="nav-sep">Tanımlar</span>
       {% if can.customer_view %}<a href="{% url 'catalog:customer_list' %}">Müşteriler</a>{% endif %}

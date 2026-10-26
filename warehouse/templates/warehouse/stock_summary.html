@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Stok özeti{% endblock %}
+{% block content %}
+<h1>Stok özeti</h1>
+<p class="muted">Depodaki paletlerden, kutu bazında. Yalnız “sevke uygun” sütunu yeni siparişe ayrılabilir. Bobin bekletmesi ihtiyatlıdır: blokeli bobinle ilişkili (aktarım dahil) paletler kalite kararı verilene kadar bekletilir.</p>
+<div class="table-wrap"><table class="table table-responsive"><thead><tr><th>Ürün</th><th>Müşteri</th><th>Fiziksel</th><th>Ayrılmış</th><th>Kontrol bekleyen</th><th>Blokeli</th><th>Bobin bekletmeli</th><th>Sevke uygun (serbest)</th></tr></thead><tbody>
+{% for r in rows %}<tr><td data-label="Ürün"><a href="{% url 'warehouse:pallet_list' %}?q={{ r.product.code|urlencode }}">{{ r.product.code }}</a></td><td data-label="Müşteri">{{ r.product.customer.name }}</td>
+<td data-label="Fiziksel">{{ r.physical }} <small class="muted">({{ r.pallets }} palet)</small></td><td data-label="Ayrılmış">{{ r.reserved }}</td><td data-label="Kontrol bekleyen">{{ r.pending }}</td>
+<td data-label="Blokeli">{{ r.blocked }}</td><td data-label="Bobin bekletmeli">{{ r.held }}</td><td data-label="Sevke uygun"><strong>{{ r.shippable }}</strong></td></tr>
+{% empty %}<tr><td colspan="8" class="muted">Depoda ürün yok.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

@@ -36,7 +36,8 @@ def line_progress(line):
         "produced": produced["quantity"],
         "produced_unit": line.get_unit_display(),
         "shipped": produced.get("shipped", Decimal("0")),
-        "ratio": int(min(produced["quantity"] / line.quantity * 100, 100)) if line.quantity else 0,
+        "ratio": int(min(produced["quantity"] / line.quantity * 100, 100))
+        if line.quantity and produced["quantity"] is not None else 0,
         "stage": stage,
         "last_update": max(t for t in timestamps if t),
         "work_orders": work_orders,

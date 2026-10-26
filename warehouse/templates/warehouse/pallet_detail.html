@@ -2,6 +2,7 @@
 {% block title %}{{ pallet.code }}{% endblock %}
 {% block content %}
 <h1>Palet {{ pallet.code }}</h1>
+{% if can.correction_request and pallet.status == "depoda" %}<p class="no-print"><a class="btn" href="{% url 'corrections:correction_create' 'sayim' pallet.pk %}?geri={{ request.path|urlencode }}">Sayım düzeltme talebi</a>{% if current_weighing %} <a class="btn" href="{% url 'corrections:correction_create' 'tartim' current_weighing.pk %}?geri={{ request.path|urlencode }}">Tartım düzeltme talebi</a>{% endif %}</p>{% endif %}
 <p><span class="status status-{{ pallet.status }}">{{ pallet.get_status_display }}</span>
    <span class="status status-{{ pallet.quality_status }}">Kalite: {{ pallet.get_quality_status_display }}</span>
    <span class="status status-{{ pallet.weight_status }}">Ağırlık: {{ pallet.get_weight_status_display }}</span></p>
@@ -45,7 +46,7 @@
 {% for m in movements %}<tr><td>{{ m.at|date:"d.m.Y H:i" }}</td><td>{{ m.get_kind_display }}</td><td>{{ m.quantity }}</td><td>{{ m.balance_after }}</td>
 <td>{% if m.related_pallet %}<a href="{% url 'warehouse:pallet_detail' m.related_pallet.pk %}">{{ m.related_pallet.code }}</a>{% endif %}
 {% if m.shipment_line %}<a href="{% url 'warehouse:shipment_detail' m.shipment_line.shipment.pk %}">{{ m.shipment_line.shipment.code }}</a>{% endif %}</td>
-<td>{{ m.user.full_name }}</td><td>{{ m.reason|default:"" }}</td></tr>{% endfor %}</tbody></table></div></section>
+<td>{{ m.user.full_name }}</td><td>{{ m.reason|default:"" }}{% if m.kind == "uretim_girisi" and can.correction_request %} <a href="{% url 'corrections:correction_create' 'palet_kutu' m.pk %}?geri={{ request.path|urlencode }}">Düzeltme talebi</a>{% endif %}</td></tr>{% endfor %}</tbody></table></div></section>
 
 <section class="card"><h2>Tartım geçmişi</h2>
 {% for w, rows in weighings %}<div class="{% if not w.is_current %}muted{% endif %}"><strong>{{ w.at|date:"d.m.Y H:i" }}</strong> · {{ w.user.full_name }} · {{ w.box_count_at_weighing }} kutu iken {% if w.is_current %}(güncel){% else %}(geçmiş){% endif %}

@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -11,7 +11,8 @@ from core.services import history_for
 from core.viewutils import run_form_action
 
 from . import services
-from .forms import ApproveLineForm, LineAddForm, LineChangeForm, OrderCreateForm, products_for
+from .forms import (ApproveLineForm, CompatibilityForm, LineAddForm, LineChangeForm, OrderCreateForm, OverDeliveryForm,
+                    products_for)
 from .models import LineStatus, OrderLine, OrderStatus, SalesOrder
 from .selectors import line_progress
 
@@ -209,3 +210,28 @@ def line_cancel(request, pk):
     order = _get_order(request, line.order_id)
     return _post(request, order, ReasonForm(request.POST), "order.line_cancel",
                  lambda d: services.cancel_line(request.user, line, d["reason"]), f"{line.code} iptal edildi.")
+
+
+@require_perm("exception.approve")
+def line_exception(request, pk, kind):
+    line = get_object_or_404(OrderLine.objects.select_related("order__customer", "product", "approved_revision"), pk=pk)
+    order = _get_order(request, line.order_id)
+    if kind == "uyumluluk":
+        form = CompatibilityForm(line, request.POST or None)
+        fn = lambda d: services.approve_compatibility(request.user, line, d["revision"], d["reason"])  # noqa: E731
+        title, msg = "Teknik uygunluk istisnası", "Teknik uygunluk istisnası kaydedildi."
+    elif kind == "fazla-teslim":
+        form = OverDeliveryForm(request.POST or None)
+        fn = lambda d: services.allow_over_delivery(request.user, line, d["extra"], d["reason"])  # noqa: E731
+        title, msg = "Fazla teslim izni", "Fazla teslim izni kaydedildi."
+    else:
+        raise Http404
+    if request.method == "POST":
+        resp = run_form_action(request, form, action=f"order.{kind}", fn=fn, success_message=msg,
+                               url_for=lambda _: _order_url(order))
+        if resp:
+            return resp
+    rev = line.approved_revision
+    return render(request, "core/form_page.html", {
+        "form": form, "title": f"{line.code}: {title}", "submit": "Kaydet", "back": _order_url(order),
+        "intro": (f"Kalem Rev.{rev.rev_no} ile onaylı." if rev else "") + " Kayıt gerekçesiyle işlem geçmişine yazılır."})

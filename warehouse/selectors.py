@@ -24,3 +24,34 @@ def order_warehouse_context(order, lines, user=None):
         "stock_options": stock,
         "non_box_lines": non_box,
     }
+
+
+def stock_breakdown(user):
+    """Satış/planlama stok özeti (kutu, ürün bazında). Kategoriler ayrıktır ve toplamları fizikseli verir:
+    fiziksel = kontrol bekleyen + blokeli + bobin bekletmeli + uygun; uygun = ayrılmış + sevke uygun serbest.
+    Bobin bekletmesi ihtiyatlıdır: aktarımla ilişkili paletler de bekletilir (ayrıntı palet sayfasında)."""
+    from accounts.permissions import scoped
+    from core.models import QualityStatus
+
+    from .models import Pallet, PalletStatus
+    from .services import _reserved, coil_holds
+
+    rows = {}
+    pallets = (scoped(Pallet.objects.filter(status=PalletStatus.IN_STOCK, box_count__gt=0), user, "stock.view")
+               .select_related("product__customer").order_by("product__code", "code"))
+    for p in pallets:
+        r = rows.setdefault(p.product, {"product": p.product, "physical": 0, "pending": 0, "blocked": 0, "held": 0,
+                                        "reserved": 0, "shippable": 0, "pallets": 0})
+        r["physical"] += p.box_count
+        r["pallets"] += 1
+        if p.quality_status == QualityStatus.BLOCKED:
+            r["blocked"] += p.box_count
+        elif coil_holds(p):
+            r["held"] += p.box_count
+        elif p.quality_status == QualityStatus.PENDING:
+            r["pending"] += p.box_count
+        else:
+            reserved = _reserved(p)
+            r["reserved"] += reserved
+            r["shippable"] += p.box_count - reserved
+    return list(rows.values())

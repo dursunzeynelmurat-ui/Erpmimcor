@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Düzeltme talebi{% endblock %}
+{% block content %}
+<h1>Düzeltme talebi: {{ kind_label }}</h1>
+<dl class="kv card"><dt>Kayıt</dt><dd>{{ target_code }}</dd><dt>Mevcut değer</dt><dd>{{ current }} {{ unit }}</dd></dl>
+<section class="card"><h2>Etkilenecek kayıtlar</h2>{% if affected %}<ul class="list">{% for a in affected %}<li>{{ a }}</li>{% endfor %}</ul>{% else %}<p class="muted">Başka bağlı kayıt yok.</p>{% endif %}
+<p class="muted">Onaylanana kadar hiçbir kayıt veya stok değişmez. Onaylayan kişi talep edenden farklı olmalıdır.</p></section>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Talebi gönder</button><a class="btn" href="{{ back }}">Geri</a></div>
+</form>
+{% endblock %}

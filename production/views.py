@@ -109,6 +109,7 @@ def workorder_detail(request, pk):
         "coils": wo.coils.select_related("operation", "machine").order_by("operation__seq", "created_at"),
         "pallets": wo.pallets.all(),
         "issued": services.issued_by_lot(wo),
+        "lot_movements": wo.lot_movements.select_related("lot__material"),
         "closure": getattr(wo, "closure", None),
         "history": history_for(wo),
     })
@@ -170,11 +171,18 @@ def coil_create(request, op_pk):
 def coil_detail(request, pk):
     coil = get_scoped_or_404(Coil.objects.select_related("work_order__product", "operation", "machine", "created_by"),
                              request.user, "workorder.view", pk=pk)
+    from core.models import QualityStatus
+    from warehouse.services import quality_permission
     form = None
+    allowed = set()
     if can(request.user, "quality.block", coil):
+        allowed.add(QualityStatus.BLOCKED)
+    if can(request.user, quality_permission(coil.quality_status, QualityStatus.OK), coil):
+        allowed |= {QualityStatus.OK, QualityStatus.PENDING}
+    allowed.discard(coil.quality_status)
+    if allowed:
         form = CoilQualityForm(request.POST or None)
-        if not can(request.user, "quality.decide", coil):
-            form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] == "blokeli"]
+        form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] in allowed]
         if request.method == "POST":
             resp = run_form_action(request, form, action="coil.quality",
                                    fn=lambda d: services.set_coil_quality(request.user, coil, d["quality_status"], d["reason"]),
@@ -192,10 +200,12 @@ def coil_detail(request, pk):
 @require_perm("production.execute")
 def material_issue(request, pk):
     wo = _get_wo(request, pk)
-    form = MaterialMoveForm(request.POST or None)
+    form = MaterialMoveForm(request.POST or None, deviation=can(request.user, "material.deviation", wo),
+                            recipe_ids=services.recipe_material_ids(wo))
     if request.method == "POST":
         resp = run_form_action(request, form, action="material.issue",
-                               fn=lambda d: services.issue_material(request.user, wo, d["lot"], d["quantity"]),
+                               fn=lambda d: services.issue_material(request.user, wo, d["lot"], d["quantity"],
+                                                                    deviation_reason=d.get("deviation_reason", "")),
                                success_message="Malzeme çıkışı kaydedildi.", url_for=lambda _: _wo_url(wo))
         if resp:
             return resp

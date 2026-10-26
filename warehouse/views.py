@@ -11,6 +11,7 @@ from django.views.decorators.http import require_POST
 
 from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
 from core.forms import ConfirmForm, ReasonForm
+from core.models import QualityStatus
 from core.services import history_for
 from core.viewutils import run_form_action
 from orders.models import SalesOrder
@@ -66,7 +67,7 @@ def pallet_detail(request, pk):
     weighing = pallet.current_weighing
     weighings = pallet.weighings.select_related("user")
     ctx = {
-        "pallet": pallet,
+        "pallet": pallet, "current_weighing": weighing,
         "weighing_rows": services.weight_breakdown(weighing, pallet) if weighing else None,
         "coil_holds": services.coil_holds(pallet),
         "weighings": [(w, services.weight_breakdown(w)) for w in weighings],
@@ -83,11 +84,18 @@ def pallet_detail(request, pk):
         elif pallet.status == PalletStatus.IN_STOCK:
             ctx.update(weigh_form=WeighingForm(), transfer_form=TransferForm(), count_form=CountForm(),
                        damage_form=DamageForm())
-    if can(u, "quality.block", pallet) and pallet.status != PalletStatus.EMPTY:
-        form = QualityForm()
-        if not can(u, "quality.decide", pallet):
-            form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] == "blokeli"]
-        ctx["quality_form"] = form
+    if pallet.status != PalletStatus.EMPTY:
+        # Blokelemek, karar vermek ve blokajı kaldırmak ayrı yetkiler (quality.block / decide / release).
+        allowed = set()
+        if can(u, "quality.block", pallet):
+            allowed.add(QualityStatus.BLOCKED)
+        if can(u, services.quality_permission(pallet.quality_status, QualityStatus.OK), pallet):
+            allowed |= {QualityStatus.OK, QualityStatus.PENDING}
+        allowed.discard(pallet.quality_status)
+        if allowed:
+            form = QualityForm()
+            form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] in allowed]
+            ctx["quality_form"] = form
     if can(u, "reservation.manage") and pallet.status != PalletStatus.EMPTY:
         ctx["reserve_form"] = ReserveForm(pallet, user=u)
         ctx["cancel_form"] = ReasonForm()
@@ -99,7 +107,11 @@ def pallet_detail(request, pk):
 
 def _pallet_action(request, pk, *, perm, form_cls, action, fn, success, form_kwargs=None, needs_pallet=False):
     pallet = get_scoped_or_404(Pallet.objects.all(), request.user, "stock.view", pk=pk)
-    check(request.user, perm, pallet)
+    if isinstance(perm, (tuple, list)):
+        if not any(can(request.user, p, pallet) for p in perm):
+            check(request.user, perm[0], pallet)
+    else:
+        check(request.user, perm, pallet)
     args = [pallet] if needs_pallet else []
     form = form_cls(*args, request.POST or None, **(form_kwargs or {}))
     if request.method == "POST":
@@ -150,7 +162,7 @@ def pallet_damage(request, pk):
 
 
 def pallet_quality(request, pk):
-    return _pallet_action(request, pk, perm="quality.block", form_cls=QualityForm, action="pallet.quality",
+    return _pallet_action(request, pk, perm=("quality.block", "quality.decide", "quality.release"), form_cls=QualityForm, action="pallet.quality",
                           fn=lambda p, d: services.set_pallet_quality(request.user, p, d["quality_status"], d["reason"]),
                           success="Kalite durumu güncellendi.")
 
@@ -281,3 +293,9 @@ def shipment_confirm(request, pk):
                            fn=lambda d: services.confirm_shipment(request.user, shipment),
                            success_message=lambda s: f"{s.code} sevk edildi; stoktan düşüldü.", url_for=lambda _: url)
     return resp or redirect(url)
+
+
+def stock_summary(request):
+    from .selectors import stock_breakdown
+    check(request.user, "stock.view")
+    return render(request, "warehouse/stock_summary.html", {"rows": stock_breakdown(request.user)})

@@ -2,6 +2,7 @@
 {% block title %}{{ coil.code }}{% endblock %}
 {% block content %}
 <h1>Bobin {{ coil.code }} <span class="status status-{{ coil.quality_status }}">{{ coil.get_quality_status_display }}</span></h1>
+{% if can.correction_request %}<p class="no-print"><a class="btn" href="{% url 'corrections:correction_create' 'bobin_agirlik' coil.pk %}?geri={{ request.path|urlencode }}">Ağırlık düzeltme talebi</a></p>{% endif %}
 <dl class="kv card">
   <dt>İş emri</dt><dd><a href="{% url 'production:workorder_detail' coil.work_order.pk %}">{{ coil.work_order.code }}</a> · {{ coil.work_order.product.code }}</dd>
   <dt>Operasyon</dt><dd>{{ coil.operation.seq }}. {{ coil.operation.get_machine_type_display }} · {{ coil.machine }}</dd>

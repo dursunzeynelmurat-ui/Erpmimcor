@@ -320,3 +320,82 @@ def archive_order(actor, order):
     order.save(update_fields=["archived_at"])
     audit(actor, "order.archive", order, {"archived": (None, True)})
     return order
+
+
+# --- Aşama 3: teknik uyumluluk ve miktar sınırı (bulgu 1, 2) ------------------------------
+
+SIGNATURE_FIELDS = (("width_mm", "en"), ("thickness_micron", "kalınlık"), ("length_m", "rulo boyu"),
+                    ("color", "renk"), ("print_spec", "baskı"), ("perforation_spec", "perfore"))
+
+
+def tech_signature(revision):
+    """Sevk uyumluluğu için teknik imza. Revizyon numarası değil, müşteriye giden ürünün özellikleri karşılaştırılır."""
+    def norm(v):
+        if v is None:
+            return None
+        return num(v) if hasattr(v, "normalize") else " ".join(str(v).split()).casefold()
+    return tuple(norm(getattr(revision, f)) for f, _ in SIGNATURE_FIELDS)
+
+
+def required_revision(line):
+    return line.approved_revision or line.product.current_revision
+
+
+def compatibility_problem(line, revision):
+    """Palet revizyonu kalemle teknik olarak uyumsuzsa açıklama; uyumlu veya yetkili istisna varsa None."""
+    required = required_revision(line)
+    if revision is None:
+        return f"{line.code}: paletin teknik revizyonu bilinmiyor; teknik uygunluk doğrulanamaz."
+    if required is None or required.pk == revision.pk or tech_signature(required) == tech_signature(revision):
+        return None
+    if line.compatibility_exceptions.filter(revision=revision).exists():
+        return None
+    diffs = [label for (f, label), a, b in zip(SIGNATURE_FIELDS, tech_signature(required), tech_signature(revision))
+             if a != b]
+    return (f"{line.code} Rev.{required.rev_no} ile onaylı; palet Rev.{revision.rev_no} ile üretilmiş. Farklı teknik "
+            f"özellik: {', '.join(diffs)}. Yetkili teknik uygunluk istisnası olmadan ayrılamaz/sevk edilemez.")
+
+
+@transaction.atomic
+def approve_compatibility(actor, line, revision, reason):
+    from .models import CompatibilityException
+    check(actor, "exception.approve")
+    if not reason:
+        raise BusinessRuleError("İstisna gerekçesi zorunludur.", field="reason")
+    line = OrderLine.objects.select_for_update(of=("self",)).select_related("product").get(pk=line.pk)
+    if revision.recipe.product_id != line.product_id:
+        raise BusinessRuleError("Revizyon bu kalemin ürününe ait değil.", field="revision")
+    exc, created = CompatibilityException.objects.get_or_create(
+        order_line=line, revision=revision, defaults={"reason": reason, "approved_by": actor})
+    if created:
+        audit(actor, "order.compatibility_exception", line, {"kabul_edilen": (None, f"Rev.{revision.rev_no}")},
+              reason=reason, code=line.code)
+    return exc
+
+
+def line_limit(line):
+    from django.db.models import Sum
+    extra = line.over_delivery.aggregate(s=Sum("extra_quantity"))["s"] or 0
+    return line.quantity + extra
+
+
+def committed_quantity(line):
+    """Sevk edilmiş + açık ayrılmış (iptal dışı rezervasyonların toplamı)."""
+    from django.db.models import Sum
+    from warehouse.models import ReservationStatus
+    return line.reservations.exclude(status=ReservationStatus.CANCELLED).aggregate(s=Sum("quantity"))["s"] or 0
+
+
+@transaction.atomic
+def allow_over_delivery(actor, line, extra, reason):
+    from .models import OverDeliveryAllowance
+    check(actor, "exception.approve")
+    if not reason:
+        raise BusinessRuleError("Fazla teslim için gerekçe zorunludur.", field="reason")
+    if extra is None or int(extra) != extra or extra <= 0:
+        raise BusinessRuleError("Ek miktar pozitif tam sayı olmalı.", field="extra")
+    line = OrderLine.objects.select_for_update(of=("self",)).get(pk=line.pk)
+    allowance = OverDeliveryAllowance.objects.create(order_line=line, extra_quantity=int(extra), reason=reason,
+                                                     approved_by=actor)
+    audit(actor, "order.over_delivery", line, {"ek_miktar": (None, int(extra))}, reason=reason, code=line.code)
+    return allowance

@@ -1,3 +1,4 @@
-{% if can.stock_view %}<a href="{% url 'warehouse:pallet_list' %}">Paletler</a>{% endif %}
+{% if can.stock_view %}<a href="{% url 'warehouse:pallet_list' %}">Paletler</a>
+<a href="{% url 'warehouse:stock_summary' %}">Stok özeti</a>{% endif %}
 {% if can.warehouse_operate %}<a href="{% url 'warehouse:pallet_list' %}?status=depo_kabul_bekliyor">Depo kabulü bekleyenler</a>{% endif %}
 {% if can.shipment_view %}<a href="{% url 'warehouse:shipment_list' %}">Sevkiyatlar</a>{% endif %}

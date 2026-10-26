@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "orders",
     "production",
     "warehouse",
+    "corrections",
 ]
 
 MIDDLEWARE = [
@@ -134,3 +135,6 @@ MEDIA_ROOT = Path(env("MEDIA_ROOT", str(BASE_DIR / "media")))
 CUSTOMER_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
 DATA_UPLOAD_MAX_MEMORY_SIZE = 12 * 1024 * 1024
 FILE_UPLOAD_PERMISSIONS = 0o640
+
+# Düzeltme talebini açan kişinin kendi talebini onaylaması (varsayılan kapalı).
+CORRECTION_SELF_APPROVAL = os.environ.get("CORRECTION_SELF_APPROVAL", "0") == "1"

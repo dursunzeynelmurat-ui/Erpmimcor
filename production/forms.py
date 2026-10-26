@@ -119,12 +119,19 @@ class CoilForm(IdemForm):
 
 class MaterialMoveForm(IdemForm):
     lot = forms.ModelChoiceField(label="Malzeme lotu", queryset=MaterialLot.objects.none())
-    quantity = forms.DecimalField(label="Miktar (kg)", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
+    quantity = forms.DecimalField(label="Miktar (lotun biriminde)", max_digits=14, decimal_places=3,
+                                  min_value=Decimal("0.001"), widget=DEC)
 
-    def __init__(self, *args, lots=None, **kwargs):
+    def __init__(self, *args, lots=None, deviation=False, recipe_ids=(), **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["lot"].queryset = lots if lots is not None else MaterialLot.objects.filter(quantity__gt=0).select_related("material")
-        self.fields["lot"].label_from_instance = lambda lot: f"{lot.code} – {lot.material.code} (mevcut {qty(lot.quantity)} kg)"
+        mark = lambda lot: "" if not recipe_ids or lot.material_id in recipe_ids else " · REÇETE DIŞI"  # noqa: E731
+        self.fields["lot"].label_from_instance = lambda lot: (
+            f"{lot.code} – {lot.material.code} (mevcut {qty(lot.quantity)} {lot.material.unit}){mark(lot)}")
+        if deviation:
+            self.fields["deviation_reason"] = forms.CharField(
+                label="Reçete dışı malzeme gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
+                help_text="Yalnız reçete dışı lot seçildiğinde ve sapma yetkiniz varsa doldurun.")
 
 
 class PalletFromProductionForm(IdemForm):

@@ -17,7 +17,7 @@
   {% if p.work_orders %}<p>İş emirleri: {% for wo in p.work_orders %}<a href="{% url 'production:workorder_detail' wo.pk %}">{{ wo.code }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
   {% if show_actions %}
     {% if can.planning_approve and p.line.status == "planlama_bekliyor" %}<a class="btn btn-primary" href="{% url 'orders:line_approve' p.line.pk %}">Teknik onay</a>{% endif %}
-    {% if can.workorder_create and p.line.status == "onaylandi" or can.workorder_create and p.line.status == "uretimde" %}<a class="btn" href="{% url 'production:workorder_create_for_line' p.line.pk %}">İş emri oluştur</a>{% endif %}
+    {% if can.workorder_create and p.line.status in "onaylandi uretimde uretim_eksik" %}<a class="btn" href="{% url 'production:workorder_create_for_line' p.line.pk %}">İş emri oluştur</a>{% endif %}
     {% include "partials/line_actions_extra.html" %}
   {% endif %}
 </article>

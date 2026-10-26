@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ cr.code }}{% endblock %}
+{% block content %}
+<h1>Düzeltme {{ cr.code }} <span class="status status-{{ cr.status }}">{{ cr.get_status_display }}</span></h1>
+<dl class="kv card">
+  <dt>Tür</dt><dd>{{ cr.get_kind_display }}</dd><dt>Kayıt</dt><dd>{{ cr.target_code }}</dd>
+  <dt>Eski değer</dt><dd>{{ cr.old_value|qty }} {{ cr.unit }}</dd><dt>Önerilen değer</dt><dd><strong>{{ cr.new_value|qty }} {{ cr.unit }}</strong></dd>
+  <dt>Gerekçe</dt><dd>{{ cr.reason }}</dd>
+  <dt>Talep eden</dt><dd>{{ cr.requested_by.full_name }} ({{ cr.requested_by.personnel_no }}) · {{ cr.requested_at|date:"d.m.Y H:i" }}</dd>
+  {% if cr.work_order %}<dt>İş emri</dt><dd><a href="{% url 'production:workorder_detail' cr.work_order.pk %}">{{ cr.work_order.code }}</a></dd>{% endif %}
+  {% if cr.pallet %}<dt>Palet</dt><dd><a href="{% url 'warehouse:pallet_detail' cr.pallet.pk %}">{{ cr.pallet.code }}</a></dd>{% endif %}
+  {% if cr.decided_at %}<dt>Karar</dt><dd>{{ cr.decided_by.full_name }} · {{ cr.decided_at|date:"d.m.Y H:i" }} · {{ cr.decision_reason }}</dd>{% endif %}
+</dl>
+<section class="card"><h2>Etkilenen kayıtlar</h2>{% if cr.affected %}<ul class="list">{% for a in cr.affected %}<li>{{ a }}</li>{% endfor %}</ul>{% else %}<p class="muted">Yok.</p>{% endif %}</section>
+<div class="actions no-print">
+{% if can_decide %}{% if own %}<p class="msg msg-warning">Kendi talebinizi onaylayamazsınız.</p>{% else %}{% url 'corrections:correction_approve' cr.pk as u %}{% include "partials/confirm_button.html" with action=u label="Onayla ve uygula" %}{% endif %}
+{% url 'corrections:correction_reject' cr.pk as u %}{% include "partials/reason_button.html" with action=u label="Reddet" btn_class="btn-danger" %}{% endif %}
+{% if own and cr.status == "talep" %}{% url 'corrections:correction_withdraw' cr.pk as u %}{% include "partials/confirm_button.html" with action=u label="Talebi geri çek" btn_class="btn" %}{% endif %}
+<a class="btn" href="{% url 'corrections:correction_list' %}">Taleplere dön</a>
+</div>
+{% include "partials/history.html" %}
+{% endblock %}

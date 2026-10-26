@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.permissions import check
-from catalog.models import LotMovementKind, MachineType, RecipeRevision
+from catalog.models import LotMovementKind, MachineType, MaterialUnit, RecipeRevision
 from catalog.services import move_lot
 from core.models import QualityStatus, ValueSource
 from core.exceptions import BusinessRuleError
@@ -13,8 +13,8 @@ from core.services import audit, next_code
 from orders.models import LineStatus, OrderLine
 from orders.services import set_line_status
 
-from .models import (Coil, CoilLink, CoilStatus, OperationStatus, WorkOrder, WorkOrderClosure, WorkOrderOperation,
-                     WorkOrderPurpose, WorkOrderStatus)
+from .models import (Coil, CoilLink, CoilStatus, MaterialDeviation, OperationStatus, RouteException, WorkOrder,
+                     WorkOrderClosure, WorkOrderOperation, WorkOrderPurpose, WorkOrderStatus)
 
 
 def _validate_machines(machines):
@@ -38,7 +38,7 @@ def create_work_order(actor, *, machines, target_quantity, unit, order_line=None
         raise BusinessRuleError("Hedef miktar sıfırdan büyük olmalı.", field="target_quantity")
     if order_line is not None:
         order_line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=order_line.pk)
-        if order_line.status not in (LineStatus.APPROVED, LineStatus.IN_PRODUCTION):
+        if order_line.status not in (LineStatus.APPROVED, LineStatus.IN_PRODUCTION, LineStatus.PRODUCED_SHORT):
             raise BusinessRuleError("Sipariş kalemi planlama tarafından teknik olarak onaylanmamış.")
         purpose, product, revision = WorkOrderPurpose.ORDER, order_line.product, order_line.approved_revision
     else:
@@ -145,14 +145,33 @@ def _require_started(wo):
         raise BusinessRuleError("Bu işlem yalnız üretimdeki iş emrinde yapılabilir.")
 
 
+def recipe_material_ids(wo):
+    return set(wo.recipe_revision.components.values_list("material_id", flat=True))
+
+
 @transaction.atomic
-def issue_material(actor, wo, lot, quantity):
+def issue_material(actor, wo, lot, quantity, deviation_reason=""):
+    """Üretime malzeme çıkışı. Reçete dışı malzeme yalnız material.deviation yetkisi ve gerekçeyle (bulgu 9)."""
     check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
     _require_started(wo)
     if quantity <= 0:
         raise BusinessRuleError("Miktar sıfırdan büyük olmalı.", field="quantity")
-    return move_lot(actor, lot, LotMovementKind.ISSUE, -quantity, work_order=wo)
+    off_recipe = lot.material_id not in recipe_material_ids(wo)
+    if off_recipe:
+        if not deviation_reason:
+            raise BusinessRuleError(f"{lot.material.code} bu iş emrinin reçetesinde yok (Rev.{wo.recipe_revision.rev_no}). "
+                                    "Reçete dışı çıkış yalnız yetkili sapma kaydı ve gerekçeyle yapılır.",
+                                    field="deviation_reason")
+        check(actor, "material.deviation", wo)
+    mv = move_lot(actor, lot, LotMovementKind.ISSUE, -quantity, work_order=wo,
+                  reason=f"Reçete dışı: {deviation_reason}" if off_recipe else "")
+    if off_recipe:
+        MaterialDeviation.objects.create(work_order=wo, lot_movement=mv, material=lot.material,
+                                         reason=deviation_reason, approved_by=actor)
+        audit(actor, "workorder.material_deviation", wo,
+              {"malzeme": (None, f"{lot.material.code} {quantity} {lot.material.unit}")}, reason=deviation_reason)
+    return mv
 
 
 def issued_by_lot(wo):
@@ -216,6 +235,10 @@ def record_coil(actor, op, *, weight_kg, length_m=None, weight_source=ValueSourc
             raise BusinessRuleError(f"{coil.code} bu iş emrine ait değil.")
         if coil.operation.seq >= op.seq:
             raise BusinessRuleError(f"{coil.code} önceki bir operasyonun çıktısı olmalı.")
+        if coil.operation.seq != op.seq - 1 and not op.route_exceptions.exists():
+            raise BusinessRuleError(f"{coil.code} {coil.operation.seq}. operasyonun çıktısı; bu operasyonun kaynağı bir "
+                                    f"önceki ({op.seq - 1}.) operasyonun bobini olmalı. Rota atlama yalnız yetkili "
+                                    "gerekçeli izinle yapılır.")
         if coil.quality_status == QualityStatus.BLOCKED:
             raise BusinessRuleError(f"{coil.code} blokeli; kullanılamaz.")
         if qty is None or qty <= 0:
@@ -244,11 +267,24 @@ def record_coil(actor, op, *, weight_kg, length_m=None, weight_source=ValueSourc
 
 
 @transaction.atomic
+def allow_route_skip(actor, op, reason):
+    """Operasyonun bir önceki operasyonu atlayarak daha önceki bobini kaynak almasına izin (bulgu 6)."""
+    check(actor, "exception.approve")
+    if not reason:
+        raise BusinessRuleError("Rota atlama için gerekçe zorunludur.", field="reason")
+    op = WorkOrderOperation.objects.select_for_update(of=("self",)).select_related("work_order").get(pk=op.pk)
+    exc = RouteException.objects.create(operation=op, reason=reason, approved_by=actor)
+    audit(actor, "operation.route_exception", op, {"rota_atlama": (None, f"{op.seq}. operasyon")}, reason=reason)
+    return exc
+
+
+@transaction.atomic
 def set_coil_quality(actor, coil, status, reason):
-    check(actor, "quality.decide" if status != QualityStatus.BLOCKED else "quality.block", coil)
+    from warehouse.services import quality_permission
     if not reason:
         raise BusinessRuleError("Kalite değişikliği için gerekçe zorunludur.", field="reason")
     coil = Coil.objects.select_for_update().get(pk=coil.pk)
+    check(actor, quality_permission(coil.quality_status, status), coil)
     if coil.quality_status != status:
         old = coil.quality_status
         coil.quality_status = status
@@ -272,7 +308,13 @@ def closure_summary(wo):
     """Kapanış ekranı ve doğrulama için hesaplanan değerler (kg)."""
     last = final_operation(wo)
     zero = Decimal("0")
-    issued = sum(issued_by_lot(wo).values(), zero)
+    by_lot = issued_by_lot(wo)
+    # Denge yalnız kg birimli malzemeyle kurulur; litre/adet ayrı listelenir, kg'ye çevrilmez (bulgu 8).
+    issued = sum((q for lot, q in by_lot.items() if lot.material.unit == MaterialUnit.KG), zero)
+    other_units = {}
+    for lot, q in by_lot.items():
+        if lot.material.unit != MaterialUnit.KG and q:
+            other_units[lot.material.unit] = other_units.get(lot.material.unit, zero) + q
     final_coils = list(wo.coils.filter(operation=last)) if last else []
     good = sum((c.weight_kg for c in final_coils if c.quality_status != QualityStatus.BLOCKED), zero)
     blocked_intermediate = sum((c.remaining_kg for c in wo.coils.exclude(operation=last)
@@ -280,8 +322,10 @@ def closure_summary(wo):
     blocked = sum((c.weight_kg for c in final_coils if c.quality_status == QualityStatus.BLOCKED), zero) + blocked_intermediate
     wip = sum((c.remaining_kg for c in wo.coils.exclude(operation=last)
                if c.quality_status != QualityStatus.BLOCKED), zero)
-    boxes = sum(m.quantity for m in wo.pallet_movements.filter(kind="uretim_girisi"))
+    boxes = sum(m.quantity for m in wo.pallet_movements.filter(kind__in=["uretim_girisi", "duzeltme"]))
     return {"issued": issued, "good": good, "blocked": blocked, "wip": wip, "boxes": boxes,
+            "other_units": other_units,
+            "deviations": list(wo.material_deviations.select_related("material", "approved_by", "lot_movement__lot")),
             "tolerance_pct": Decimal(str(settings.WORK_ORDER_BALANCE_TOLERANCE_PCT))}
 
 
@@ -324,5 +368,14 @@ def close_work_order(actor, wo, *, scrap_kg, remaining_confirmed, reason=""):
     if wo.order_line_id and not wo.order_line.work_orders.exclude(
             status__in=[WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED]).exists():
         if wo.order_line.status == LineStatus.IN_PRODUCTION:
-            set_line_status(actor, wo.order_line, LineStatus.PRODUCED)
+            # Kapanış karşılama demek değildir (bulgu 3): üretilen miktar kalem miktarına ulaşmadıysa "eksik".
+            from .selectors import produced_quantity_for_line
+            line = wo.order_line
+            produced = produced_quantity_for_line(line)["quantity"]
+            if produced is not None and produced >= line.quantity:
+                set_line_status(actor, line, LineStatus.PRODUCED)
+            else:
+                shown = "ölçülemiyor" if produced is None else f"{produced} {line.get_unit_display()}"
+                set_line_status(actor, line, LineStatus.PRODUCED_SHORT,
+                                reason=f"İş emirleri kapandı; üretilen {shown}, sipariş {line.quantity}")
     return wo

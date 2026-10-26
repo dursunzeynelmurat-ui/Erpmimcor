@@ -11,8 +11,12 @@
 </section>
 {% endif %}
 <section class="card"><h2>Verilen malzeme (net)</h2>
-  {% if issued %}<ul class="list">{% for lot, qty in issued.items %}<li><a href="{% url 'catalog:lot_detail' lot.pk %}">{{ lot.code }}</a> {{ lot.material.code }} · {{ qty|qty }} kg</li>{% endfor %}</ul>
+  {% if issued %}<ul class="list">{% for lot, qty in issued.items %}<li><a href="{% url 'catalog:lot_detail' lot.pk %}">{{ lot.code }}</a> {{ lot.material.code }} · {{ qty|qty }} {{ lot.material.unit }}</li>{% endfor %}</ul>
   {% else %}<p class="muted">Malzeme çıkışı yok.</p>{% endif %}
+  {% if lot_movements %}<details><summary>Malzeme hareketleri{% if can.correction_request %} ve düzeltme talebi{% endif %}</summary><ul class="list">
+  {% for m in lot_movements %}<li>{{ m.at|date:"d.m.Y H:i" }} · {{ m.get_kind_display }} · {{ m.lot.code }} {{ m.lot.material.code }} {{ m.quantity|qty }} {{ m.lot.material.unit }}{% if m.reason %} · {{ m.reason }}{% endif %}
+    {% if can.correction_request and m.kind == "uretime_cikis" %}<a href="{% url 'corrections:correction_create' 'malzeme_cikis' m.pk %}?geri={{ request.path|urlencode }}">Düzeltme talebi</a>{% elif can.correction_request and m.kind == "iade" %}<a href="{% url 'corrections:correction_create' 'malzeme_iade' m.pk %}?geri={{ request.path|urlencode }}">Düzeltme talebi</a>{% endif %}</li>
+  {% endfor %}</ul></details>{% endif %}
 </section>
 <section class="card"><h2>Bobinler</h2>
   <div class="table-wrap"><table class="table compact"><thead><tr><th>Bobin</th><th>Op.</th><th>Makine</th><th>Ağırlık</th><th>Kalan</th><th>Kalite</th><th>Durum</th></tr></thead><tbody>

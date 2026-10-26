@@ -279,13 +279,20 @@ class MaterialKind(models.TextChoices):
     ADDITIVE = "katki", "Katkı"
 
 
+class MaterialUnit(models.TextChoices):
+    KG = "kg", "kg"
+    LITRE = "lt", "litre"
+    PIECE = "adet", "adet"
+
+
 class Material(models.Model):
-    """Hammadde/katkı tanımı (fiziksel lot değil)."""
+    """Hammadde/katkı tanımı (fiziksel lot değil). Birim ilk hareketten sonra değiştirilemez;
+    kapanış dengesi yalnız kg birimli malzemeyle kurulur, diğer birimler ayrı listelenir."""
 
     code = models.CharField("Malzeme kodu", max_length=30, unique=True)
     name = models.CharField("Malzeme adı", max_length=200)
     kind = models.CharField("Tür", max_length=20, choices=MaterialKind.choices)
-    unit = models.CharField("Birim", max_length=10, default="kg")
+    unit = models.CharField("Birim", max_length=10, choices=MaterialUnit.choices, default=MaterialUnit.KG)
     is_active = models.BooleanField("Aktif", default=True)
 
     objects = ActiveQuerySet.as_manager()

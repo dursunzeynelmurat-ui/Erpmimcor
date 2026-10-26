@@ -21,6 +21,9 @@ CUSTOMER_PATHS = {
     "warehouse.shipment": "order__customer",
     "warehouse.shipmentline": "shipment__order__customer",
     "corrections.correctionrequest": "customer",
+    "catalog.lotmovement": "work_order__product__customer",
+    "warehouse.palletmovement": "pallet__product__customer",
+    "warehouse.palletweighing": "pallet__product__customer",
 }
 # Model → iş emrine giden yol ("" = modelin kendisi iş emri)
 WORK_ORDER_PATHS = {
@@ -28,6 +31,10 @@ WORK_ORDER_PATHS = {
     "production.workorderoperation": "work_order",
     "production.coil": "work_order",
     "warehouse.pallet": "work_order",
+    "corrections.correctionrequest": "work_order",
+    "catalog.lotmovement": "work_order",
+    "warehouse.palletmovement": "pallet__work_order",
+    "warehouse.palletweighing": "pallet__work_order",
 }
 # Model → operasyona giden yol (makine/vardiya kapsamı için)
 OPERATION_PATHS = {
@@ -35,6 +42,10 @@ OPERATION_PATHS = {
     "production.workorderoperation": "",
     "production.coil": "operation",
     "warehouse.pallet": "work_order__operations",
+    "corrections.correctionrequest": "work_order__operations",
+    "catalog.lotmovement": "work_order__operations",
+    "warehouse.palletmovement": "pallet__work_order__operations",
+    "warehouse.palletweighing": "pallet__work_order__operations",
 }
 
 

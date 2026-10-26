@@ -8,8 +8,8 @@ from accounts.scope import customer_in_scope
 from core.exceptions import BusinessRuleError
 from core.services import audit, diff, next_code
 
-from .models import (Customer, LotMovement, LotMovementKind, Machine, Material, MaterialLot, Product, Recipe,
-                     RecipeComponent, RecipeRevision)
+from .models import (Customer, LotMovement, LotMovementKind, Machine, Material, MaterialLot, MaterialUnit, Product,
+                     Recipe, RecipeComponent, RecipeRevision)
 
 # Model → (oluşturma yetkisi, değiştirme yetkisi)
 DEFINITION_PERMS = {
@@ -35,6 +35,8 @@ def create_definition(actor, model, data):
             raise BusinessRuleError("Bu müşteriye erişiminiz yok.", field="customer")
         if data.get("units_per_box") is not None and data["units_per_box"] <= 0:
             raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
+    if model is Material:
+        _validate_material_unit(data.get("unit", MaterialUnit.KG))
     obj = model.objects.create(**data)
     audit(actor, f"{model._meta.model_name}.create", obj, {k: (None, v) for k, v in data.items()})
     return obj
@@ -51,6 +53,11 @@ def update_definition(actor, obj, data, reason=""):
         raise BusinessRuleError(f"Şu alanlar sonradan değiştirilemez: {', '.join(sorted(blocked & set(changes)))}")
     if model is Product and data.get("units_per_box") is not None and data["units_per_box"] <= 0:
         raise BusinessRuleError("Kutu içi adet sıfırdan büyük olmalı.", field="units_per_box")
+    if model is Material and "unit" in changes:
+        _validate_material_unit(data["unit"])
+        if LotMovement.objects.filter(lot__material=obj).exists():
+            raise BusinessRuleError("Hareket görmüş malzemenin birimi değiştirilemez (miktarlar eski birimle kayıtlı). "
+                                    "Yeni birim için yeni malzeme kodu açın.", field="unit")
     for field, (_, new) in changes.items():
         setattr(obj, field, new)
     obj.save()
@@ -76,6 +83,27 @@ def set_active(actor, obj, active, reason):
     return obj
 
 
+def _validate_material_unit(unit):
+    if unit not in MaterialUnit.values:
+        raise BusinessRuleError(f"Malzeme birimi şunlardan biri olmalı: {', '.join(MaterialUnit.values)}.", field="unit")
+
+
+SPEC_POSITIVE = (("width_mm", "En"), ("thickness_micron", "Kalınlık"), ("length_m", "Rulo boyu"))
+
+
+def validate_spec(spec, components):
+    """Reçete/teknik bilgi doğrulaması: ölçüler pozitif, her oran 0–100 arası, toplam %100."""
+    for field, label in SPEC_POSITIVE:
+        value = spec.get(field)
+        if value is None and field != "length_m":
+            raise BusinessRuleError(f"{label} zorunludur.", field=field)
+        if value is not None and value <= 0:
+            raise BusinessRuleError(f"{label} sıfırdan büyük olmalı.", field=field)
+    for material, pct in components:
+        if pct is None or Decimal(pct) <= 0 or Decimal(pct) > 100:
+            raise BusinessRuleError(f"{material.code} oranı 0 ile 100 arasında olmalı.")
+
+
 # --- Reçete revizyonları -------------------------------------------------------------
 
 @transaction.atomic
@@ -90,6 +118,7 @@ def create_revision(actor, product, spec, components, reason=""):
         raise BusinessRuleError("Pasif ürüne reçete revizyonu açılamaz.")
     if not components:
         raise BusinessRuleError("En az bir reçete bileşeni girilmelidir.")
+    validate_spec(spec, components)
     materials = [m for m, _ in components]
     if len(set(m.pk for m in materials)) != len(materials):
         raise BusinessRuleError("Aynı malzeme reçetede iki kez yer alamaz.")

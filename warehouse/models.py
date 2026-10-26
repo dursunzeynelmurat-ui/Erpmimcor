@@ -85,6 +85,7 @@ class MovementKind(models.TextChoices):
     COUNT_ADJUST = "sayim_duzeltme", "Sayım düzeltmesi"
     DAMAGE_OUT = "hasar_ayirma", "Hasarlı ürün ayırma (çıkış)"
     DAMAGE_IN = "hasar_girisi", "Hasarlı ürün paleti (giriş)"
+    CORRECTION = "duzeltme", "Onaylı üretim kaydı düzeltmesi"
 
 
 class PalletMovement(models.Model):

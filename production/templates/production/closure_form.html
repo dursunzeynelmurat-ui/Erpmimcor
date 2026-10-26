@@ -3,7 +3,9 @@
 <h1>{{ title }}</h1>
 <section class="card"><h2>Malzeme dengesi (hesaplanan)</h2>
 <dl class="kv">
-  <dt>Net verilen malzeme</dt><dd>{{ summary.issued|qty }} kg</dd>
+  <dt>Net verilen malzeme (kg birimli)</dt><dd>{{ summary.issued|qty }} kg</dd>
+  {% if summary.other_units %}<dt>Diğer birimler (dengeye katılmaz)</dt><dd>{% for u, q in summary.other_units.items %}{{ q|qty }} {{ u }}{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+  {% if summary.deviations %}<dt>Reçete dışı malzeme</dt><dd>{% for d in summary.deviations %}{{ d.material.code }} {{ d.lot_movement.quantity|qty }} ({{ d.approved_by.full_name }}: {{ d.reason }}){% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}
   <dt>Sağlam çıktı (son operasyon)</dt><dd>{{ summary.good|qty }} kg · {{ summary.boxes }} kutu palette</dd>
   <dt>Blokeli çıktı</dt><dd>{{ summary.blocked|qty }} kg</dd>
   <dt>Ara stokta kalan bobin</dt><dd>{{ summary.wip|qty }} kg</dd>
