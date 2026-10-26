@@ -7,7 +7,7 @@ from core.forms import IdemForm
 from core.templatetags.mimcor import qty
 from core.models import QualityStatus, ValueSource
 
-from .models import Coil, CoilStatus
+from .models import Coil, CoilStatus, StopReason
 
 DEC = forms.NumberInput(attrs={"step": "any", "inputmode": "decimal"})
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
@@ -164,3 +164,54 @@ class ClosureForm(IdemForm):
 class CoilQualityForm(IdemForm):
     quality_status = forms.ChoiceField(label="Kalite durumu", choices=QualityStatus.choices)
     reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))
+
+
+class ScheduleForm(IdemForm):
+    planned_date = forms.DateField(label="Planlanan tarih", widget=DATE, required=False)
+    shift = forms.ModelChoiceField(label="Vardiya", queryset=None, required=False)
+    machine = forms.ModelChoiceField(label="Makine", queryset=Machine.objects.none())
+    queue_position = forms.IntegerField(label="Çalışma sırası", min_value=1, required=False)
+    reason = forms.CharField(label="Not", required=False)
+
+    def __init__(self, op, *args, **kwargs):
+        from accounts.models import Shift
+        kwargs.setdefault("initial", {"planned_date": op.planned_date, "shift": op.shift_id, "machine": op.machine_id,
+                                      "queue_position": op.queue_position})
+        super().__init__(*args, **kwargs)
+        self.fields["shift"].queryset = Shift.objects.filter(is_active=True)
+        self.fields["machine"].queryset = Machine.objects.active().filter(machine_type=op.machine_type)
+
+
+class StopForm(IdemForm):
+    reason = forms.ChoiceField(label="Duruş nedeni", choices=[("", "Seçin")] + list(StopReason.choices))
+    note = forms.CharField(label="Açıklama", required=False)
+
+
+class HandoverForm(IdemForm):
+    to_shift = forms.ModelChoiceField(label="Devralan vardiya", queryset=None)
+    remaining_note = forms.CharField(label="Kalan iş", help_text="Ör. 2 bobin daha, yaklaşık 140 kg.")
+    machine_side_material = forms.CharField(label="Makine başındaki malzeme", required=False,
+                                            widget=forms.Textarea(attrs={"rows": 2}))
+    notes = forms.CharField(label="Devir notu", required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(self, *args, **kwargs):
+        from accounts.models import Shift
+        super().__init__(*args, **kwargs)
+        self.fields["to_shift"].queryset = Shift.objects.filter(is_active=True)
+
+
+class WorkOrderEditForm(WorkOrderForm):
+    sync_revision = forms.BooleanField(label="Reçete revizyonunu kalemin onaylı revizyonuna eşitle", required=False)
+    reason = forms.CharField(label="Değişiklik gerekçesi", required=False)
+
+    def __init__(self, wo, *args, **kwargs):
+        ops = list(wo.operations.order_by("seq"))
+        initial = {"target_quantity": wo.target_quantity, "unit": wo.unit, "planned_start": wo.planned_start,
+                   "notes": wo.notes, "foreman": wo.assigned_foreman_id}
+        for i, op in enumerate(ops, start=1):
+            initial[f"machine_{i}"] = op.machine_id
+        kwargs.setdefault("initial", initial)
+        super().__init__(*args, **kwargs)
+        self.fields["unit"].disabled = True
+        if not wo.order_line_id:
+            del self.fields["sync_revision"]

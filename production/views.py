@@ -1,19 +1,22 @@
 from django.core.paginator import Paginator
+from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
-from core.forms import ConfirmForm
+from core.forms import ConfirmForm, ReasonForm
 from core.services import history_for
 from core.viewutils import run_form_action
 from orders.models import OrderLine
 
-from . import services
+from . import instructions, lifecycle, services
 from catalog.models import MaterialLot
 
-from .forms import ClosureForm, CoilForm, CoilQualityForm, MaterialMoveForm, PalletFromProductionForm, WorkOrderForm
-from .models import Coil, WorkOrder, WorkOrderOperation, WorkOrderStatus
+from .forms import (ClosureForm, CoilForm, CoilQualityForm, HandoverForm, MaterialMoveForm, PalletFromProductionForm,
+                    ScheduleForm, StopForm, WorkOrderEditForm, WorkOrderForm)
+from .models import Coil, ShiftHandover, StopReason, WorkInstruction, WorkOrder, WorkOrderOperation, WorkOrderStatus
 
 
 def _wo_url(wo):
@@ -55,8 +58,12 @@ def workorder_list(request):
     check(request.user, "workorder.view")
     status = request.GET.get("durum", "aktif")
     qs = scoped(WorkOrder.objects.all(), request.user, "workorder.view").select_related("product__customer", "order_line__order").prefetch_related("operations__machine")
+    if status != "arsiv":
+        qs = qs.filter(archived_at__isnull=True)
     if status == "aktif":
         qs = qs.filter(status__in=[WorkOrderStatus.PLANNED, WorkOrderStatus.STARTED])
+    elif status == "arsiv":
+        qs = qs.filter(archived_at__isnull=False)
     elif status in WorkOrderStatus.values:
         qs = qs.filter(status=status)
     page = Paginator(qs.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
@@ -65,13 +72,40 @@ def workorder_list(request):
 
 def workorder_detail(request, pk):
     wo = get_scoped_or_404(WorkOrder.objects.select_related(
-        "product__customer", "order_line__order", "recipe_revision", "created_by", "started_by"),
+        "product__customer", "order_line__order", "order_line__approved_revision", "recipe_revision", "created_by",
+        "started_by", "released_by", "assigned_foreman"),
         request.user, "workorder.view", pk=pk)
-    ops = wo.operations.select_related("machine", "started_by", "finished_by")
+    user = request.user
+    ops = list(wo.operations.select_related("machine", "started_by", "finished_by", "shift", "work_order")
+               .prefetch_related("instructions", "stops"))
+    op_rows = []
+    for op in ops:
+        ins = list(op.instructions.all())
+        op_rows.append({
+            "op": op,
+            "tech": instructions.technical_info(op) if instructions.can_view_technical(user, op) else None,
+            "can_hold": can(user, "production.hold", op), "can_schedule": can(user, "workorder.schedule", op),
+            "can_print": can(user, "instruction.print", op),
+            "current_instruction": next((i for i in ins if i.status == "gecerli"), None),
+            "void_instructions": [i for i in ins if i.status != "gecerli"],
+            "open_stop": next((s for s in op.stops.all() if s.ended_at is None), None),
+        })
+    conflicts = [c for c in (lifecycle.revision_conflict(wo), lifecycle.quantity_conflict(wo)) if c] \
+        if wo.status in lifecycle.OPEN_STATUSES else []
     return render(request, "production/workorder_detail.html", {
-        "wo": wo, "operations": ops, "confirm_form": ConfirmForm(),
-        "can_execute": can(request.user, "production.execute", wo),
-        "components": wo.recipe_revision.components.select_related("material"),
+        "wo": wo, "operations": ops, "op_rows": op_rows, "confirm_form": ConfirmForm(),
+        "can_execute": can(user, "production.execute", wo),
+        "can_release": can(user, "workorder.release", wo), "can_edit": can(user, "workorder.create", wo),
+        "can_cancel": can(user, "workorder.cancel", wo),
+        "can_hold_any": any(r["can_hold"] for r in op_rows),
+        "moved": lifecycle.has_movements(wo), "conflicts": conflicts,
+        "open_statuses": list(lifecycle.OPEN_STATUSES), "floor_statuses": list(instructions.OPEN_FOR_FLOOR),
+        "final_statuses": [WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED],
+        "stop_reasons": StopReason.choices, "tech_labels": instructions.TECH_LABELS,
+        "remaining": lifecycle.remaining_target(wo),
+        "components": (wo.recipe_revision.components.select_related("material") if can(user, "recipe.view") else None),
+        "handovers": ShiftHandover.objects.filter(operation__work_order=wo).select_related(
+            "operation", "from_shift", "to_shift", "created_by", "acknowledged_by"),
         "coils": wo.coils.select_related("operation", "machine").order_by("operation__seq", "created_at"),
         "pallets": wo.pallets.all(),
         "issued": services.issued_by_lot(wo),
@@ -216,3 +250,171 @@ def workorder_close(request, pk):
     return _wo_page(request, wo, form, "kapanış", "İş emrini kapat", template="production/closure_form.html",
                     extra={"summary": services.closure_summary(wo),
                            "issued": services.issued_by_lot(wo)})
+
+
+# --- Aşama 2: yaşam döngüsü, planlama, duruş, devir, talimat ------------------------------
+
+def _post_action(request, obj_url, form, action, fn, message):
+    resp = run_form_action(request, form, action=action, fn=fn, success_message=message, url_for=lambda _: obj_url)
+    return resp or redirect(obj_url)
+
+
+@require_POST
+@require_perm("workorder.release")
+def workorder_release(request, pk):
+    wo = _get_wo(request, pk)
+    return _post_action(request, _wo_url(wo), ConfirmForm(request.POST), "workorder.release",
+                        lambda d: lifecycle.release(request.user, wo), "İş emri serbest bırakıldı.")
+
+
+@require_POST
+@require_perm("workorder.release")
+def workorder_withdraw(request, pk):
+    wo = _get_wo(request, pk)
+    return _post_action(request, _wo_url(wo), ReasonForm(request.POST), "workorder.withdraw",
+                        lambda d: lifecycle.withdraw(request.user, wo, d["reason"]),
+                        "İş emri taslağa geri çekildi; basılı talimatlar sistemde geçersiz işaretlendi.")
+
+
+@require_POST
+@require_perm("workorder.cancel")
+def workorder_cancel(request, pk):
+    wo = _get_wo(request, pk)
+    return _post_action(request, _wo_url(wo), ReasonForm(request.POST), "workorder.cancel",
+                        lambda d: lifecycle.cancel(request.user, wo, d["reason"]), "İş emri iptal edildi.")
+
+
+@require_POST
+@require_perm("workorder.create")
+def workorder_archive(request, pk):
+    wo = _get_wo(request, pk)
+    return _post_action(request, _wo_url(wo), ConfirmForm(request.POST), "workorder.archive",
+                        lambda d: lifecycle.archive(request.user, wo), "İş emri arşivlendi.")
+
+
+@require_perm("workorder.create")
+def workorder_edit(request, pk):
+    wo = _get_wo(request, pk)
+    form = WorkOrderEditForm(wo, request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(
+            request, form, action="workorder.update",
+            fn=lambda d: lifecycle.update_draft(request.user, wo, target_quantity=d["target_quantity"],
+                                                planned_start=d["planned_start"], notes=d["notes"],
+                                                foreman=d["foreman"], machines=d["machines"],
+                                                sync_revision=d.get("sync_revision", False), reason=d["reason"]),
+            success_message="Taslak iş emri güncellendi.", url_for=_wo_url)
+        if resp:
+            return resp
+    return render(request, "production/workorder_form.html", {"form": form, "line": wo.order_line, "edit_wo": wo})
+
+
+def operation_schedule(request, pk):
+    op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order", "machine"), request.user,
+                           "workorder.schedule", pk=pk)
+    form = ScheduleForm(op, request.POST or None)
+    affected = None
+    if request.method == "POST":
+        if form.is_valid():
+            affected = list(lifecycle.machine_queue(form.cleaned_data["machine"], form.cleaned_data["planned_date"],
+                                                    form.cleaned_data["shift"], exclude=op))
+        resp = run_form_action(
+            request, form, action="operation.schedule",
+            fn=lambda d: lifecycle.schedule_operation(request.user, op, planned_date=d["planned_date"], shift=d["shift"],
+                                                      machine=d["machine"], queue_position=d["queue_position"],
+                                                      reason=d["reason"])[0],
+            success_message=lambda o: "Operasyon planı kaydedildi." + (
+                f" Aynı makine/vardiyada {len(affected)} başka iş var; sıraları kontrol edin." if affected else ""),
+            url_for=lambda o: _wo_url(o.work_order))
+        if resp:
+            return resp
+    queue = lifecycle.machine_queue(op.machine, exclude=op)[:20]
+    return render(request, "production/operation_schedule.html", {"op": op, "form": form, "queue": queue})
+
+
+@require_POST
+def operation_hold(request, pk, action):
+    op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order"), request.user, "workorder.view", pk=pk)
+    url = _wo_url(op.work_order)
+    if action == "durdur":
+        return _post_action(request, url, StopForm(request.POST), "operation.stop",
+                            lambda d: lifecycle.stop_operation(request.user, op, d["reason"], d["note"]),
+                            "Operasyon durduruldu; makine boşa çıktı.")
+    if action == "devam":
+        return _post_action(request, url, ConfirmForm(request.POST), "operation.resume",
+                            lambda d: lifecycle.resume_operation(request.user, op), "Operasyon devam ediyor.")
+    raise Http404
+
+
+def handover_create(request, op_pk):
+    op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order", "machine"), request.user,
+                           "production.hold", pk=op_pk)
+    form = HandoverForm(request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(
+            request, form, action="operation.handover",
+            fn=lambda d: lifecycle.create_handover(request.user, op, to_shift=d["to_shift"],
+                                                   remaining_note=d["remaining_note"],
+                                                   machine_side_material=d["machine_side_material"], notes=d["notes"]),
+            success_message="Vardiya devri kaydedildi.", url_for=lambda h: _wo_url(op.work_order) + "#devirler")
+        if resp:
+            return resp
+    return render(request, "production/handover_form.html", {"form": form, "op": op,
+                                                             "coils": lifecycle.handover_snapshot(op)})
+
+
+@require_POST
+def handover_ack(request, pk):
+    h = get_object_or_404(ShiftHandover.objects.select_related("operation__work_order"), pk=pk)
+    get_scoped_or_404(WorkOrderOperation.objects.all(), request.user, "production.hold", pk=h.operation_id)
+    url = _wo_url(h.operation.work_order) + "#devirler"
+    return _post_action(request, url, ConfirmForm(request.POST), "operation.handover_ack",
+                        lambda d: lifecycle.acknowledge_handover(request.user, h), "Devir teslim alındı.")
+
+
+@require_POST
+def instruction_print(request, op_pk):
+    op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order"), request.user, "instruction.print",
+                           pk=op_pk)
+    resp = run_form_action(request, ConfirmForm(request.POST), action="instruction.print",
+                           fn=lambda d: instructions.issue_for_print(request.user, op),
+                           success_message=lambda i: f"Talimat sürüm {i.version} basım için hazır.",
+                           url_for=lambda i: reverse("production:instruction_view", args=[i.pk]) + "?yazdir=1")
+    return resp or redirect(_wo_url(op.work_order))
+
+
+def instruction_view(request, pk):
+    ins = get_object_or_404(WorkInstruction.objects.select_related("operation__work_order", "created_by"), pk=pk)
+    op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order"), request.user, "instruction.view",
+                           pk=ins.operation_id)
+    if not instructions.can_view_technical(request.user, op):
+        raise PermissionDenied("İş emri açık değil; talimat içeriğine erişim kapandı.")
+    last_print = ins.prints.select_related("user").order_by("-at").first()
+    return render(request, "production/instruction_print.html", {
+        "ins": ins, "s": ins.snapshot, "tech_labels": instructions.TECH_LABELS, "last_print": last_print,
+        "current": op.instructions.filter(status="gecerli").first(), "acks": ins.acks.select_related("user"),
+        "do_print": request.GET.get("yazdir") == "1",
+    })
+
+
+@require_POST
+def instruction_ack(request, pk, kind):
+    ins = get_object_or_404(WorkInstruction, pk=pk)
+    get_scoped_or_404(WorkOrderOperation.objects.all(), request.user, "instruction.view", pk=ins.operation_id)
+    url = reverse("production:instruction_view", args=[pk])
+    return _post_action(request, url, ConfirmForm(request.POST), "instruction.ack",
+                        lambda d: instructions.acknowledge(request.user, ins, kind), "Kaydınız alındı.")
+
+
+def floor_plan(request):
+    """Ustabaşı planı: planlama kuyruğu (tarih/vardiya/sıra) ile fiili çalışma durumu ayrı gösterilir."""
+    check(request.user, "workorder.view")
+    ops = (scoped(WorkOrderOperation.objects.filter(work_order__status__in=lifecycle.OPEN_STATUSES)
+                  .exclude(status="tamamlandi"), request.user, "workorder.view")
+           .select_related("work_order__product", "machine", "shift")
+           .order_by("machine__code", "planned_date", "shift__start_time", "queue_position", "pk"))
+    machines = {}
+    for op in ops:
+        machines.setdefault(op.machine, []).append(op)
+    running = {m: next((o for o in lst if o.status == "devam_ediyor"), None) for m, lst in machines.items()}
+    return render(request, "production/floor_plan.html", {"machines": machines, "running": running})

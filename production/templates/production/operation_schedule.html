@@ -1,0 +1,15 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ op.code }} plan{% endblock %}
+{% block content %}
+<h1>Operasyon planı: {{ op.code }}</h1>
+<p class="muted">{{ op.get_machine_type_display }} · {{ op.work_order.product }} · Bu ekran planlama kuyruğudur; makinenin fiilî çalışma durumu ayrıca gösterilir ve tek aktif iş kuralı başlatmada uygulanır.</p>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Planı kaydet</button><a class="btn" href="{% url 'production:workorder_detail' op.work_order.pk %}">Geri</a></div>
+</form>
+<section class="card"><h2>{{ op.machine.code }} kuyruğu (diğer açık işler)</h2>
+<div class="table-wrap"><table class="table compact"><thead><tr><th>İş emri</th><th>Op.</th><th>Tarih</th><th>Vardiya</th><th>Sıra</th><th>Durum</th></tr></thead><tbody>
+{% for o in queue %}<tr><td>{{ o.work_order.code }}</td><td>{{ o.seq }}</td><td>{{ o.planned_date|date:"d.m.Y"|default:"—" }}</td><td>{{ o.shift|default:"—" }}</td><td>{{ o.queue_position|default:"—" }}</td><td><span class="status status-{{ o.status }}">{{ o.get_status_display }}</span></td></tr>
+{% empty %}<tr><td colspan="6" class="muted">Bu makinede başka açık iş yok.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% endblock %}

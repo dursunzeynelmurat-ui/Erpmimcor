@@ -92,6 +92,9 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         expect(page.locator('[name=customer_ref]')).to_have_value(reference)
         page.locator('[name=quantity]').fill(str(qty))
         self.submit(page, 'Siparişi kaydet')
+        expect(page.locator('h1')).to_contain_text('Taslak')
+        self.submit(page, 'Siparişi onayla')
+        expect(page.locator('h1')).to_contain_text('Onaylandı')
         return SalesOrder.objects.get(customer_ref=reference)
 
     def shipment(self, depot, order, quantity):
@@ -149,6 +152,7 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         planner.locator('[name=machine_2]').select_option(str(Machine.objects.get(code='PER-01').pk))
         planner.locator('[name=foreman]').select_option(str(User.objects.get(personnel_no='4001').pk))
         self.submit(planner, 'İş emrini oluştur')
+        self.submit(planner, 'Serbest bırak')
         wo = WorkOrder.objects.get(order_line=line)
         op1, op2 = list(wo.operations.order_by('seq'))
         self.go(foreman, f'/is-emirleri/{wo.pk}/')

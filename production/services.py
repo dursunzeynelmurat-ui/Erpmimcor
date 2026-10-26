@@ -74,8 +74,14 @@ def _lock_wo(wo):
 def start_work_order(actor, wo):
     check(actor, "production.execute", wo)
     wo = _lock_wo(wo)
+    if wo.status == WorkOrderStatus.DRAFT:
+        raise BusinessRuleError("İş emri taslak; planlama serbest bırakmadan üretim başlatılamaz.")
     if wo.status != WorkOrderStatus.PLANNED:
         raise BusinessRuleError(f"İş emri zaten '{wo.get_status_display()}' durumunda.")
+    from .lifecycle import revision_conflict
+    conflict = revision_conflict(wo)
+    if conflict:
+        raise BusinessRuleError(conflict)
     wo.status = WorkOrderStatus.STARTED
     wo.started_at = timezone.now()
     wo.started_by = actor
@@ -89,9 +95,11 @@ def start_work_order(actor, wo):
 
 
 def _start_op(actor, op):
-    op = WorkOrderOperation.objects.select_for_update().get(pk=op.pk)
+    from .lifecycle import lock_machine_free
+    op = WorkOrderOperation.objects.select_for_update().select_related("machine").get(pk=op.pk)
     if op.status != OperationStatus.WAITING:
         raise BusinessRuleError("Operasyon zaten başlatılmış.")
+    lock_machine_free(op)
     op.status = OperationStatus.RUNNING
     op.started_at = timezone.now()
     op.started_by = actor

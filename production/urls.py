@@ -19,3 +19,18 @@ urlpatterns += [
     path("is-emirleri/<int:pk>/palet/", views.pallet_from_production, name="pallet_from_production"),
     path("is-emirleri/<int:pk>/kapat/", views.workorder_close, name="workorder_close"),
 ]
+urlpatterns += [
+    path("is-emirleri/<int:pk>/serbest-birak/", views.workorder_release, name="workorder_release"),
+    path("is-emirleri/<int:pk>/geri-cek/", views.workorder_withdraw, name="workorder_withdraw"),
+    path("is-emirleri/<int:pk>/iptal/", views.workorder_cancel, name="workorder_cancel"),
+    path("is-emirleri/<int:pk>/arsivle/", views.workorder_archive, name="workorder_archive"),
+    path("is-emirleri/<int:pk>/duzenle/", views.workorder_edit, name="workorder_edit"),
+    path("operasyon/<int:pk>/plan/", views.operation_schedule, name="operation_schedule"),
+    path("operasyon/<int:pk>/durum/<str:action>/", views.operation_hold, name="operation_hold"),
+    path("operasyon/<int:op_pk>/devir/", views.handover_create, name="handover_create"),
+    path("devir/<int:pk>/teslim-al/", views.handover_ack, name="handover_ack"),
+    path("operasyon/<int:op_pk>/talimat/bas/", views.instruction_print, name="instruction_print"),
+    path("talimat/<int:pk>/", views.instruction_view, name="instruction_view"),
+    path("talimat/<int:pk>/onay/<str:kind>/", views.instruction_ack, name="instruction_ack"),
+    path("uretim-plani/", views.floor_plan, name="floor_plan"),
+]

@@ -102,3 +102,15 @@ class ApproveLineForm(IdemForm):
         self.fields["revision"].initial = qs.first()
         self.fields["revision"].label_from_instance = lambda r: (
             f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})")
+
+
+class LineChangeForm(IdemForm):
+    quantity = forms.DecimalField(label="Yeni miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
+    due_date = forms.DateField(label="Kalem termini", widget=DATE, required=False)
+    reason = forms.CharField(label="Değişiklik gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
+                             help_text="Onaylı siparişte zorunlu (ör. müşteri miktarı 500'den 400'e düşürdü).")
+    confirm_impacts = forms.BooleanField(label="Etkilenen kayıtları gördüm; değişikliği kaydet", required=False)
+
+    def __init__(self, line, *args, **kwargs):
+        kwargs.setdefault("initial", {"quantity": line.quantity, "due_date": line.due_date})
+        super().__init__(*args, **kwargs)

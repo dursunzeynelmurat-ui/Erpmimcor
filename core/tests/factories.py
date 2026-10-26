@@ -19,6 +19,19 @@ def user(role, no=None):
         no, PASSWORD, full_name=f"Test {role}", role=role)
 
 
+def complete_card(actor, customer, tax_id):
+    """Sipariş onayı ve sevkiyat için müşteri kartını kurgusal bilgilerle tamamlar."""
+    from catalog import customers as cs
+    cs.update_customer(actor, customer, {"tax_id_type": "vkn", "tax_id": tax_id, "tax_office": "Kurgu VD",
+                                         "currency": "TRY", "payment_method": "havale", "payment_term_days": 30,
+                                         "delivery_terms": "musteri"})
+    cs.save_contact(actor, customer, {"name": "Kurgu Kişi", "department": "", "email": "", "phone": "",
+                                      "is_primary": True, "is_active": True})
+    cs.save_address(actor, customer, {"purpose": "her_ikisi", "name": "Merkez", "country": "TR", "region": "",
+                                      "city": "Kurgu", "postal_code": "", "line": "Kurgu Sok. 1", "default_billing": True,
+                                      "default_shipping": True, "is_active": True})
+
+
 class World:
     """Bir müşteri, iki ürün (iki farklı müşteride), makineler, malzemeler, reçete."""
 
@@ -32,8 +45,9 @@ class World:
         self.cust_a = cat.create_definition(a, Customer, {"code": "C-A", "name": "Kurgu A"})
         self.cust_b = cat.create_definition(a, Customer, {"code": "C-B", "name": "Kurgu B"})
         from catalog import customers as cs
-        for c in (self.cust_a, self.cust_b):
+        for i, c in enumerate((self.cust_a, self.cust_b)):
             cs.grant_access(a, c, self.sales, timezone.localdate(), None, "Test")
+            complete_card(a, c, f"99900001{i}{i}")
         self.prod_a = cat.create_definition(a, Product, {"code": "A-FILM", "customer": self.cust_a, "name": "Film",
                                                          "unit": Unit.BOX})
         self.prod_b = cat.create_definition(a, Product, {"code": "B-FILM", "customer": self.cust_b, "name": "Film",
@@ -54,22 +68,36 @@ class World:
     def mix(self):
         return [(self.ldpe, D("98")), (self.slip, D("2"))]
 
-    def order(self, product=None, qty=D("50"), customer=None):
+    def order(self, product=None, qty=D("50"), customer=None, draft=False):
         from orders import services as orders
         product = product or self.prod_a
-        return orders.create_order(self.sales, customer=customer or product.customer, order_date=timezone.localdate(),
-                                   lines=[{"product": product, "quantity": qty, "unit": Unit.BOX}])
+        order = orders.create_order(self.sales, customer=customer or product.customer, order_date=timezone.localdate(),
+                                    lines=[{"product": product, "quantity": qty, "unit": Unit.BOX}])
+        return order if draft else orders.approve_order(self.sales, order)
 
     def approved_line(self, **kw):
         from orders import services as orders
         line = self.order(**kw).lines.get()
         return orders.approve_line(self.planner, line, line.product.current_revision)
 
+    def free_extruder(self):
+        """Tek aktif iş kuralı gereği aynı anda çalışan test işleri için boş bir extruder (gerekirse yenisi)."""
+        from production.models import OperationStatus
+        busy = set(Machine.objects.filter(operations__status=OperationStatus.RUNNING).values_list("pk", flat=True))
+        for m in Machine.objects.filter(machine_type=MachineType.EXTRUDER, is_active=True).order_by("pk"):
+            if m.pk not in busy:
+                return m
+        n = Machine.objects.filter(machine_type=MachineType.EXTRUDER).count() + 1
+        return cat.create_definition(self.admin, Machine, {"code": f"E{n}", "name": f"Ext {n}",
+                                                           "machine_type": MachineType.EXTRUDER})
+
     def work_order(self, line=None, machines=None, qty=D("50")):
         from production import services as prod
         line = line or self.approved_line()
-        return prod.create_work_order(self.planner, order_line=line, machines=machines or [self.ext, self.prn],
-                                      target_quantity=qty, unit=Unit.BOX, foreman=self.foreman)
+        from production import lifecycle
+        wo = prod.create_work_order(self.planner, order_line=line, machines=machines or [self.free_extruder(), self.prn],
+                                    target_quantity=qty, unit=Unit.BOX, foreman=self.foreman)
+        return lifecycle.release(self.planner, wo)
 
     # --- M2 yardımcıları ---------------------------------------------------------
     def started_wo(self, product=None, line=None, machines=None, stock=False):
@@ -77,8 +105,10 @@ class World:
         product = product or self.prod_a
         if stock:
             wo = prod.create_work_order(self.planner, product=product, revision=product.current_revision,
-                                        machines=machines or [self.ext], target_quantity=D("40"), unit=Unit.BOX,
+                                        machines=machines or [self.free_extruder()], target_quantity=D("40"), unit=Unit.BOX,
                                         foreman=self.foreman)
+            from production import lifecycle
+            lifecycle.release(self.planner, wo)
         else:
             wo = self.work_order(line=line or self.approved_line(product=product), machines=machines or [self.ext])
         prod.start_work_order(self.foreman, wo)

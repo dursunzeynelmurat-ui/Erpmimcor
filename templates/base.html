@@ -18,7 +18,8 @@
       {% if can.order_view %}<a href="{% url 'orders:order_list' %}">Siparişler</a>
       <a href="{% url 'orders:progress_list' %}">Üretim ilerlemesi</a>{% endif %}
       {% if can.planning_approve %}<a href="{% url 'orders:planning_queue' %}">Planlama</a>{% endif %}
-      {% if can.workorder_view %}<a href="{% url 'production:workorder_list' %}">İş emirleri</a>{% endif %}
+      {% if can.workorder_view %}<a href="{% url 'production:workorder_list' %}">İş emirleri</a>
+      <a href="{% url 'production:floor_plan' %}">Üretim planı</a>{% endif %}
       {% block nav_extra %}{% include "partials/nav_warehouse.html" %}{% endblock %}
       <span class="nav-sep">Tanımlar</span>
       {% if can.customer_view %}<a href="{% url 'catalog:customer_list' %}">Müşteriler</a>{% endif %}

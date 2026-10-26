@@ -1,37 +1,72 @@
 {% extends "base.html" %}{% load mimcor %}
 {% block title %}{{ wo.code }}{% endblock %}
 {% block content %}
-<h1>İş emri {{ wo.code }} <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span></h1>
-{% if can_execute and wo.status == "planlandi" %}
-  {% url 'production:workorder_start' wo.pk as start_url %}
-  {% include "partials/confirm_button.html" with action=start_url label="Üretimi başlat" %}
+<h1>İş emri {{ wo.code }} <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span>{% if wo.archived_at %} <span class="status">Arşivde</span>{% endif %}</h1>
+{% for c in conflicts %}<div class="conflict" role="status"><strong>Çelişki:</strong> {{ c }}</div>{% endfor %}
+<div class="actions no-print">
+{% if wo.status == "taslak" %}
+  {% if can_release %}{% url 'production:workorder_release' wo.pk as u %}{% include "partials/confirm_button.html" with action=u label="Serbest bırak" %}{% endif %}
+  {% if can_edit %}<a class="btn" href="{% url 'production:workorder_edit' wo.pk %}">Taslağı düzenle</a>{% endif %}
 {% endif %}
-{% if can_execute and wo.status == "basladi" %}<div class="actions"><a class="btn btn-primary" href="#uretim-kayitlari">Bobin / malzeme / palet kaydı</a><a class="btn" href="#operasyonlar">Operasyon işlemleri</a></div>{% endif %}
+{% if wo.status == "planlandi" %}
+  {% if can_execute %}{% url 'production:workorder_start' wo.pk as start_url %}{% include "partials/confirm_button.html" with action=start_url label="Üretimi başlat" %}{% endif %}
+  {% if can_release and not moved %}{% url 'production:workorder_withdraw' wo.pk as u %}{% include "partials/reason_button.html" with action=u label="Düzenleme için geri çek" hint="Basılmış talimatlar sistemde geçersiz işaretlenir; kâğıtları sahadan toplayın." %}{% endif %}
+{% endif %}
+{% if can_execute and wo.status == "basladi" %}<a class="btn btn-primary" href="#uretim-kayitlari">Bobin / malzeme / palet kaydı</a><a class="btn" href="#operasyonlar">Operasyon işlemleri</a>{% endif %}
+{% if can_cancel and wo.status in open_statuses %}{% url 'production:workorder_cancel' wo.pk as u %}{% include "partials/reason_button.html" with action=u label="İş emrini iptal et" btn_class="btn-danger" hint="Başlamış işte verilen malzeme iade edilmeli, bobinler palete alınmış veya blokelenmiş olmalıdır." %}{% endif %}
+{% if can_edit and wo.status in final_statuses and not wo.archived_at %}{% url 'production:workorder_archive' wo.pk as u %}{% include "partials/confirm_button.html" with action=u label="Arşivle" btn_class="btn" %}{% endif %}
+</div>
 <dl class="kv card">
   <dt>Amaç</dt><dd>{{ wo.get_purpose_display }}{% if wo.order_line %} – <a href="{% url 'orders:order_detail' wo.order_line.order.pk %}">{{ wo.order_line.code }}</a>{% endif %}</dd>
   <dt>Ürün</dt><dd>{{ wo.product }} ({{ wo.product.customer.name }})</dd>
-  <dt>Hedef</dt><dd>{{ wo.target_quantity|qty }} {{ wo.get_unit_display }}</dd>
-  <dt>Reçete</dt><dd>Rev.{{ wo.recipe_revision.rev_no }} · {{ wo.recipe_revision.width_mm|qty }} mm · {{ wo.recipe_revision.thickness_micron|qty }} µ
-     ({% for c in components %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %})</dd>
+  <dt>Hedef</dt><dd>{{ wo.target_quantity|qty }} {{ wo.get_unit_display }}{% if remaining is not None %} · kalan {{ remaining|qty }} {{ wo.get_unit_display }}{% endif %}</dd>
+  <dt>Teknik revizyon</dt><dd>Rev.{{ wo.recipe_revision.rev_no }} · {{ wo.recipe_revision.width_mm|qty }} mm · {{ wo.recipe_revision.thickness_micron|qty }} µ
+     {% if components is not None %}({% for c in components %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}){% else %}<small class="muted">· karışım bilgisi yalnız ilgili operasyonun talimatında</small>{% endif %}</dd>
+  <dt>Sorumlu ustabaşı</dt><dd>{{ wo.assigned_foreman.full_name|default:"— (atanmadı)" }}</dd>
   <dt>Planlanan başlangıç</dt><dd>{{ wo.planned_start|date:"d.m.Y"|default:"—" }}</dd>
   <dt>Aşama</dt><dd>{{ wo.stage_display }}</dd>
+  {% if wo.released_at %}<dt>Serbest bırakan</dt><dd>{{ wo.released_by.full_name }} · {{ wo.released_at|date:"d.m.Y H:i" }}</dd>{% endif %}
   {% if wo.started_at %}<dt>Başlatan</dt><dd>{{ wo.started_by.full_name }} · {{ wo.started_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  {% if wo.cancel_reason %}<dt>İptal gerekçesi</dt><dd>{{ wo.cancel_reason }}</dd>{% endif %}
   {% if wo.notes %}<dt>Not</dt><dd>{{ wo.notes }}</dd>{% endif %}
 </dl>
 
 <section class="card" id="operasyonlar"><h2>Operasyonlar</h2>
-<ul class="ops list">{% for op in operations %}
+<ul class="ops list">{% for row in op_rows %}{% with op=row.op %}
   <li class="op op-{{ op.status }}">
     <div><strong>{{ op.seq }}. {{ op.get_machine_type_display }}</strong> · {{ op.machine.code }} {{ op.machine.name }}
       <span class="status status-{{ op.status }}">{{ op.get_status_display }}</span></div>
+    <div class="op-plan">Plan: {{ op.planned_date|date:"d.m.Y"|default:"tarih yok" }} · {{ op.shift|default:"vardiya yok" }}{% if op.queue_position %} · sıra {{ op.queue_position }}{% endif %}</div>
     {% if op.started_at %}<small>Başladı: {{ op.started_at|date:"d.m.Y H:i" }} ({{ op.started_by.full_name }})</small>{% endif %}
     {% if op.finished_at %}<small> · Bitti: {{ op.finished_at|date:"d.m.Y H:i" }} ({{ op.finished_by.full_name }})</small>{% endif %}
+    {% if row.open_stop %}<div class="conflict">Duruş: {{ row.open_stop.get_reason_display }}{% if row.open_stop.note %} – {{ row.open_stop.note }}{% endif %} ({{ row.open_stop.started_at|date:"d.m.Y H:i" }})</div>{% endif %}
+    {% if row.tech %}<details><summary>Bu operasyonun teknik bilgisi</summary><dl class="kv">{% for k, v in row.tech.items %}{% if k == "karisim" %}<dt>Karışım</dt><dd>{% for m in v %}{{ m.malzeme }} %{{ m.oran }}{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% elif v %}<dt>{{ tech_labels|get_item:k|default:k }}</dt><dd>{{ v }}</dd>{% endif %}{% endfor %}</dl></details>{% endif %}
+    <div class="actions no-print">
     {% if can_execute and wo.status == "basladi" %}
       {% if op.status == "bekliyor" %}{% url 'production:operation_action' op.pk 'baslat' as u %}{% include "partials/confirm_button.html" with action=u label="Operasyonu başlat" btn_class="btn" %}{% endif %}
       {% if op.status == "devam_ediyor" %}{% url 'production:operation_action' op.pk 'tamamla' as u %}{% include "partials/confirm_button.html" with action=u label="Operasyonu tamamla" btn_class="btn" %}{% endif %}
     {% endif %}
+    {% if row.can_hold and wo.status == "basladi" %}
+      {% if op.status == "devam_ediyor" %}{% url 'production:operation_hold' op.pk 'durdur' as u %}{% include "partials/reason_button.html" with action=u label="Durdur" choices=stop_reasons choices_label="Duruş nedeni" %}{% endif %}
+      {% if op.status == "durduruldu" %}{% url 'production:operation_hold' op.pk 'devam' as u %}{% include "partials/confirm_button.html" with action=u label="Devam ettir" btn_class="btn" %}{% endif %}
+      {% if op.status == "devam_ediyor" or op.status == "durduruldu" %}<a class="btn" href="{% url 'production:handover_create' op.pk %}">Vardiya devri</a>{% endif %}
+    {% endif %}
+    {% if row.can_schedule and op.status == "bekliyor" and wo.status in open_statuses %}<a class="btn" href="{% url 'production:operation_schedule' op.pk %}">Tarih / vardiya / makine</a>{% endif %}
+    {% if row.can_print and wo.status in floor_statuses %}{% url 'production:instruction_print' op.pk as u %}{% include "partials/confirm_button.html" with action=u label="Makine talimatı yazdır" btn_class="btn" %}{% endif %}
+    {% if row.current_instruction and row.tech %}<a class="btn" href="{% url 'production:instruction_view' row.current_instruction.pk %}">Talimat {{ row.current_instruction.version }}. sürüm</a>{% endif %}
+    </div>
+    {% if row.void_instructions %}<small class="muted">Geçersiz talimat sürümleri: {% for i in row.void_instructions %}{{ i.version }} ({{ i.get_status_display }}){% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}
   </li>
-{% endfor %}</ul></section>
+{% endwith %}{% endfor %}</ul></section>
+
+{% if handovers %}<section class="card" id="devirler"><h2>Vardiya devirleri</h2>
+<ul class="list">{% for h in handovers %}<li>
+  <strong>{{ h.operation.seq }}. op.</strong> {{ h.from_shift|default:"—" }} → {{ h.to_shift }} · {{ h.created_by.full_name }} · {{ h.created_at|date:"d.m.Y H:i" }}<br>
+  Kalan iş: {{ h.remaining_note }}{% if h.machine_side_material %}<br>Makine başı: {{ h.machine_side_material }}{% endif %}{% if h.notes %}<br>Not: {{ h.notes }}{% endif %}
+  {% if h.open_coils %}<br><small>Açık bobinler: {% for c in h.open_coils %}{{ c.code }} ({{ c.remaining_kg }} kg){% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}
+  <br>{% if h.acknowledged_at %}<span class="status status-uygun">Teslim alındı: {{ h.acknowledged_by.full_name }} · {{ h.acknowledged_at|date:"d.m.Y H:i" }}</span>
+  {% elif can_hold_any %}{% url 'production:handover_ack' h.pk as u %}{% include "partials/confirm_button.html" with action=u label="Devri teslim aldım" btn_class="btn" %}{% else %}<span class="status">Teslim bekliyor</span>{% endif %}
+</li>{% endfor %}</ul></section>{% endif %}
 {% include "partials/workorder_extra.html" %}
 {% include "partials/history.html" %}
 {% endblock %}

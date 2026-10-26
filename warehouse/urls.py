@@ -21,5 +21,6 @@ urlpatterns = [
     path("sevkiyatlar/siparis/<int:order_pk>/yeni/", views.shipment_create, name="shipment_create"),
     path("sevkiyatlar/<int:pk>/", views.shipment_detail, name="shipment_detail"),
     path("sevkiyatlar/<int:pk>/onayla/", views.shipment_confirm, name="shipment_confirm"),
+    path("sevkiyatlar/<int:pk>/iptal/", views.shipment_cancel, name="shipment_cancel"),
     path("sevkiyat-satiri/<int:pk>/cikar/", views.shipment_line_remove, name="shipment_line_remove"),
 ]

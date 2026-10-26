@@ -9,5 +9,5 @@
 <section class="card"><h2>Rezervasyonlar ve sevkiyatlar</h2>
 <ul class="list">{% for r in reservations %}<li>{{ r.code }}: <a href="{% url 'warehouse:pallet_detail' r.pallet.pk %}">{{ r.pallet.code }}</a> → {{ r.order_line.code }} · {{ r.quantity }} kutu (sevk {{ r.shipped_quantity }}) <span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></li>{% empty %}<li class="muted">Rezervasyon yok.</li>{% endfor %}</ul>
 <ul class="list">{% for s in shipments %}<li><a href="{% url 'warehouse:shipment_detail' s.pk %}">{{ s.code }}</a> <span class="status status-{{ s.status }}">{{ s.get_status_display }}</span> {{ s.shipped_at|date:"d.m.Y H:i" }}</li>{% endfor %}</ul>
-{% if can.shipment_manage and order.status == "acik" %}<a class="btn" href="{% url 'warehouse:shipment_create' order.pk %}">Sevkiyat oluştur</a>{% endif %}
+{% if can.shipment_manage and order.status in "acik kismi_sevk" %}<a class="btn" href="{% url 'warehouse:shipment_create' order.pk %}">Sevkiyat oluştur</a>{% endif %}
 </section>

@@ -1,14 +1,26 @@
 {% extends "base.html" %}{% load mimcor %}
 {% block title %}{{ order.code }}{% endblock %}
 {% block content %}
-<h1>Sipariş {{ order.code }}</h1>
+<h1>Sipariş {{ order.code }} <span class="status status-{{ order.status }}">{{ order.get_status_display }}</span>{% if order.archived_at %} <span class="status">Arşivde</span>{% endif %}</h1>
+<div class="actions no-print">
+  {% if order.status == "taslak" %}
+    {% if can_approve %}{% url 'orders:order_approve' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Siparişi onayla" %}{% endif %}
+    {% if can_change %}{% url 'orders:order_delete' order.pk as u %}{% include "partials/reason_button.html" with action=u label="Taslağı sil" btn_class="btn-danger" hint="Yalnız iş emri/rezervasyon/sevkiyatı olmayan taslak silinir; içerik işlem geçmişinde kalır." %}{% endif %}
+  {% endif %}
+  {% if can_create %}{% url 'orders:order_copy' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Tekrar sipariş (kopya)" btn_class="btn" %}{% endif %}
+  {% if can_cancel and order.status != "iptal" and order.status != "tamamlandi" %}{% url 'orders:order_cancel' order.pk as u %}{% include "partials/reason_button.html" with action=u label="Siparişi iptal et" btn_class="btn-danger" hint="Sevk edilmemiş kalemler iptal edilir ve rezervasyonları bırakılır. Açık iş emri olan kalem için önce iş emri iptal edilmelidir." %}{% endif %}
+  {% if can_change and not order.archived_at %}{% if order.status == "iptal" or order.status == "tamamlandi" %}{% url 'orders:order_archive' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Arşivle" btn_class="btn" %}{% endif %}{% endif %}
+</div>
+{% if order.status == "taslak" %}<p class="msg msg-warning">Taslak sipariş: planlama ve üretim görmez. Kalemleri kontrol edip onaylayın.</p>{% endif %}
 <dl class="kv card">
   <dt>Müşteri</dt><dd>{{ order.customer }}</dd>
   <dt>Müşteri ref.</dt><dd>{{ order.customer_ref|default:"—" }}</dd>
   <dt>Sipariş tarihi</dt><dd>{{ order.order_date|date:"d.m.Y" }}</dd>
   <dt>Termin</dt><dd>{{ order.due_date|date:"d.m.Y"|default:"—" }}</dd>
   <dt>Oluşturan</dt><dd>{{ order.created_by.full_name }} · {{ order.created_at|date:"d.m.Y H:i" }}</dd>
-  <dt>Durum</dt><dd>{{ order.get_status_display }}</dd>
+  {% if order.approved_at %}<dt>Onaylayan</dt><dd>{{ order.approved_by.full_name }} · {{ order.approved_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  {% if order.copied_from %}<dt>Kopya kaynağı</dt><dd><a href="{% url 'orders:order_detail' order.copied_from.pk %}">{{ order.copied_from.code }}</a></dd>{% endif %}
+  {% if order.cancel_reason %}<dt>İptal gerekçesi</dt><dd>{{ order.cancel_reason }}</dd>{% endif %}
   {% if order.notes %}<dt>Not</dt><dd>{{ order.notes }}</dd>{% endif %}
 </dl>
 <section class="card"><h2>Teslimat ve ticari koşullar <span class="muted">· sipariş anındaki kopya</span></h2>
@@ -21,7 +33,7 @@
 <h2>Kalemler</h2>
 {% for p in progress %}{% include "orders/_progress_card.html" with show_actions=True %}{% endfor %}
 {% include "partials/order_extra.html" %}
-{% if form and order.status == "acik" %}
+{% if form and order.status in "taslak acik kismi_sevk" %}
 <form method="post" class="card form" novalidate>{% csrf_token %}<h2>Kalem ekle</h2>
   {% include "partials/form_fields.html" %}<button type="submit" class="btn btn-primary">Kalemi ekle</button></form>
 {% endif %}

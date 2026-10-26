@@ -13,7 +13,8 @@ class WorkOrderPurpose(models.TextChoices):
 
 
 class WorkOrderStatus(models.TextChoices):
-    PLANNED = "planlandi", "Planlandı"
+    DRAFT = "taslak", "Taslak"
+    PLANNED = "planlandi", "Serbest bırakıldı"
     STARTED = "basladi", "Üretimde"
     CLOSED = "kapatildi", "Kapatıldı"
     CANCELLED = "iptal", "İptal"
@@ -31,7 +32,11 @@ class WorkOrder(models.Model):
     unit = models.CharField("Birim", max_length=10, choices=Unit.choices, default=Unit.BOX)
     planned_start = models.DateField("Planlanan başlangıç", null=True, blank=True)
     notes = models.TextField("Not", blank=True)
-    status = models.CharField(max_length=20, choices=WorkOrderStatus.choices, default=WorkOrderStatus.PLANNED)
+    status = models.CharField(max_length=20, choices=WorkOrderStatus.choices, default=WorkOrderStatus.DRAFT)
+    released_at = models.DateTimeField(null=True, blank=True)
+    released_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    cancel_reason = models.TextField("İptal gerekçesi", blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     assigned_foreman = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
                                          related_name="assigned_work_orders", verbose_name="Sorumlu ustabaşı")
     assigned_at = models.DateTimeField(null=True, blank=True)
@@ -81,6 +86,7 @@ class WorkOrder(models.Model):
 class OperationStatus(models.TextChoices):
     WAITING = "bekliyor", "Bekliyor"
     RUNNING = "devam_ediyor", "Devam ediyor"
+    STOPPED = "durduruldu", "Duruşta"
     DONE = "tamamlandi", "Tamamlandı"
 
 
@@ -178,3 +184,92 @@ class WorkOrderClosure(models.Model):
     reason = models.TextField("Gerekçe", blank=True)
     closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     closed_at = models.DateTimeField(auto_now_add=True)
+
+
+class StopReason(models.TextChoices):
+    BREAKDOWN = "ariza", "Arıza"
+    MATERIAL = "malzeme", "Malzeme bekleme"
+    MAINTENANCE = "bakim", "Planlı bakım"
+    QUALITY = "kalite", "Kalite sorunu"
+    SETUP = "ayar", "Ayar / kalıp değişimi"
+    SHIFT = "vardiya", "Vardiya sonu"
+    OTHER = "diger", "Diğer"
+
+
+class OperationStop(models.Model):
+    operation = models.ForeignKey(WorkOrderOperation, on_delete=models.PROTECT, related_name="stops")
+    reason = models.CharField("Duruş nedeni", max_length=10, choices=StopReason.choices)
+    note = models.TextField("Açıklama", blank=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    started_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+
+    class Meta:
+        ordering = ["-started_at"]
+
+
+class ShiftHandover(models.Model):
+    """Vardiya devri: kalan iş, kaynak bobinler ve makine başı malzeme kayıt anındaki hâliyle saklanır."""
+
+    operation = models.ForeignKey(WorkOrderOperation, on_delete=models.PROTECT, related_name="handovers")
+    from_shift = models.ForeignKey("accounts.Shift", on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    to_shift = models.ForeignKey("accounts.Shift", on_delete=models.PROTECT, related_name="+", verbose_name="Devralan vardiya")
+    remaining_note = models.CharField("Kalan iş", max_length=200)
+    open_coils = models.JSONField(default=list)
+    machine_side_material = models.TextField("Makine başındaki malzeme", blank=True)
+    notes = models.TextField("Devir notu", blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    acknowledged_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    acknowledged_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class InstructionStatus(models.TextChoices):
+    CURRENT = "gecerli", "Geçerli"
+    SUPERSEDED = "guncellendi", "Güncellendi – geçersiz"
+    CANCELLED = "iptal", "İptal – geçersiz"
+
+
+class WorkInstruction(models.Model):
+    """Makineye özel iş talimatı sürümü. İçerik değişince yeni sürüm açılır, eskisi geçersiz işaretlenir.
+    Basılmış kâğıt sistemden geri alınamaz; yalnız sistemde geçersiz olduğu görünür."""
+
+    operation = models.ForeignKey(WorkOrderOperation, on_delete=models.PROTECT, related_name="instructions")
+    version = models.PositiveIntegerField()
+    content_hash = models.CharField(max_length=64)
+    snapshot = models.JSONField()
+    status = models.CharField(max_length=12, choices=InstructionStatus.choices, default=InstructionStatus.CURRENT)
+    status_reason = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    status_changed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["operation", "-version"]
+        constraints = [models.UniqueConstraint(fields=["operation", "version"], name="uniq_instruction_version")]
+
+    @property
+    def code(self):
+        return f"{self.operation.code}/T{self.version}"
+
+
+class InstructionPrint(models.Model):
+    instruction = models.ForeignKey(WorkInstruction, on_delete=models.PROTECT, related_name="prints")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    at = models.DateTimeField(auto_now_add=True)
+
+
+class AckKind(models.TextChoices):
+    SEEN = "gordum", "Gördüm"
+    RECEIVED = "teslim_aldim", "İşi/talimatı teslim aldım"
+
+
+class InstructionAck(models.Model):
+    instruction = models.ForeignKey(WorkInstruction, on_delete=models.PROTECT, related_name="acks")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    kind = models.CharField(max_length=15, choices=AckKind.choices)
+    at = models.DateTimeField(auto_now_add=True)

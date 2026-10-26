@@ -120,9 +120,10 @@ class Command(BaseCommand):
 
         if not SalesOrder.objects.exists():
             sales = User.objects.get(personnel_no="2001")
-            orders.create_order(sales, customer=customers["M-DENEME"], order_date=timezone.localdate(),
-                                customer_ref="DT-PO-1001 (kurgusal)",
-                                lines=[{"product": products["DEN-PF-030"], "quantity": D("60"), "unit": Unit.BOX}])
+            order = orders.create_order(sales, customer=customers["M-DENEME"], order_date=timezone.localdate(),
+                                        customer_ref="DT-PO-1001 (kurgusal)",
+                                        lines=[{"product": products["DEN-PF-030"], "quantity": D("60"), "unit": Unit.BOX}])
+            orders.approve_order(sales, order)  # örnek sipariş onaylı; yeni siparişler taslak açılır
 
     def seed_stock_pallet(self, product, materials):
         """Demo B başlangıcı: müşteri stoğu için üretilmiş, kabul edilmiş, uygun, 40 kutulu palet."""
@@ -141,6 +142,13 @@ class Command(BaseCommand):
         wo = prod.create_work_order(planner, product=product, revision=product.current_revision, machines=[ext, per],
                                     target_quantity=D("40"), unit=Unit.BOX, notes="Müşteri stoğu (kurgusal demo)",
                                     foreman=foreman)
+        from accounts.models import Shift
+        from production import lifecycle
+        shift = Shift.objects.filter(code="V1").first()
+        for op in wo.operations.order_by("seq"):
+            lifecycle.schedule_operation(foreman, op, planned_date=timezone.localdate(), shift=shift, machine=op.machine,
+                                         queue_position=1)
+        lifecycle.release(planner, wo)
         prod.start_work_order(foreman, wo)
         lot = materials["HM-LDPE"].lots.first()
         prod.issue_material(foreman, wo, lot, D("130"))

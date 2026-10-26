@@ -1,0 +1,8 @@
+{% load mimcor %}<details class="inline-reason"><summary class="btn {{ btn_class|default:'' }}">{{ label }}</summary>
+<form method="post" action="{{ action }}" class="card form">{% csrf_token %}{% idem_input %}
+  {% if choices %}<div class="field"><label>{{ choices_label|default:"Neden" }}<select name="reason" required><option value="">Seçin</option>{% for v, l in choices %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label></div>
+  <div class="field"><label>Açıklama<input name="note" type="text"></label></div>
+  {% else %}<div class="field"><label>Gerekçe (zorunlu)<textarea name="reason" rows="2" required></textarea></label></div>{% endif %}
+  {% if hint %}<p class="muted">{{ hint }}</p>{% endif %}
+  <button type="submit" class="btn btn-primary">{{ submit|default:label }}</button>
+</form></details>

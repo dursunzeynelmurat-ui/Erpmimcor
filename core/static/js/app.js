@@ -151,3 +151,7 @@
     });
   });
 })();
+
+// Talimat çıktısı: yazdır düğmesi ve basım talebinden sonra otomatik yazdırma penceresi
+document.querySelectorAll('[data-print]').forEach(function (b) { b.addEventListener('click', function () { window.print(); }); });
+if (document.querySelector('[data-autoprint]')) { window.addEventListener('load', function () { window.print(); }); }

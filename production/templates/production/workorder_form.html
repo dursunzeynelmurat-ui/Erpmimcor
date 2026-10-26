@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% load mimcor %}
-{% block title %}Yeni iş emri{% endblock %}
+{% block title %}{% if edit_wo %}{{ edit_wo.code }} düzenle{% else %}Yeni iş emri{% endif %}{% endblock %}
 {% block content %}
-<h1>{% if line %}İş emri: {{ line.code }}{% else %}Müşteri stoğu için iş emri{% endif %}</h1>
+<h1>{% if edit_wo %}Taslak iş emrini düzenle: {{ edit_wo.code }}{% elif line %}İş emri: {{ line.code }}{% else %}Müşteri stoğu için iş emri{% endif %}</h1>
 {% if line %}
 <dl class="kv card"><dt>Ürün</dt><dd>{{ line.product }}</dd><dt>Müşteri</dt><dd>{{ line.order.customer.name }}</dd>
 <dt>Sipariş miktarı</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
@@ -17,6 +17,10 @@
   <h2>Operasyon sırası ve makine ataması</h2>
   {% for field in form.machine_fields %}{% include "partials/field.html" %}{% endfor %}
   {% with field=form.notes %}{% include "partials/field.html" %}{% endwith %}
-  <button type="submit" class="btn btn-primary">İş emrini oluştur</button>
+  {% if edit_wo %}{% if form.sync_revision %}{% with field=form.sync_revision %}{% include "partials/field.html" %}{% endwith %}{% endif %}
+  {% with field=form.reason %}{% include "partials/field.html" %}{% endwith %}
+  <p class="muted">Birim değiştirilemez. Talimat basılmışsa operasyon listesi değiştirilemez; makine değişikliği operasyon planından yapılır.</p>
+  <div class="actions"><button type="submit" class="btn btn-primary">Değişiklikleri kaydet</button><a class="btn" href="{% url 'production:workorder_detail' edit_wo.pk %}">Geri</a></div>
+  {% else %}<button type="submit" class="btn btn-primary">İş emrini oluştur</button>{% endif %}
 </form>
 {% endblock %}

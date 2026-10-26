@@ -108,6 +108,8 @@ def definition_edit(request, kind, pk):
            "back": reverse("catalog:definition_list", args=[kind])}
     if kind == "urunler" and can(request.user, "recipe.view"):
         ctx["recipe"] = Recipe.objects.filter(product=obj).first()
+    elif kind == "urunler":  # reçete revizyon kayıtları (karışım oranları) yetkisiz kullanıcıya gösterilmez; silinmez
+        ctx["history"] = ctx["history"].exclude(action__startswith="recipe.")
     return render(request, "catalog/definition_edit.html", ctx)
 
 

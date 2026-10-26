@@ -1,8 +1,11 @@
+from datetime import timedelta
+
 from django.core.paginator import Paginator
 import segno
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_POST
 
@@ -205,8 +208,23 @@ def shipment_list(request):
     shipments = scoped(Shipment.objects.all(), request.user, "shipment.view").select_related("order__customer").prefetch_related("lines")
     if request.GET.get("musteri", "").isdigit():
         shipments = shipments.filter(order__customer_id=request.GET["musteri"])
-    page = Paginator(shipments.order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
-    return render(request, "warehouse/shipment_list.html", {"shipments": page, "page_obj": page})
+    show_all = request.GET.get("durum") == "tumu"
+    if not show_all:  # iptal edilen ve boş bırakılmış taslaklar aktif listeyi kalabalıklaştırmaz
+        shipments = shipments.exclude(status=ShipmentStatus.CANCELLED).exclude(
+            status=ShipmentStatus.DRAFT, lines__isnull=True, created_at__lt=timezone.now() - timedelta(days=1))
+    page = Paginator(shipments.distinct().order_by("-created_at", "-pk"), 30).get_page(request.GET.get("page"))
+    return render(request, "warehouse/shipment_list.html", {"shipments": page, "page_obj": page, "show_all": show_all})
+
+
+@require_POST
+@require_perm("shipment.manage")
+def shipment_cancel(request, pk):
+    shipment = get_scoped_or_404(Shipment.objects.all(), request.user, "shipment.view", pk=pk)
+    url = reverse("warehouse:shipment_detail", args=[pk])
+    resp = run_form_action(request, ReasonForm(request.POST), action="shipment.cancel",
+                           fn=lambda d: services.cancel_shipment(request.user, shipment, d["reason"]),
+                           success_message="Sevkiyat iptal edildi; stok değişmedi.", url_for=lambda _: url)
+    return resp or redirect(url)
 
 
 @require_perm("shipment.manage")

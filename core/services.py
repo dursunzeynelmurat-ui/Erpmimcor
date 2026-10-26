@@ -91,3 +91,10 @@ def perform_once(*, user, key, action, fn, url_for=None):
             record.result_url = url
             record.save(update_fields=["result_url"])
     return OnceResult(value=value, duplicate=False, url=url)
+
+
+def num(value):
+    """Mesajlar için ondalık gösterimi: 40.000 → '40', 12.500 → '12.5' (bilimsel gösterim yok)."""
+    if value is None:
+        return ""
+    return format(value.normalize(), "f") if hasattr(value, "normalize") else str(value)

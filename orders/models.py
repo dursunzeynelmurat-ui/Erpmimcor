@@ -6,7 +6,9 @@ from catalog.models import QTY, Customer, Product, RecipeRevision, Unit
 
 
 class OrderStatus(models.TextChoices):
-    OPEN = "acik", "Açık"
+    DRAFT = "taslak", "Taslak"
+    OPEN = "acik", "Onaylandı (açık)"
+    PARTIAL = "kismi_sevk", "Kısmi sevk edildi"
     DONE = "tamamlandi", "Tamamlandı"
     CANCELLED = "iptal", "İptal"
 
@@ -26,7 +28,12 @@ class SalesOrder(models.Model):
     payment_term_days = models.PositiveIntegerField("Vade (gün)", null=True, blank=True)
     delivery_terms = models.CharField("Teslim şekli", max_length=20, blank=True)
     delivery_place = models.CharField("Teslim yeri", max_length=200, blank=True)
-    status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.OPEN)
+    status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.DRAFT)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    copied_from = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="copies")
+    cancel_reason = models.TextField("İptal gerekçesi", blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -62,6 +69,8 @@ class OrderLine(models.Model):
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     approved_at = models.DateTimeField(null=True, blank=True)
     planning_note = models.TextField("Planlama notu", blank=True)
+    needs_review = models.BooleanField("Kopyadan geldi; miktar/termin onayı bekliyor", default=False)
+    cancel_reason = models.TextField("İptal gerekçesi", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -22,5 +22,6 @@
 <ul class="list">{% for l in lines %}<li><strong>{{ l.quantity }} kutu</strong> · {{ l.pallet.code }} → {{ l.order_line.code }} · {{ l.order_line.product.code }}</li>{% endfor %}</ul>
 {% include "partials/confirm_button.html" with action=u label="Sevk et" %}</section>{% endif %}
 {% endif %}
+{% if shipment.status == "taslak" and can.shipment_manage %}{% url 'warehouse:shipment_cancel' shipment.pk as u %}<div class="actions no-print">{% include "partials/reason_button.html" with action=u label="Sevkiyatı iptal et" btn_class="btn-danger" hint="Stok düşmemiş taslak sevkiyat iptal edilir; satırlar serbest kalır, kayıt geçmişte korunur." %}</div>{% endif %}
 {% include "partials/history.html" %}
 {% endblock %}

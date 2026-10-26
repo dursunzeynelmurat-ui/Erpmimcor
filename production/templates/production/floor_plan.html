@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Üretim planı{% endblock %}
+{% block content %}
+<h1>Üretim planı</h1>
+<p class="muted">Planlama kuyruğu (tarih, vardiya, sıra) ile makinenin fiilî durumu ayrı gösterilir. Bir makinede aynı anda yalnız bir operasyon devam edebilir.</p>
+<div class="plan-grid">{% for machine, ops in machines.items %}
+<section class="card"><h2>{{ machine.code }} {{ machine.name }}</h2>
+  <p>Fiilî durum: {% with r=running|get_item:machine %}{% if r %}<span class="status status-devam_ediyor">Çalışıyor</span> <a href="{% url 'production:workorder_detail' r.work_order.pk %}">{{ r.work_order.code }}</a> ({{ r.seq }}. op.){% else %}<span class="status">Boşta</span>{% endif %}{% endwith %}</p>
+  <ol class="list">{% for o in ops %}<li><a href="{% url 'production:workorder_detail' o.work_order.pk %}">{{ o.work_order.code }}</a> · {{ o.seq }}. op. · {{ o.work_order.product.code }}
+    <span class="status status-{{ o.status }}">{{ o.get_status_display }}</span> <span class="status status-{{ o.work_order.status }}">{{ o.work_order.get_status_display }}</span><br>
+    <small>{{ o.planned_date|date:"d.m.Y"|default:"tarih yok" }} · {{ o.shift|default:"vardiya yok" }}{% if o.queue_position %} · sıra {{ o.queue_position }}{% endif %}</small></li>{% endfor %}</ol>
+</section>
+{% empty %}<p class="muted">Açık operasyon yok.</p>{% endfor %}</div>
+{% endblock %}

@@ -384,7 +384,7 @@ class ProductionPalletRequiresCoilTests(TestCase):
         self._assert_rejected(lambda: wh.create_pallet_from_production(self.w.foreman, self.wo, 10, coils=[foreign]))
 
     def test_intermediate_operation_coil_rejected(self):
-        wo = self.w.started_wo(machines=[self.w.ext, self.w.slit], stock=True)
+        wo = self.w.started_wo(machines=[self.w.free_extruder(), self.w.slit], stock=True)
         ext_coil = self.w.coil(wo)
         with self.assertRaisesMessage(BusinessRuleError, "son operasyon"):
             wh.create_pallet_from_production(self.w.foreman, wo, 10, coils=[ext_coil])
@@ -433,6 +433,7 @@ class UnitLimitTests(TestCase):
     def _line(self, unit, qty=D("10")):
         order = orders.create_order(self.w.sales, customer=self.w.cust_a, order_date=timezone.localdate(),
                                     lines=[{"product": self.w.prod_a, "quantity": qty, "unit": unit}])
+        order = orders.approve_order(self.w.sales, order)
         return order, order.lines.get()
 
     def test_non_box_units_cannot_be_reserved(self):
@@ -537,7 +538,7 @@ class CoilBlockShipmentTests(TestCase):
             wh.add_shipment_line(self.w.depot, shipment, res, 10)
 
     def test_upstream_source_coil_block_holds_pallet(self):
-        wo = self.w.started_wo(machines=[self.w.ext, self.w.slit], stock=True)
+        wo = self.w.started_wo(machines=[self.w.free_extruder(), self.w.slit], stock=True)
         ext_coil = self.w.coil(wo, D("100"))
         self.prod.start_operation(self.w.foreman, wo.operations.get(seq=2))
         out = self.w.coil(wo, D("90"), op_seq=2, sources=[(ext_coil, D("100"))])

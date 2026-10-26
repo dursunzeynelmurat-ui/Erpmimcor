@@ -12,8 +12,8 @@ from catalog.models import Unit
 from core.exceptions import BusinessRuleError
 from core.models import QualityStatus, ValueSource
 from core.services import audit, next_code
-from orders.models import LineStatus, OrderLine
-from orders.services import set_line_status
+from orders.models import LineStatus, OrderLine, OrderStatus
+from orders.services import refresh_order_status, set_line_status
 from production.models import Coil, CoilLink, CoilStatus, WorkOrder, WorkOrderStatus
 from production.services import final_operation
 
@@ -431,6 +431,8 @@ def reserve(actor, pallet, order_line, quantity):
                                 field="order_line")
     if line.status in (LineStatus.CANCELLED, LineStatus.SHIPPED):
         raise BusinessRuleError("Kapanmış kaleme ayırma yapılamaz.", field="order_line")
+    if line.order.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL):
+        raise BusinessRuleError("Sipariş onaylanmadan stok ayrılamaz.", field="order_line")
     if pallet.status == PalletStatus.EMPTY:
         raise BusinessRuleError("Boş paletten ayırma yapılamaz.")
     if pallet.quality_status == QualityStatus.BLOCKED:
@@ -473,6 +475,8 @@ def cancel_reservation(actor, reservation, reason):
 @transaction.atomic
 def create_shipment(actor, order, vehicle="", notes=""):
     check(actor, "shipment.manage")
+    if order.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL):
+        raise BusinessRuleError("Yalnız onaylı ve kapanmamış sipariş için sevkiyat hazırlanır.")
     shipment = Shipment.objects.create(code=next_code("SVK"), order=order, vehicle=vehicle, notes=notes, created_by=actor)
     audit(actor, "shipment.create", shipment, {"order": (None, order.code)})
     return shipment
@@ -485,7 +489,7 @@ def add_shipment_line(actor, shipment, reservation, quantity):
     shipment = Shipment.objects.select_for_update().get(pk=shipment.pk)
     if shipment.status != ShipmentStatus.DRAFT:
         raise BusinessRuleError("Sevk edilmiş sevkiyata satır eklenemez.")
-    res = Reservation.objects.select_for_update().select_related("order_line", "pallet").get(pk=reservation.pk)
+    res = Reservation.objects.select_for_update(of=("self",)).select_related("order_line", "pallet").get(pk=reservation.pk)
     if res.order_line.order_id != shipment.order_id:
         raise BusinessRuleError("Rezervasyon bu siparişe ait değil.", field="reservation")
     _require_box_unit(res.order_line, field="reservation")
@@ -533,7 +537,7 @@ def confirm_shipment(actor, shipment):
     # Kilit sırası: sevkiyat → paletler (pk sırası) → rezervasyonlar. Bobin satırları kilitlenmez, okunur:
     # bobin blokajı servisi bobin → palet sırasıyla kilitlediği için sevkle birlikte serileşir.
     pallets = {p.pk: p for p in _lock(*[ln.pallet for ln in lines])}
-    reservations = {r.pk: r for r in Reservation.objects.select_for_update().select_related("order_line")
+    reservations = {r.pk: r for r in Reservation.objects.select_for_update(of=("self",)).select_related("order_line")
                     .filter(pk__in=[ln.reservation_id for ln in lines]).order_by("pk")}
     # Önce tüm satırlar doğrulanır; tek bir satır bile uygun değilse hiçbir stok hareketi yazılmaz.
     for ln in lines:
@@ -571,4 +575,21 @@ def confirm_shipment(actor, shipment):
             s=Sum("quantity"))["s"] or 0
         if shipped >= line.quantity:
             set_line_status(actor, line, LineStatus.SHIPPED, reason=shipment.code)
+    refresh_order_status(actor, shipment.order)
+    return shipment
+
+
+@transaction.atomic
+def cancel_shipment(actor, shipment, reason):
+    """Hazırlanan (stok düşmemiş) sevkiyat iptal edilir; aktif listelerde atıl kalmaz, geçmişi korunur."""
+    if not reason:
+        raise BusinessRuleError("İptal gerekçesi zorunludur.", field="reason")
+    shipment = Shipment.objects.select_for_update(of=("self",)).select_related("order").get(pk=shipment.pk)
+    check(actor, "shipment.manage", shipment)
+    if shipment.status != ShipmentStatus.DRAFT:
+        raise BusinessRuleError("Yalnız hazırlanan sevkiyat iptal edilebilir.")
+    shipment.status = ShipmentStatus.CANCELLED
+    shipment.notes = (shipment.notes + f"\nİptal: {reason}").strip()
+    shipment.save()
+    audit(actor, "shipment.cancel", shipment, {"status": (ShipmentStatus.DRAFT, ShipmentStatus.CANCELLED)}, reason=reason)
     return shipment

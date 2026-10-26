@@ -132,7 +132,7 @@ def grant_role(actor, user, role, reason=""):
 @transaction.atomic
 def revoke_role(actor, assignment, reason):
     _lock_admin_changes()
-    ur = UserRole.objects.select_for_update().select_related("user", "role").get(pk=assignment.pk)
+    ur = UserRole.objects.select_for_update(of=("self",)).select_related("user", "role").get(pk=assignment.pk)
     mode = _check_manage_user(actor, ur.user)
     if ur.user_id == actor.pk:
         raise BusinessRuleError("Kendi rol atamanızı değiştiremezsiniz.")

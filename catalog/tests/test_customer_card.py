@@ -50,7 +50,13 @@ class CustomerCreateTests(TestCase):
 class ReadinessAndSnapshotTests(TestCase):
     def setUp(self):
         self.w = World()
-        self.c = self.w.cust_a
+        self.c = cs.create_customer(self.w.admin, {"code": "C-R", "name": "Hazırlık Kurgu Ltd.", "country": "TR"})
+        from catalog.models import Product, Unit
+        from catalog import services as cat
+        self.prod = cat.create_definition(self.w.admin, Product, {"code": "R-FILM", "customer": self.c, "name": "Film",
+                                                                  "unit": Unit.BOX})
+        cat.create_revision(self.w.planner, self.prod, self.w.spec(), self.w.mix())
+        cs.grant_access(self.w.admin, self.c, self.w.sales, timezone.localdate(), None, "test")
 
     def complete(self):
         cs.update_customer(self.w.admin, self.c, {"tax_id_type": "vkn", "tax_id": "9990000123", "tax_office": "K VD",
@@ -71,7 +77,7 @@ class ReadinessAndSnapshotTests(TestCase):
 
     def test_order_keeps_snapshot_after_card_change(self):
         address = self.complete()
-        order = self.w.order(product=self.w.prod_a)
+        order = self.w.order(product=self.prod)
         self.assertIn("A Sok. 1", order.shipping_address)
         self.assertEqual(order.payment_term_days, 30)
         cs.save_address(self.w.admin, self.c, {**{f: getattr(address, f) for f in (
@@ -95,7 +101,7 @@ class ReadinessAndSnapshotTests(TestCase):
     def test_po_required_enforced_on_order(self):
         cs.update_customer(self.w.admin, self.c, {"po_required": True})
         with self.assertRaisesMessage(BusinessRuleError, "PO"):
-            self.w.order(product=self.w.prod_a)
+            self.w.order(product=self.prod)
 
 
 class CommercialVisibilityTests(TestCase):

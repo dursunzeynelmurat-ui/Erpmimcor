@@ -6,6 +6,7 @@
   {% if can.order_create %}<a class="btn btn-primary" href="{% url 'orders:order_create' %}">Yeni sipariş</a>{% endif %}
   <form method="get" class="search"><input type="search" name="q" value="{{ q }}" aria-label="Sipariş no veya müşteri ara" placeholder="Sipariş no / müşteri"><button class="btn">Ara</button></form>
 </div>
+<nav class="filters"><a href="?" {% if not status %}class="active"{% endif %}>Tümü</a>{% for v, l in statuses %}<a href="?durum={{ v }}" {% if status == v %}class="active"{% endif %}>{{ l }}</a>{% endfor %}<a href="?durum=arsiv" {% if status == "arsiv" %}class="active"{% endif %}>Arşiv</a></nav>
 <div class="table-wrap"><table class="table table-responsive">
   <thead><tr><th>Sipariş no</th><th>Müşteri</th><th>Termin</th><th>Kalemler</th><th>Durum</th></tr></thead>
   <tbody>{% for o in orders %}<tr>

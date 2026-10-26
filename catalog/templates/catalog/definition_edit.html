@@ -2,7 +2,7 @@
 {% block content %}
 <h1>{{ title }}</h1>
 <p>{% if obj.is_active %}<span class="status status-uygun">Aktif</span>{% else %}<span class="status status-blokeli">Pasif</span>{% endif %}
-{% if kind == "urunler" %} · <a href="{% url 'catalog:recipe_detail' obj.pk %}">Reçete ve revizyonlar</a>{% endif %}</p>
+{% if kind == "urunler" and can.recipe_view %} · <a href="{% url 'catalog:recipe_detail' obj.pk %}">Reçete ve revizyonlar</a>{% endif %}</p>
 <form method="post" class="card form" novalidate>{% csrf_token %}
   {% include "partials/form_fields.html" %}
   <div class="actions">

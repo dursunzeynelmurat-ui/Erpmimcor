@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ line.code }} değiştir{% endblock %}
+{% block content %}
+<h1>Kalem değişikliği: {{ line.code }}</h1>
+<dl class="kv card"><dt>Ürün</dt><dd>{{ line.product }}</dd><dt>Mevcut miktar</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
+<dt>Sevk edilen</dt><dd>{{ shipped|qty }}</dd><dt>Termin</dt><dd>{{ line.due_date|date:"d.m.Y"|default:"—" }}</dd>
+{% if line.approved_revision %}<dt>Onaylı teknik revizyon</dt><dd>Rev.{{ line.approved_revision.rev_no }} (bu ekrandan değişmez)</dd>{% endif %}</dl>
+<section class="card"><h2>Etkilenecek kayıtlar</h2>
+{% if impacts %}<ul class="list">{% for i in impacts %}<li>{{ i }}</li>{% endfor %}</ul>
+<p class="muted">İş emri hedefi ve revizyonu kendiliğinden değişmez; planlama iş emrini geri çekip güncellemelidir.</p>
+{% else %}<p class="muted">Bağlı açık iş emri, rezervasyon veya hazırlanan sevkiyat yok.</p>{% endif %}</section>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Kaydet</button><a class="btn" href="{% url 'orders:order_detail' line.order.pk %}">Geri</a></div>
+</form>
+{% endblock %}

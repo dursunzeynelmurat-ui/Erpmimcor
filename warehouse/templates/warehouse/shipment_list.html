@@ -2,7 +2,7 @@
 {% block title %}Sevkiyatlar{% endblock %}
 {% block content %}
 <h1>Sevkiyatlar</h1>
-<p class="muted">Yeni sevkiyat sipariş sayfasından oluşturulur.</p>
+<p class="muted">Yeni sevkiyat sipariş sayfasından oluşturulur. {% if show_all %}<a href="?">Yalnız aktifleri göster</a>{% else %}İptal edilen ve bir günden eski boş taslaklar gizli · <a href="?durum=tumu">Tümünü göster</a>{% endif %}</p>
 <div class="table-wrap"><table class="table"><thead><tr><th>Sevkiyat</th><th>Sipariş</th><th>Müşteri</th><th>Satır</th><th>Durum</th><th>Sevk</th></tr></thead><tbody>
 {% for s in shipments %}<tr><td><a href="{% url 'warehouse:shipment_detail' s.pk %}">{{ s.code }}</a></td><td>{{ s.order.code }}</td><td>{{ s.order.customer.name }}</td>
 <td>{{ s.lines.all|length }}</td><td><span class="status status-{{ s.status }}">{{ s.get_status_display }}</span></td><td>{{ s.shipped_at|date:"d.m.Y H:i"|default:"—" }}</td></tr>

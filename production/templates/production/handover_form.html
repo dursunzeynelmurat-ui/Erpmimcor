@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Vardiya devri {{ op.code }}{% endblock %}
+{% block content %}
+<h1>Vardiya devri: {{ op.code }}</h1>
+<dl class="kv card"><dt>Makine</dt><dd>{{ op.machine.code }} {{ op.machine.name }}</dd><dt>Durum</dt><dd>{{ op.get_status_display }}</dd>
+<dt>Kayıt anındaki açık bobinler</dt><dd>{% for c in coils %}{{ c.code }} ({{ c.op }}. op., kalan {{ c.remaining_kg }} kg){% if not forloop.last %}, {% endif %}{% empty %}Yok{% endfor %}</dd></dl>
+<p class="muted">İş emri, kalan hedef ve kaynak bobinler korunur; devralan vardiya kaydı teslim aldığını ayrıca onaylar. Devri yapan kişi kendi devrini teslim alamaz.</p>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Devri kaydet</button><a class="btn" href="{% url 'production:workorder_detail' op.work_order.pk %}">Geri</a></div>
+</form>
+{% endblock %}

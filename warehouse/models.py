@@ -181,6 +181,7 @@ class Reservation(models.Model):
 class ShipmentStatus(models.TextChoices):
     DRAFT = "taslak", "Hazırlanıyor"
     SHIPPED = "sevk_edildi", "Sevk edildi"
+    CANCELLED = "iptal", "İptal"
 
 
 class Shipment(models.Model):

@@ -4,7 +4,8 @@
 <h1>İş emirleri</h1>
 <nav class="filters"><a href="?durum=aktif" {% if status == "aktif" %}class="active"{% endif %}>Aktif</a>
 {% for v, l in statuses %}<a href="?durum={{ v }}" {% if status == v %}class="active"{% endif %}>{{ l }}</a>{% endfor %}
-<a href="?durum=tumu" {% if status == "tumu" %}class="active"{% endif %}>Tümü</a></nav>
+<a href="?durum=tumu" {% if status == "tumu" %}class="active"{% endif %}>Tümü</a>
+<a href="?durum=arsiv" {% if status == "arsiv" %}class="active"{% endif %}>Arşiv</a>{% if can.workorder_view %} <a href="{% url 'production:floor_plan' %}">Üretim planı</a>{% endif %}</nav>
 <div class="cards">{% for wo in work_orders %}
 <a class="card link-card" href="{% url 'production:workorder_detail' wo.pk %}">
   <strong>{{ wo.code }}</strong> <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span><br>
