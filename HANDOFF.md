@@ -1,3 +1,28 @@
+# Operasyon genişletmesi — 26 Ekim 2026 (güncel)
+
+Branch: `feature/mimcor-operasyon-genisletme` (kaynak `design/mimcor-demo-2026-10-30` @ `5bc44c2`; merge/canlı yayın yok).
+Dört aşama ayrı commit'lerde: yönetilebilir yetki/kapsam + İK + müşteri erişimi + müşteri kartı; iş emri/sipariş yaşam
+döngüsü, ustabaşı planı, vardiya devri, makine talimatı; düzeltme talebi/onayı, kalite, 12 inceleme bulgusu;
+sevkiyat aşamaları ve QR yükleme kontrolü, geri alma, iade, etiket, stok seviyesi, iş listeleri.
+
+**Doğrulama:** 248/248 Django testi; 6/6 tarayıcı testi (Demo A/B, sipariş ürün filtresi, 4 saha senaryosu; 1440 px ve
+390 px **emülasyon — fiziksel telefon testi yapılmadı**). **Tarayıcı testleri CI'da çalışmaz**; CI yalnız Django testleri,
+`makemigrations --check` ve `seed_demo` çalıştırır. Yükseltme (orijinal demo DB kopyası, UAT DB kopyası) ve temiz kurulum
+ayrı ayrı denendi.
+
+Yetki matrisi, müşteri erişim kuralları, veri modeli/migration'lar, madde madde durum listesi (tamam/kısmi/yapılmadı),
+bulgu kanıtları, UAT senaryoları, varsayımlar ve riskler: **[docs/operasyon-genisletme.md](docs/operasyon-genisletme.md)**.
+
+Yeni ortam değişkenleri (`.env.example`): `APP_BASE_URL` (QR taban adresi), `CORRECTION_SELF_APPROVAL`, `MEDIA_ROOT`.
+Demo kullanıcıları (`seed_demo`, kurgusal): 1001 yönetici, 2001/2002 satış, 3001 planlama, 4001 ustabaşı (V1),
+4002 üretim yetkilisi, 4003 operatör (V1), 4004 kalite, 5001 depo, 5002 ambar yetkilisi, 6001 İK.
+
+Aşağıdaki "Bilinen eksikler" listesindeki şu maddeler bu çalışmayla **giderildi**: sipariş/kalem/iş emri iptali ve kalem
+miktar düzeltmesi; rezervasyonun kısmi azaltılması; işlem geçmişinde teknik alan adları (yeni alanlar Türkçe etiketli);
+adet/rulo üretim özetinin kutudan türetilmesi. Birim sınırı (rezervasyon/sevk yalnız kutu) **sürüyor**.
+
+---
+
 # UI/UX teslim güncellemesi — 26 Ekim 2026
 
 Tasarım branch’i: `design/mimcor-demo-2026-10-30`. Kaynak `ee86192` korunarak devam edildi.

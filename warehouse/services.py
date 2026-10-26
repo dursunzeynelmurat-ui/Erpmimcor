@@ -513,6 +513,8 @@ def cancel_reservation(actor, reservation, reason):
 @transaction.atomic
 def create_shipment(actor, order, vehicle="", notes=""):
     check(actor, "shipment.manage")
+    from orders.models import SalesOrder
+    order = SalesOrder.objects.select_for_update(of=("self",)).get(pk=order.pk)  # güncel durum (eski nesneye güvenme)
     if order.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL):
         raise BusinessRuleError("Yalnız onaylı ve kapanmamış sipariş için sevkiyat hazırlanır.")
     shipment = Shipment.objects.create(code=next_code("SVK"), order=order, vehicle=vehicle, notes=notes, created_by=actor)

@@ -6,7 +6,7 @@
 <h1>Makine iş talimatı {{ s.is_emri }} / {{ s.sira }}. operasyon</h1>
 <dl class="kv card">
   <dt>Talimat no / sürüm</dt><dd>{{ ins.code }} · sürüm {{ ins.version }}</dd>
-  <dt>İş emri</dt><dd>{{ s.is_emri }}</dd><dt>Operasyon</dt><dd>{{ s.operasyon }} · {{ s.operasyon_turu }}</dd>
+  <dt>İş emri</dt><dd>{{ s.is_emri }}</dd>{% if s.siparis %}<dt>Sipariş kalemi</dt><dd>{{ s.siparis }}</dd>{% endif %}<dt>Operasyon</dt><dd>{{ s.operasyon }} · {{ s.operasyon_turu }}</dd>
   <dt>Ürün</dt><dd>{{ s.urun }}</dd><dt>Makine</dt><dd>{{ s.makine }}</dd>
   <dt>Planlanan tarih / vardiya</dt><dd>{{ s.planlanan_tarih|default:"—" }} · {{ s.vardiya|default:"—" }}{% if s.calisma_sirasi %} · sıra {{ s.calisma_sirasi }}{% endif %}</dd>
   <dt>Hedef</dt><dd>{{ s.hedef }}</dd>

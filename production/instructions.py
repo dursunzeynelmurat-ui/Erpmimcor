@@ -62,7 +62,8 @@ def build_snapshot(op):
              "tarih": d.valid_from.isoformat() if d.valid_from else None}
             for d in customer.documents.filter(is_active=True, visibility=DocumentVisibility.OPERATIONS)]
     return {
-        "is_emri": wo.code, "operasyon": op.code, "sira": op.seq, "operasyon_turu": op.get_machine_type_display(),
+        "is_emri": wo.code, "operasyon": op.code,
+        "siparis": wo.order_line.code if wo.order_line_id else "Müşteri stoğu (siparişsiz)", "sira": op.seq, "operasyon_turu": op.get_machine_type_display(),
         "urun": f"{wo.product.code} – {wo.product.name}", "makine": f"{op.machine.code} {op.machine.name}",
         "planlanan_tarih": op.planned_date.isoformat() if op.planned_date else None,
         "vardiya": str(op.shift) if op.shift else None, "calisma_sirasi": op.queue_position,

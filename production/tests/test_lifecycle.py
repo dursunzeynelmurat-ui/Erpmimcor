@@ -242,6 +242,7 @@ class InstructionAndRecipeAccessTests(TestCase):
         self.assertRedirects(resp, reverse("production:instruction_view", args=[ins.pk]) + "?yazdir=1")
         page = self.client.get(reverse("production:instruction_view", args=[ins.pk]))
         self.assertContains(page, self.wo.code)
+        self.assertContains(page, self.wo.order_line.code)
         self.assertContains(page, "Rev.")
         self.client.post(reverse("production:instruction_ack", args=[ins.pk, "teslim_aldim"]),
                          {"idem_key": uuid.uuid4().hex})

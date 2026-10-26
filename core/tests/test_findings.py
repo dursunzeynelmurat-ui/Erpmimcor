@@ -285,3 +285,17 @@ class ExceptionPageTests(TestCase):
         self.assertEqual(orders.line_limit(line), D("12"))
         self.client.force_login(w.depot)
         self.assertEqual(self.client.get(url).status_code, 403)
+
+
+class Finding5ReapprovalTests(TestCase):
+    def test_different_revision_reapproval_blocked_while_released_work_order_exists(self):
+        w = World()
+        line = w.approved_line()
+        wo = w.work_order(line=line)  # serbest bırakılmış (planlandi)
+        rev2 = cat.create_revision(w.planner, w.prod_a, w.spec(thickness_micron=D("35")), w.mix(), reason="35 µ")
+        with self.assertRaises(BusinessRuleError):
+            orders.approve_line(w.planner, line, rev2)
+        line.refresh_from_db()
+        self.assertEqual(line.approved_revision, w.rev_a)
+        lifecycle.withdraw(w.planner, wo, "Revizyon değişecek")  # geri çekilmiş taslakta yeniden onay mümkün
+        orders.approve_line(w.planner, line, rev2)

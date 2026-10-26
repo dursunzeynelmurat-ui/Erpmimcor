@@ -73,7 +73,29 @@ ACTION_LABELS = {
     "pallet.coil_release": "Bağlı bobin blokesi kaldırıldı",
     "reservation.create": "Rezervasyon", "reservation.cancel": "Rezervasyon iptali", "reservation.ship": "Rezervasyon sevki",
     "shipment.create": "Sevkiyat oluşturuldu", "shipment.line_add": "Sevkiyat satırı eklendi",
-    "shipment.line_remove": "Sevkiyat satırı çıkarıldı", "shipment.confirm": "Sevk edildi",
+    "shipment.line_remove": "Sevkiyat satırı çıkarıldı", "shipment.confirm": "Sevk onaylandı (stoktan düşüldü)",
+    # Aşama 2–4
+    "workorder.release": "İş emri serbest bırakıldı", "workorder.withdraw": "İş emri geri çekildi",
+    "workorder.update": "Taslak iş emri güncellendi", "workorder.cancel": "İş emri iptal edildi",
+    "workorder.archive": "İş emri arşivlendi", "workorder.material_deviation": "Reçete dışı malzeme (sapma)",
+    "operation.schedule": "Operasyon planlandı", "operation.stop": "Operasyon durduruldu",
+    "operation.resume": "Operasyon devam etti", "operation.handover": "Vardiya devri",
+    "operation.handover_ack": "Vardiya devri teslim alındı", "operation.route_exception": "Rota atlama izni",
+    "instruction.print": "Makine talimatı basım talebi", "instruction.ack": "Talimat teslim kaydı",
+    "order.approve": "Sipariş onaylandı", "order.status": "Sipariş durumu değişti", "order.copy": "Kopya sipariş",
+    "order.delete_draft": "Taslak sipariş silindi", "order.line_change": "Kalem değiştirildi",
+    "order.line_cancel": "Kalem iptal edildi", "order.archive": "Sipariş arşivlendi",
+    "order.compatibility_exception": "Teknik uygunluk istisnası", "order.over_delivery": "Fazla teslim izni",
+    "order.return": "Müşteri iadesi", "correction.request": "Düzeltme talebi",
+    "correction.uygulandi": "Düzeltme onaylandı ve uygulandı", "correction.ret": "Düzeltme reddedildi",
+    "correction.geri_cekildi": "Düzeltme talebi geri çekildi", "coil.correction": "Bobin ağırlığı düzeltildi",
+    "pallet.duzeltme": "Onaylı üretim düzeltmesi", "pallet.sevk_geri_alma": "Sevk geri alındı",
+    "pallet.iade_girisi": "Müşteri iadesi girişi", "pallet.location": "Depo yeri değişti",
+    "pallet.label_result": "Etiket basım sonucu", "product.stock_level": "Stok seviyesi tanımlandı",
+    "reservation.reduce": "Rezervasyon azaltıldı", "reservation.unship": "Sevk geri alındı (rezervasyon)",
+    "shipment.prepare": "Sevkiyat hazırlandı", "shipment.reopen": "Sevkiyat hazırlığa döndü",
+    "shipment.scan": "Yükleme kontrolü okutması", "shipment.exit": "Araç çıkışı", "shipment.undo": "Sevk geri alındı",
+    "shipment.cancel": "Sevkiyat iptal edildi", "shipment.return": "Müşteri iadesi alındı",
 }
 
 
@@ -103,6 +125,14 @@ FIELD_LABELS = {
     "color": "Renk", "print_spec": "Baskı bilgisi", "perforation_spec": "Perfore bilgisi",
     "process_notes": "Üretim notları", "phone": "Telefon", "email": "E-posta", "address": "Adres",
     "contact": "İlgili kişi", "tax_no": "Vergi no", "purpose": "Üretim amacı",
+    "assigned_foreman": "Sorumlu ustabaşı", "planned_start": "Planlanan başlangıç", "planned_date": "Planlanan tarih",
+    "shift": "Vardiya", "queue_position": "Çalışma sırası", "operasyonlar": "Operasyonlar", "due_date": "Termin",
+    "needs_review": "Kopya onayı bekliyor", "gecersiz_talimat": "Geçersiz işaretlenen talimat", "devir": "Vardiya devri",
+    "teslim": "Teslim alan", "talimat": "Talimat", "deger": "Değer", "iade": "İade", "okutma": "Okutma",
+    "etiket": "Etiket", "seviye": "Alt / hedef seviye", "ek_miktar": "Ek miktar", "kabul_edilen": "Kabul edilen revizyon",
+    "rota_atlama": "Rota atlama", "malzeme": "Malzeme", "kalemler": "Kalemler", "archived": "Arşiv",
+    "serbest_rezervasyon": "Bırakılan rezervasyonlar", "cancel_reason": "İptal gerekçesi",
+    "sync_revision": "Revizyon eşitleme",
 }
 
 @register.filter
@@ -110,7 +140,7 @@ def field_label(key):
     return FIELD_LABELS.get(key, "Ek bilgi")
 
 @register.simple_tag
-def history_value(value, key):
+def history_value(value, key, object_type=""):
     if value is None:
         return "—"
     if isinstance(value, bool):
@@ -120,7 +150,11 @@ def history_value(value, key):
     if isinstance(value, list):
         return " → ".join(str(v) for v in value)
     from django.apps import apps
-    for model in apps.get_models():
+    models = list(apps.get_models())
+    if object_type:  # önce kaydın kendi modelinin seçenekleri (ör. iş emri 'taslak' ≠ rol 'taslak')
+        own = [m for m in models if m._meta.label_lower == object_type]
+        models = own + [m for m in models if m not in own]
+    for model in models:
         for field in model._meta.fields:
             if field.name == key and field.choices:
                 label = dict(field.flatchoices).get(value)

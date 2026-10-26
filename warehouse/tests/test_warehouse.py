@@ -139,10 +139,9 @@ class ReservationAndShipmentTests(TestCase):
         with self.assertRaises(BusinessRuleError):
             wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
         self.assertEqual(PalletMovement.objects.filter(kind=MovementKind.SHIPMENT).count(), 1)
-        # aynı rezervasyon ikinci bir sevkiyata da eklenemez
-        s2 = wh.create_shipment(self.w.depot, self.order)
-        with self.assertRaises(BusinessRuleError):
-            wh.add_shipment_line(self.w.depot, s2, res, 10)
+        # sipariş tamamlandı: ikinci sevkiyat açılamaz, aynı rezervasyon tekrar sevk edilemez
+        with self.assertRaisesMessage(BusinessRuleError, "kapanmamış"):
+            wh.create_shipment(self.w.depot, self.order)
 
     def test_duplicate_confirm_request_is_idempotent(self):
         res = wh.reserve(self.w.sales, self.pallet, self.line, 10)
