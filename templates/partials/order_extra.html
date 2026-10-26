@@ -1,1 +1,12 @@
-
+{% if stock_options %}
+<section class="card"><h2>Stoktan karşılanabilir paletler</h2>
+<p class="muted">Kalem ürün koduyla aynı koddaki, depoda ve blokeli olmayan paletler. Ayırma palet sayfasından yapılır.</p>
+{% for line, pallets in stock_options %}<div><strong>{{ line.code }}</strong> ({{ line.product.code }}):
+  {% for p in pallets %}<a href="{% url 'warehouse:pallet_detail' p.pk %}">{{ p.code }}</a> – serbest {{ p.available_boxes }} kutu{% if p.work_order %}, {{ p.work_order.get_purpose_display|lower }}{% endif %}{% if not forloop.last %}; {% endif %}{% endfor %}
+</div>{% endfor %}
+</section>{% endif %}
+<section class="card"><h2>Rezervasyonlar ve sevkiyatlar</h2>
+<ul class="list">{% for r in reservations %}<li>{{ r.code }}: <a href="{% url 'warehouse:pallet_detail' r.pallet.pk %}">{{ r.pallet.code }}</a> → {{ r.order_line.code }} · {{ r.quantity }} kutu (sevk {{ r.shipped_quantity }}) <span class="status status-{{ r.status }}">{{ r.get_status_display }}</span></li>{% empty %}<li class="muted">Rezervasyon yok.</li>{% endfor %}</ul>
+<ul class="list">{% for s in shipments %}<li><a href="{% url 'warehouse:shipment_detail' s.pk %}">{{ s.code }}</a> <span class="status status-{{ s.status }}">{{ s.get_status_display }}</span> {{ s.shipped_at|date:"d.m.Y H:i" }}</li>{% endfor %}</ul>
+{% if can.shipment_manage and order.status == "acik" %}<a class="btn" href="{% url 'warehouse:shipment_create' order.pk %}">Sevkiyat oluştur</a>{% endif %}
+</section>

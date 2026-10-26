@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ pallet.code }}{% endblock %}
+{% block content %}
+<h1>Palet {{ pallet.code }}</h1>
+<p><span class="status status-{{ pallet.status }}">{{ pallet.get_status_display }}</span>
+   <span class="status status-{{ pallet.quality_status }}">Kalite: {{ pallet.get_quality_status_display }}</span>
+   <span class="status status-{{ pallet.weight_status }}">Ağırlık: {{ pallet.get_weight_status_display }}</span></p>
+<dl class="kv card">
+  <dt>Ürün</dt><dd>{{ pallet.product.code }} – {{ pallet.product.name }}</dd>
+  <dt>Müşteri</dt><dd>{{ pallet.product.customer.name }}</dd>
+  <dt>Fiziksel stok</dt><dd><strong>{{ pallet.box_count }} kutu</strong></dd>
+  <dt>Siparişe ayrılan</dt><dd>{{ pallet.reserved_boxes }} kutu</dd>
+  <dt>Serbest</dt><dd>{{ pallet.available_boxes }} kutu</dd>
+  <dt>Kaynak</dt><dd>{% if pallet.work_order %}<a href="{% url 'production:workorder_detail' pallet.work_order.pk %}">{{ pallet.work_order.code }}</a> · {{ pallet.work_order.get_purpose_display }}{% if pallet.work_order.order_line %} ({{ pallet.work_order.order_line.code }}){% endif %}{% else %}—{% endif %}</dd>
+  <dt>Depo yeri</dt><dd>{{ pallet.location|default:"—" }}</dd>
+  <dt>Oluşturan</dt><dd>{{ pallet.created_by.full_name }} · {{ pallet.created_at|date:"d.m.Y H:i" }}</dd>
+  {% if pallet.accepted_at %}<dt>Depo kabulü</dt><dd>{{ pallet.accepted_by.full_name }} · {{ pallet.accepted_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+</dl>
+<div class="actions"><a class="btn" href="{% url 'warehouse:pallet_label' pallet.pk %}">Etiket / QR</a></div>
+
+<section class="card"><h2>Güncel ağırlık</h2>
+{% if weighing_rows %}
+  <table class="table compact"><tbody>{% for label, value, src in weighing_rows %}<tr><td>{{ label }}</td><td><strong>{{ value|qty }} kg</strong></td><td><span class="status">{{ src.label }}</span></td></tr>{% endfor %}</tbody></table>
+{% elif pallet.weight_status == "yeniden_tartim_bekliyor" %}<p class="msg msg-warning">İçerik değişti; güncel ağırlık yeniden tartım bekliyor. Önceki tartımlar aşağıda geçmişte duruyor.</p>
+{% else %}<p class="muted">Henüz tartılmadı.</p>{% endif %}
+</section>
+
+{% if accept_form %}{% url 'warehouse:pallet_accept' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=accept_form action=u title="Depo kabulü ve tartım" submit="Kabul et" note="Brüt ağırlık zorunludur. Bilinmeyen daraları boş bırakın; sıfır sayılmaz." %}{% endif %}
+{% if weigh_form %}{% url 'warehouse:pallet_weigh' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=weigh_form action=u title="Yeniden tartım" submit="Tartımı kaydet" %}{% endif %}
+{% if reserve_form %}{% url 'warehouse:pallet_reserve' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=reserve_form action=u title="Siparişe ayır" submit="Ayır" note="Ayırma fiziksel stoğu azaltmaz; sevkiyatla düşülür." %}{% endif %}
+{% if transfer_form %}{% url 'warehouse:pallet_transfer' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=transfer_form action=u title="Başka palete aktar" submit="Aktar" note="Hedef palet aynı ürün koduna ait olmalı. Kaynak ve hedef birlikte güncellenir." %}{% endif %}
+{% if count_form %}{% url 'warehouse:pallet_count' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=count_form action=u title="Sayım düzeltmesi" submit="Kaydet" %}{% endif %}
+{% if damage_form %}{% url 'warehouse:pallet_damage' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=damage_form action=u title="Hasarlı ürün ayır" submit="Ayır" btn="btn-danger" note="Hasarlı kutular blokeli yeni palete alınır." %}{% endif %}
+{% if quality_form %}{% url 'warehouse:pallet_quality' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=quality_form action=u title="Kalite durumu" submit="Kaydet" %}{% endif %}
+
+<section class="card"><h2>Rezervasyonlar</h2>
+<ul class="list">{% for r in reservations %}<li>{{ r.code }} → <a href="{% url 'orders:order_detail' r.order_line.order.pk %}">{{ r.order_line.code }}</a> · {{ r.quantity }} kutu (sevk {{ r.shipped_quantity }})
+  <span class="status status-{{ r.status }}">{{ r.get_status_display }}</span> <small class="muted">{{ r.created_by.full_name }} {{ r.created_at|date:"d.m.Y H:i" }}</small>
+  {% if cancel_form and r.status == "aktif" %}<form method="post" action="{% url 'warehouse:reservation_cancel' r.pk %}" class="inline-form">{% csrf_token %}{% load mimcor %}{% idem_input %}
+    <input name="reason" placeholder="İptal gerekçesi" required> <button class="btn" type="submit">İptal</button></form>{% endif %}
+</li>{% empty %}<li class="muted">Rezervasyon yok.</li>{% endfor %}</ul></section>
+
+<section class="card"><h2>Hareketler</h2>
+<div class="table-wrap"><table class="table compact"><thead><tr><th>Zaman</th><th>Hareket</th><th>Kutu</th><th>Bakiye</th><th>Bağlantı</th><th>Kullanıcı</th><th>Gerekçe</th></tr></thead><tbody>
+{% for m in movements %}<tr><td>{{ m.at|date:"d.m.Y H:i" }}</td><td>{{ m.get_kind_display }}</td><td>{{ m.quantity }}</td><td>{{ m.balance_after }}</td>
+<td>{% if m.related_pallet %}<a href="{% url 'warehouse:pallet_detail' m.related_pallet.pk %}">{{ m.related_pallet.code }}</a>{% endif %}
+{% if m.shipment_line %}<a href="{% url 'warehouse:shipment_detail' m.shipment_line.shipment.pk %}">{{ m.shipment_line.shipment.code }}</a>{% endif %}</td>
+<td>{{ m.user.full_name }}</td><td>{{ m.reason|default:"" }}</td></tr>{% endfor %}</tbody></table></div></section>
+
+<section class="card"><h2>Tartım geçmişi</h2>
+{% for w, rows in weighings %}<div class="{% if not w.is_current %}muted{% endif %}"><strong>{{ w.at|date:"d.m.Y H:i" }}</strong> · {{ w.user.full_name }} · {{ w.box_count_at_weighing }} kutu iken {% if w.is_current %}(güncel){% else %}(geçmiş){% endif %}
+  <ul>{% for label, value, src in rows %}<li>{{ label }}: {{ value|qty }} kg ({{ src.label }})</li>{% endfor %}</ul></div>{% empty %}<p class="muted">Tartım yok.</p>{% endfor %}
+</section>
+{% if coils %}<section class="card"><h2>Palete alınan bobinler</h2><ul class="list">{% for pc in coils %}<li><a href="{% url 'production:coil_detail' pc.coil.pk %}">{{ pc.coil.code }}</a> {{ pc.coil.weight_kg|qty }} kg · {{ pc.coil.machine.code }}</li>{% endfor %}</ul></section>{% endif %}
+<section class="card"><h2>Etiket basımları</h2><ul class="list">{% for lp in label_prints %}<li>{{ lp.at|date:"d.m.Y H:i" }} · {{ lp.user.full_name }} · {% if lp.is_reprint %}yeniden basım{% else %}ilk basım{% endif %} ({{ lp.box_count_at_print }} kutu iken)</li>{% empty %}<li class="muted">Basım yok.</li>{% endfor %}</ul></section>
+{% include "partials/history.html" %}
+{% endblock %}

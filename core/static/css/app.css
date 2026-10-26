@@ -74,3 +74,7 @@ tr.inactive td { color: var(--muted); }
 .login-box { max-width: 420px; margin: 8vh auto 0; }
 progress { width: 120px; vertical-align: middle; }
 @media print { .topbar, .no-print, .messages { display: none !important; } body { background: #fff; } }
+.label-sheet { display: flex; gap: 16px; align-items: center; background: #fff; border: 2px solid #000; padding: 12px; max-width: 520px; }
+.label-qr svg { width: 160px; height: 160px; }
+.label-code { font-size: 1.6rem; font-weight: 700; font-family: monospace; }
+details.card > summary { cursor: pointer; min-height: 32px; }

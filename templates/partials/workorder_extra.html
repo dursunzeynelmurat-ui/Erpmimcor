@@ -1,1 +1,36 @@
-
+{% load mimcor %}
+{% if can_execute and wo.status == "basladi" %}
+<section class="card"><h2>Üretim kayıtları</h2>
+  <div class="actions">
+    {% for op in operations %}{% if op.status == "devam_ediyor" %}<a class="btn btn-primary" href="{% url 'production:coil_create' op.pk %}">{{ op.seq }}. {{ op.get_machine_type_display }}: bobin kaydet</a>{% endif %}{% endfor %}
+    <a class="btn" href="{% url 'production:material_issue' wo.pk %}">Malzeme çıkışı</a>
+    <a class="btn" href="{% url 'production:material_return' wo.pk %}">Kalan malzeme iadesi</a>
+    <a class="btn" href="{% url 'production:pallet_from_production' wo.pk %}">Palet oluştur / ekle</a>
+    <a class="btn" href="{% url 'production:workorder_close' wo.pk %}">İş emrini kapat</a>
+  </div>
+</section>
+{% endif %}
+<section class="card"><h2>Verilen malzeme (net)</h2>
+  {% if issued %}<ul class="list">{% for lot, qty in issued.items %}<li><a href="{% url 'catalog:lot_detail' lot.pk %}">{{ lot.code }}</a> {{ lot.material.code }} · {{ qty|qty }} kg</li>{% endfor %}</ul>
+  {% else %}<p class="muted">Malzeme çıkışı yok.</p>{% endif %}
+</section>
+<section class="card"><h2>Bobinler</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Bobin</th><th>Op.</th><th>Makine</th><th>Ağırlık</th><th>Kalan</th><th>Kalite</th><th>Durum</th></tr></thead><tbody>
+  {% for c in coils %}<tr><td><a href="{% url 'production:coil_detail' c.pk %}">{{ c.code }}</a></td><td>{{ c.operation.seq }}</td><td>{{ c.machine.code }}</td>
+    <td>{{ c.weight_kg|qty }} kg <small class="muted">({{ c.get_weight_source_display }})</small></td><td>{{ c.remaining_kg|qty }} kg</td>
+    <td><span class="status status-{{ c.quality_status }}">{{ c.get_quality_status_display }}</span></td><td>{{ c.get_status_display }}</td></tr>
+  {% empty %}<tr><td colspan="7" class="muted">Bobin kaydı yok.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+<section class="card"><h2>Paletler</h2>
+  <ul class="list">{% for p in pallets %}<li><a href="{% url 'warehouse:pallet_detail' p.pk %}">{{ p.code }}</a> · {{ p.box_count }} kutu
+    <span class="status status-{{ p.status }}">{{ p.get_status_display }}</span> <span class="status status-{{ p.quality_status }}">{{ p.get_quality_status_display }}</span></li>
+  {% empty %}<li class="muted">Palet yok.</li>{% endfor %}</ul>
+</section>
+{% if closure %}
+<section class="card"><h2>Kapanış</h2>
+  <dl class="kv"><dt>Net verilen malzeme</dt><dd>{{ closure.issued_kg|qty }} kg</dd><dt>Sağlam çıktı</dt><dd>{{ closure.good_kg|qty }} kg · {{ closure.good_boxes }} kutu</dd>
+  <dt>Blokeli</dt><dd>{{ closure.blocked_kg|qty }} kg</dd><dt>Ara stok</dt><dd>{{ closure.wip_kg|qty }} kg</dd><dt>Fire</dt><dd>{{ closure.scrap_kg|qty }} kg</dd>
+  <dt>Denge farkı</dt><dd>{{ closure.difference_kg|qty }} kg</dd>{% if closure.reason %}<dt>Gerekçe</dt><dd>{{ closure.reason }}</dd>{% endif %}
+  <dt>Kapatan</dt><dd>{{ closure.closed_by.full_name }} · {{ closure.closed_at|date:"d.m.Y H:i" }}</dd></dl>
+</section>
+{% endif %}

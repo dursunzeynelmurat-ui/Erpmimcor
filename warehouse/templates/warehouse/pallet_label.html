@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Etiket {{ pallet.code }}{% endblock %}
+{% block content %}
+<div class="label-sheet">
+  <div class="label-qr">{{ qr_svg }}</div>
+  <div class="label-text">
+    <div class="label-code">{{ pallet.code }}</div>
+    <div>{{ pallet.product.code }}</div>
+    <div>{{ pallet.product.name }}</div>
+    <div>{{ pallet.product.customer.name }}</div>
+    <div>{% if pallet.work_order %}{{ pallet.work_order.code }}{% endif %}</div>
+    <small>Güncel miktar ve sipariş bilgisi için QR'ı okutun.</small>
+  </div>
+</div>
+<div class="no-print">
+  <p class="muted">QR yalnızca paletin kaydına giden tahmin edilemez bağlantıyı taşır; miktar/sipariş bilgisi QR içinde yoktur. Okutmak stok hareketi oluşturmaz. Yeniden basım yeni palet oluşturmaz. Bu palet için {{ prints }} basım kaydı var.</p>
+  {% url 'warehouse:pallet_label_print' pallet.pk as u %}{% include "partials/confirm_button.html" with action=u label="Yazdır (basımı kaydet)" %}
+  <a class="btn" href="{% url 'warehouse:pallet_detail' pallet.pk %}">Palete dön</a>
+</div>
+{% if do_print %}<script>window.addEventListener("load", function () { window.print(); });</script>{% endif %}
+{% endblock %}

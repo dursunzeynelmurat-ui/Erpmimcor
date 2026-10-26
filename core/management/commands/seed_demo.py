@@ -98,8 +98,44 @@ class Command(BaseCommand):
                                  "print_spec": "2 renk logo (kurgusal)", "perforation_spec": ""},
                                 [(materials["HM-LLDPE"], D("97")), (materials["KT-SLIP"], D("3"))])
 
+        self.seed_stock_pallet(products["DEN-PF-030"], materials)
+
         if not SalesOrder.objects.exists():
             sales = User.objects.get(personnel_no="2001")
             orders.create_order(sales, customer=customers["M-DENEME"], order_date=timezone.localdate(),
                                 customer_ref="DT-PO-1001 (kurgusal)",
                                 lines=[{"product": products["DEN-PF-030"], "quantity": D("60"), "unit": Unit.BOX}])
+
+    def seed_stock_pallet(self, product, materials):
+        """Demo B başlangıcı: müşteri stoğu için üretilmiş, kabul edilmiş, uygun, 40 kutulu palet."""
+        from core.models import QualityStatus
+        from production import services as prod
+        from warehouse import services as wh
+        from warehouse.models import Pallet
+
+        if Pallet.objects.exists():
+            return
+        planner = User.objects.get(personnel_no="3001")
+        foreman = User.objects.get(personnel_no="4001")
+        depot = User.objects.get(personnel_no="5001")
+        ext = Machine.objects.get(code="EXT-01")
+        per = Machine.objects.get(code="PER-01")
+        wo = prod.create_work_order(planner, product=product, revision=product.current_revision, machines=[ext, per],
+                                    target_quantity=D("40"), unit=Unit.BOX, notes="Müşteri stoğu (kurgusal demo)")
+        prod.start_work_order(foreman, wo)
+        lot = materials["HM-LDPE"].lots.first()
+        prod.issue_material(foreman, wo, lot, D("130"))
+        ext_op, per_op = wo.operations.order_by("seq")
+        c1 = prod.record_coil(foreman, ext_op, weight_kg=D("64.5"))
+        c2 = prod.record_coil(foreman, ext_op, weight_kg=D("63.0"))
+        prod.start_operation(foreman, per_op)
+        prod.complete_operation(foreman, ext_op)
+        o1 = prod.record_coil(foreman, per_op, weight_kg=D("64.0"), sources=[(c1, D("64.5"))])
+        o2 = prod.record_coil(foreman, per_op, weight_kg=D("62.6"), sources=[(c2, D("63.0"))])
+        pallet = wh.create_pallet_from_production(foreman, wo, 40, coils=[o1, o2])
+        prod.complete_operation(foreman, per_op)
+        prod.close_work_order(foreman, wo, scrap_kg=D("3.4"), remaining_confirmed=True)
+        wh.accept_pallet(depot, pallet, {"gross_kg": D("152.4"), "pallet_tare_kg": D("22"), "location": "A-01"})
+        wh.record_label_print(depot, pallet)
+        wh.set_pallet_quality(foreman, pallet, QualityStatus.OK, "Görsel ve ölçü kontrolü uygun (kurgusal)")
+        self.stdout.write(f"Demo B stok paleti: {pallet.code} ({product.code}, 40 kutu)")

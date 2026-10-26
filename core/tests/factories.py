@@ -65,3 +65,34 @@ class World:
         line = line or self.approved_line()
         return prod.create_work_order(self.planner, order_line=line, machines=machines or [self.ext, self.prn],
                                       target_quantity=qty, unit=Unit.BOX)
+
+    # --- M2 yardımcıları ---------------------------------------------------------
+    def started_wo(self, product=None, line=None, machines=None, stock=False):
+        from production import services as prod
+        product = product or self.prod_a
+        if stock:
+            wo = prod.create_work_order(self.planner, product=product, revision=product.current_revision,
+                                        machines=machines or [self.ext], target_quantity=D("40"), unit=Unit.BOX)
+        else:
+            wo = self.work_order(line=line or self.approved_line(product=product), machines=machines or [self.ext])
+        prod.start_work_order(self.foreman, wo)
+        wo.refresh_from_db()
+        return wo
+
+    def coil(self, wo, kg=D("100"), op_seq=1, sources=()):
+        from production import services as prod
+        op = wo.operations.get(seq=op_seq)
+        return prod.record_coil(self.foreman, op, weight_kg=kg, sources=sources)
+
+    def stock_pallet(self, boxes=40, product=None, accept=True, quality_ok=True):
+        from core.models import QualityStatus
+        from warehouse import services as wh
+        wo = self.started_wo(product=product, stock=True)
+        coil = self.coil(wo)
+        pallet = wh.create_pallet_from_production(self.foreman, wo, boxes, coils=[coil])
+        if accept:
+            wh.accept_pallet(self.depot, pallet, {"gross_kg": D("125")})
+        if quality_ok:
+            wh.set_pallet_quality(self.foreman, pallet, QualityStatus.OK, "Kontrol edildi")
+        pallet.refresh_from_db()
+        return pallet

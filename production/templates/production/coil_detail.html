@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ coil.code }}{% endblock %}
+{% block content %}
+<h1>Bobin {{ coil.code }} <span class="status status-{{ coil.quality_status }}">{{ coil.get_quality_status_display }}</span></h1>
+<dl class="kv card">
+  <dt>İş emri</dt><dd><a href="{% url 'production:workorder_detail' coil.work_order.pk %}">{{ coil.work_order.code }}</a> · {{ coil.work_order.product.code }}</dd>
+  <dt>Operasyon</dt><dd>{{ coil.operation.seq }}. {{ coil.operation.get_machine_type_display }} · {{ coil.machine }}</dd>
+  <dt>Ağırlık</dt><dd>{{ coil.weight_kg|qty }} kg ({{ coil.get_weight_source_display }})</dd>
+  <dt>Kalan</dt><dd>{{ coil.remaining_kg|qty }} kg · {{ coil.get_status_display }}</dd>
+  <dt>Uzunluk</dt><dd>{{ coil.length_m|qty }} m</dd>
+  <dt>Kaydeden</dt><dd>{{ coil.created_by.full_name }} · {{ coil.created_at|date:"d.m.Y H:i" }}</dd>
+  {% if pallet_link %}<dt>Palet</dt><dd><a href="{% url 'warehouse:pallet_detail' pallet_link.pallet.pk %}">{{ pallet_link.pallet.code }}</a></dd>{% endif %}
+</dl>
+<section class="card"><h2>Kaynak bobinler</h2><ul class="list">{% for l in sources %}<li><a href="{% url 'production:coil_detail' l.source.pk %}">{{ l.source.code }}</a> ({{ l.source.machine.code }}) – {{ l.consumed_kg|qty }} kg tüketildi</li>{% empty %}<li class="muted">Yok (extruder çıkışı).</li>{% endfor %}</ul></section>
+<section class="card"><h2>Bu bobinden üretilenler</h2><ul class="list">{% for l in outputs %}<li><a href="{% url 'production:coil_detail' l.output.pk %}">{{ l.output.code }}</a> ({{ l.output.machine.code }}) – {{ l.consumed_kg|qty }} kg kullanıldı</li>{% empty %}<li class="muted">Yok.</li>{% endfor %}</ul></section>
+{% if form %}<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Kalite durumu</h2>{% include "partials/form_fields.html" %}<button class="btn btn-primary" type="submit">Kaydet</button></form>{% endif %}
+{% include "partials/history.html" %}
+{% endblock %}

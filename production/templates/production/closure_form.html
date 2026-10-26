@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block content %}
+<h1>{{ title }}</h1>
+<section class="card"><h2>Malzeme dengesi (hesaplanan)</h2>
+<dl class="kv">
+  <dt>Net verilen malzeme</dt><dd>{{ summary.issued|qty }} kg</dd>
+  <dt>Sağlam çıktı (son operasyon)</dt><dd>{{ summary.good|qty }} kg · {{ summary.boxes }} kutu palette</dd>
+  <dt>Blokeli çıktı</dt><dd>{{ summary.blocked|qty }} kg</dd>
+  <dt>Ara stokta kalan bobin</dt><dd>{{ summary.wip|qty }} kg</dd>
+  <dt>Tolerans</dt><dd>±%{{ summary.tolerance_pct|qty }}</dd>
+</dl>
+<p class="muted">Denge: verilen ≈ sağlam + blokeli + ara stok + fire. Fark toleransı aşarsa gerekçe zorunludur.
+Kalan malzemeyi kapatmadan önce <a href="{% url 'production:material_return' wo.pk %}">lota iade edin</a>.</p>
+</section>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  {% include "partials/form_fields.html" %}
+  <div class="actions"><button type="submit" class="btn btn-primary">{{ submit }}</button><a class="btn" href="{{ back }}">Geri</a></div>
+</form>
+{% endblock %}

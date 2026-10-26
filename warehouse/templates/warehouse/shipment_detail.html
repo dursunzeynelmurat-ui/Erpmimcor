@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ shipment.code }}{% endblock %}
+{% block content %}
+<h1>Sevkiyat {{ shipment.code }} <span class="status status-{{ shipment.status }}">{{ shipment.get_status_display }}</span></h1>
+<dl class="kv card">
+  <dt>Sipariş</dt><dd><a href="{% url 'orders:order_detail' shipment.order.pk %}">{{ shipment.order.code }}</a> · {{ shipment.order.customer.name }}</dd>
+  <dt>Araç</dt><dd>{{ shipment.vehicle|default:"—" }}</dd>
+  <dt>Oluşturan</dt><dd>{{ shipment.created_by.full_name }} · {{ shipment.created_at|date:"d.m.Y H:i" }}</dd>
+  {% if shipment.shipped_at %}<dt>Sevk eden</dt><dd>{{ shipment.shipped_by.full_name }} · {{ shipment.shipped_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+</dl>
+<section class="card"><h2>Satırlar</h2>
+<div class="table-wrap"><table class="table compact"><thead><tr><th>Palet</th><th>Kalem</th><th>Ürün</th><th>Kutu</th><th>Palet kalite</th><th></th></tr></thead><tbody>
+{% for l in lines %}<tr><td><a href="{% url 'warehouse:pallet_detail' l.pallet.pk %}">{{ l.pallet.code }}</a></td><td>{{ l.order_line.code }}</td><td>{{ l.order_line.product.code }}</td><td>{{ l.quantity }}</td>
+<td><span class="status status-{{ l.pallet.quality_status }}">{{ l.pallet.get_quality_status_display }}</span></td>
+<td>{% if shipment.status == "taslak" and can.shipment_manage %}{% url 'warehouse:shipment_line_remove' l.pk as u %}{% include "partials/confirm_button.html" with action=u label="Çıkar" btn_class="btn" %}{% endif %}</td></tr>
+{% empty %}<tr><td colspan="6" class="muted">Satır yok. Önce paletten siparişe ayırma (rezervasyon) yapılmalı.</td></tr>{% endfor %}</tbody></table></div>
+</section>
+{% if form %}
+<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Satır ekle</h2>{% include "partials/form_fields.html" %}<button class="btn" type="submit">Ekle</button></form>
+{% if lines %}{% url 'warehouse:shipment_confirm' shipment.pk as u %}
+<section class="card"><h2>Sevki onayla</h2><p class="muted">Onayla birlikte kutular fiziksel stoktan düşülür. Yalnız kalite durumu “Uygun” olan paletler sevk edilebilir.</p>
+{% include "partials/confirm_button.html" with action=u label="Sevk et" %}</section>{% endif %}
+{% endif %}
+{% include "partials/history.html" %}
+{% endblock %}

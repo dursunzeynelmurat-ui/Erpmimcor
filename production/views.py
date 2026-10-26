@@ -9,8 +9,10 @@ from core.viewutils import run_form_action
 from orders.models import OrderLine
 
 from . import services
-from .forms import WorkOrderForm
-from .models import WorkOrder, WorkOrderOperation, WorkOrderStatus
+from catalog.models import MaterialLot
+
+from .forms import ClosureForm, CoilForm, CoilQualityForm, MaterialMoveForm, PalletFromProductionForm, WorkOrderForm
+from .models import Coil, WorkOrder, WorkOrderOperation, WorkOrderStatus
 
 
 def _wo_url(wo):
@@ -69,6 +71,10 @@ def workorder_detail(request, pk):
         "wo": wo, "operations": ops, "confirm_form": ConfirmForm(),
         "can_execute": can(request.user, "production.execute"),
         "components": wo.recipe_revision.components.select_related("material"),
+        "coils": wo.coils.select_related("operation", "machine").order_by("operation__seq", "created_at"),
+        "pallets": wo.pallets.all(),
+        "issued": services.issued_by_lot(wo),
+        "closure": getattr(wo, "closure", None),
         "history": history_for(wo),
     })
 
@@ -95,3 +101,116 @@ def operation_action(request, pk, action):
                            success_message="Operasyon başlatıldı." if action == "baslat" else "Operasyon tamamlandı.",
                            url_for=lambda _: _wo_url(op.work_order))
     return resp or redirect(_wo_url(op.work_order))
+
+
+# --- M2: bobin, malzeme, palet, kapanış --------------------------------------------
+
+def _get_wo(pk):
+    return get_object_or_404(WorkOrder.objects.select_related("product", "order_line"), pk=pk)
+
+
+def _wo_page(request, wo, form, title, submit, template="core/form_page.html", extra=None):
+    ctx = {"form": form, "title": f"{wo.code}: {title}", "submit": submit, "back": _wo_url(wo), "wo": wo}
+    ctx.update(extra or {})
+    return render(request, template, ctx)
+
+
+@require_perm("production.execute")
+def coil_create(request, op_pk):
+    op = get_object_or_404(WorkOrderOperation.objects.select_related("work_order", "machine"), pk=op_pk)
+    form = CoilForm(op, request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(
+            request, form, action="coil.create",
+            fn=lambda d: services.record_coil(request.user, op, weight_kg=d["weight_kg"], length_m=d["length_m"],
+                                              weight_source=d["weight_source"], sources=d["sources"], notes=d["notes"]),
+            success_message=lambda c: f"Bobin kaydedildi: {c.code}", url_for=lambda c: _wo_url(op.work_order))
+        if resp:
+            return resp
+    return _wo_page(request, op.work_order, form, f"{op.seq}. {op.get_machine_type_display()} ({op.machine.code}) bobin kaydı",
+                    "Bobini kaydet", template="production/coil_form.html", extra={"op": op})
+
+
+def coil_detail(request, pk):
+    check(request.user, "view.production")
+    coil = get_object_or_404(Coil.objects.select_related("work_order__product", "operation", "machine", "created_by"), pk=pk)
+    form = None
+    if can(request.user, "quality.block"):
+        form = CoilQualityForm(request.POST or None)
+        if not can(request.user, "quality.decide"):
+            form.fields["quality_status"].choices = [c for c in form.fields["quality_status"].choices if c[0] == "blokeli"]
+        if request.method == "POST":
+            resp = run_form_action(request, form, action="coil.quality",
+                                   fn=lambda d: services.set_coil_quality(request.user, coil, d["quality_status"], d["reason"]),
+                                   success_message="Kalite durumu güncellendi.",
+                                   url_for=lambda c: reverse("production:coil_detail", args=[c.pk]))
+            if resp:
+                return resp
+    return render(request, "production/coil_detail.html", {
+        "coil": coil, "sources": coil.source_links.select_related("source__machine"),
+        "outputs": coil.output_links.select_related("output__machine"),
+        "pallet_link": getattr(coil, "pallet_link", None), "form": form, "history": history_for(coil),
+    })
+
+
+@require_perm("production.execute")
+def material_issue(request, pk):
+    wo = _get_wo(pk)
+    form = MaterialMoveForm(request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(request, form, action="material.issue",
+                               fn=lambda d: services.issue_material(request.user, wo, d["lot"], d["quantity"]),
+                               success_message="Malzeme çıkışı kaydedildi.", url_for=lambda _: _wo_url(wo))
+        if resp:
+            return resp
+    return _wo_page(request, wo, form, "malzeme çıkışı", "Çıkışı kaydet")
+
+
+@require_perm("production.execute")
+def material_return(request, pk):
+    wo = _get_wo(pk)
+    lots = MaterialLot.objects.filter(pk__in=[lot.pk for lot in services.issued_by_lot(wo)]).select_related("material")
+    form = MaterialMoveForm(request.POST or None, lots=lots)
+    if request.method == "POST":
+        resp = run_form_action(request, form, action="material.return",
+                               fn=lambda d: services.return_material(request.user, wo, d["lot"], d["quantity"]),
+                               success_message="Kalan malzeme lota iade edildi.", url_for=lambda _: _wo_url(wo))
+        if resp:
+            return resp
+    return _wo_page(request, wo, form, "kalan malzeme iadesi", "İadeyi kaydet")
+
+
+@require_perm("production.execute")
+def pallet_from_production(request, pk):
+    from warehouse import services as wh
+
+    wo = _get_wo(pk)
+    form = PalletFromProductionForm(wo, request.POST or None)
+    if request.method == "POST":
+        def run(d):
+            if d["target_code"]:
+                return wh.add_production_to_pallet(request.user, d["target_code"], wo, d["box_count"], d["coils"])
+            return wh.create_pallet_from_production(request.user, wo, d["box_count"], d["coils"])
+        resp = run_form_action(request, form, action="pallet.from_production", fn=run,
+                               success_message=lambda p: f"Palet kaydedildi: {p.code} ({p.box_count} kutu). Etiketi basın.",
+                               url_for=lambda p: reverse("warehouse:pallet_detail", args=[p.pk]))
+        if resp:
+            return resp
+    return _wo_page(request, wo, form, "palet oluştur / palete ekle", "Kaydet")
+
+
+@require_perm("production.execute")
+def workorder_close(request, pk):
+    wo = _get_wo(pk)
+    form = ClosureForm(request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(
+            request, form, action="workorder.close",
+            fn=lambda d: services.close_work_order(request.user, wo, scrap_kg=d["scrap_kg"],
+                                                   remaining_confirmed=d["remaining_confirmed"], reason=d["reason"]),
+            success_message="İş emri kapatıldı.", url_for=_wo_url)
+        if resp:
+            return resp
+    return _wo_page(request, wo, form, "kapanış", "İş emrini kapat", template="production/closure_form.html",
+                    extra={"summary": services.closure_summary(wo),
+                           "issued": services.issued_by_lot(wo)})

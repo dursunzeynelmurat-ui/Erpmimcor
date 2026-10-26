@@ -66,7 +66,21 @@ Tüm müşteri, ürün ve üretim verileri kurgusaldır.
 | `catalog` | Müşteri, ürün kodu, makine, hammadde/katkı, malzeme lotu ve lot hareketleri, reçete revizyonları |
 | `orders` | Satış siparişi, sipariş kalemi, planlama teknik onayı, satış ilerleme görünümü |
 | `production` | İş emri, operasyon sırası ve makine ataması, ustabaşı başlat/tamamla |
-| `warehouse` | (2. kilometre taşı) palet, tartım, QR, rezervasyon, sevkiyat |
+| `production` (devam) | Bobin kaydı ve kaynak–çıktı ilişkisi, malzeme çıkışı/iadesi, iş emri kapanışı |
+| `warehouse` | Palet, palet hareketleri, tartım/ağırlık hesabı, QR ve etiket, depo kabulü, aktarım/sayım/hasar, rezervasyon, sevkiyat |
 
 İş kuralları her modülün `services.py` dosyasındadır; view'lar yalnız formu doğrulayıp servisi çağırır,
 şablonlarda iş mantığı yoktur.
+
+## Demo senaryoları ve devir
+
+- Adım adım demo akışları (A: sipariş üretimi, B: stoktan kısmi sevkiyat): [`docs/demo-senaryolari.md`](docs/demo-senaryolari.md)
+- Çalışan özellikler, test sonuçları, bilinen eksikler ve varsayımlar: [`HANDOFF.md`](HANDOFF.md)
+
+`seed_demo` ayrıca Demo B için müşteri stoğu amaçlı üretilmiş, kabul edilmiş ve kalitesi uygun 40 kutulu bir palet oluşturur.
+Demoyu sıfırdan başlatmak için veritabanını silip yeniden oluşturun:
+
+```bash
+sudo -u postgres dropdb mimcor && sudo -u postgres createdb -O mimcor mimcor
+python manage.py migrate && python manage.py seed_demo
+```

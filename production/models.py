@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import Q
 
 from catalog.models import QTY, Machine, MachineType, Product, RecipeRevision, Unit
+from core.models import QualityStatus, ValueSource
 from orders.models import OrderLine
 
 
@@ -102,3 +103,72 @@ class WorkOrderOperation(models.Model):
     @property
     def code(self):
         return f"{self.work_order.code}/OP{self.seq}"
+
+
+class CoilStatus(models.TextChoices):
+    AVAILABLE = "kullanilabilir", "Kullanılabilir"
+    PARTIAL = "kismi_tuketildi", "Kısmi tüketildi"
+    CONSUMED = "tuketildi", "Tüketildi"
+    PALLETIZED = "palete_alindi", "Palete alındı"
+
+
+class Coil(models.Model):
+    """Bobin: extruder çıkışından itibaren izlenir. Dönüştürme/bölme CoilLink ile kaynağa bağlanır."""
+
+    code = models.CharField("Bobin no", max_length=30, unique=True, editable=False)
+    work_order = models.ForeignKey(WorkOrder, on_delete=models.PROTECT, related_name="coils")
+    operation = models.ForeignKey(WorkOrderOperation, on_delete=models.PROTECT, related_name="coils")
+    machine = models.ForeignKey(Machine, on_delete=models.PROTECT, related_name="coils")
+    weight_kg = models.DecimalField("Ağırlık (kg)", max_digits=12, decimal_places=3)
+    weight_source = models.CharField("Ağırlık kaynağı", max_length=12, choices=ValueSource.choices,
+                                     default=ValueSource.MEASURED)
+    length_m = models.DecimalField("Uzunluk (m)", max_digits=10, decimal_places=2, null=True, blank=True)
+    remaining_kg = models.DecimalField("Kalan (kg)", max_digits=12, decimal_places=3)
+    quality_status = models.CharField("Kalite", max_length=20, choices=QualityStatus.choices, default=QualityStatus.PENDING)
+    status = models.CharField(max_length=20, choices=CoilStatus.choices, default=CoilStatus.AVAILABLE)
+    notes = models.CharField("Not", max_length=200, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "Bobin"
+        verbose_name_plural = "Bobinler"
+        constraints = [
+            models.CheckConstraint(condition=Q(weight_kg__gt=0), name="coil_weight_positive"),
+            models.CheckConstraint(condition=Q(remaining_kg__gte=0) & Q(remaining_kg__lte=models.F("weight_kg")),
+                                   name="coil_remaining_in_range"),
+        ]
+
+    def __str__(self):
+        return self.code
+
+
+class CoilLink(models.Model):
+    """Kaynak bobinden çıktı bobine: kısmi tüketim miktarıyla birlikte."""
+
+    source = models.ForeignKey(Coil, on_delete=models.PROTECT, related_name="output_links")
+    output = models.ForeignKey(Coil, on_delete=models.PROTECT, related_name="source_links")
+    consumed_kg = models.DecimalField("Tüketilen (kg)", max_digits=12, decimal_places=3)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(consumed_kg__gt=0), name="coil_link_positive"),
+            models.UniqueConstraint(fields=["source", "output"], name="uniq_coil_link"),
+        ]
+
+
+class WorkOrderClosure(models.Model):
+    work_order = models.OneToOneField(WorkOrder, on_delete=models.PROTECT, related_name="closure")
+    issued_kg = models.DecimalField("Net verilen malzeme (kg)", max_digits=12, decimal_places=3)
+    good_kg = models.DecimalField("Sağlam çıktı (kg)", max_digits=12, decimal_places=3)
+    blocked_kg = models.DecimalField("Blokeli çıktı (kg)", max_digits=12, decimal_places=3)
+    wip_kg = models.DecimalField("Ara stokta kalan bobin (kg)", max_digits=12, decimal_places=3)
+    scrap_kg = models.DecimalField("Fire (kg)", max_digits=12, decimal_places=3)
+    difference_kg = models.DecimalField("Denge farkı (kg)", max_digits=12, decimal_places=3)
+    good_boxes = models.PositiveIntegerField("Palete alınan kutu")
+    reason = models.TextField("Gerekçe", blank=True)
+    closed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    closed_at = models.DateTimeField(auto_now_add=True)

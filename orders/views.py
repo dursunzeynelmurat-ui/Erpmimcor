@@ -53,9 +53,10 @@ def order_detail(request, pk):
         if resp:
             return resp
     lines = order.lines.select_related("product", "approved_revision")
+    from warehouse.selectors import order_warehouse_context
     return render(request, "orders/order_detail.html", {
         "order": order, "progress": [line_progress(line) for line in lines], "form": form,
-        "history": history_for(order),
+        "history": history_for(order), **order_warehouse_context(order, lines),
     })
 
 
