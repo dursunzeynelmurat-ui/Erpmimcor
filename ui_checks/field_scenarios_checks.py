@@ -173,8 +173,8 @@ class FieldScenarioBrowserTests(StaticLiveServerTestCase):
         wh.add_shipment_line(U("5001"), shipment, res, 5)
         wh.prepare_shipment(U("5001"), shipment)
         wh.scan_pallet(U("5001"), shipment, stock.qr_token)
-        wh.confirm_shipment(U("5001"), shipment)
-        wh.mark_exited(U("5001"), shipment)
+        wh.confirm_shipment(U("5002"), shipment)  # son onay ve çıkış: ambar yetkilisi
+        wh.mark_exited(U("5002"), shipment)
         depot, quality = self.page_for("5001"), self.page_for("4004")
         self.go(depot, f"/sevkiyatlar/{shipment.pk}/")
         depot.get_by_role("link", name="İade al").click()

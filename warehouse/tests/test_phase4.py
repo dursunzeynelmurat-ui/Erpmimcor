@@ -56,14 +56,14 @@ class ShipmentStageTests(TestCase):
 
     def test_confirm_requires_prepare_and_complete_load_check(self):
         with self.assertRaisesMessage(BusinessRuleError, "hazırlandı"):
-            wh.confirm_shipment(self.w.depot, self.shipment)
+            wh.confirm_shipment(self.w.store, self.shipment)
         wh.prepare_shipment(self.w.depot, self.shipment)
         with self.assertRaises(BusinessRuleError):
             wh.add_shipment_line(self.w.depot, self.shipment, self.res, 1)
         self.assertEqual(wh.scan_pallet(self.w.depot, self.shipment, self.other.qr_token).result, ScanResult.WRONG)
         self.assertEqual(wh.scan_pallet(self.w.depot, self.shipment, "bilinmeyen-qr").result, ScanResult.UNKNOWN)
         with self.assertRaisesMessage(BusinessRuleError, self.pallet.code):
-            wh.confirm_shipment(self.w.depot, self.shipment)
+            wh.confirm_shipment(self.w.store, self.shipment)
         url = "https://ornek.local" + reverse("warehouse:qr_open", args=[self.pallet.qr_token])
         self.assertEqual(wh.scan_pallet(self.w.depot, self.shipment, url).result, ScanResult.OK)
         self.assertEqual(wh.scan_pallet(self.w.depot, self.shipment, self.pallet.code).result, ScanResult.DUPLICATE)
@@ -71,7 +71,7 @@ class ShipmentStageTests(TestCase):
         self.assertEqual((len(check["missing"]), len(check["wrong"]), len(check["duplicates"])), (0, 2, 1))
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.box_count, 40)  # okutma stok değiştirmez
-        wh.confirm_shipment(self.w.depot, self.shipment)
+        wh.confirm_shipment(self.w.store, self.shipment)
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.box_count, 30)
 
@@ -82,13 +82,13 @@ class ShipmentStageTests(TestCase):
         self.assertEqual(len(wh.load_check(self.shipment)["missing"]), 1)
 
     def test_undo_before_exit_restores_stock_reservation_and_status(self):
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, self.shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, self.shipment))
         self.line.refresh_from_db()
         self.order.refresh_from_db()
         self.assertEqual((self.line.status, self.order.status), (LineStatus.SHIPPED, OrderStatus.DONE))
         with self.assertRaisesMessage(BusinessRuleError, "gerekçe"):
-            wh.undo_shipment(self.w.depot, self.shipment, "")
-        wh.undo_shipment(self.w.depot, self.shipment, "Araç arızalandı, yük indirildi")
+            wh.undo_shipment(self.w.store, self.shipment, "")
+        wh.undo_shipment(self.w.store, self.shipment, "Araç arızalandı, yük indirildi")
         self.pallet.refresh_from_db()
         self.res.refresh_from_db()
         self.line.refresh_from_db()
@@ -101,14 +101,14 @@ class ShipmentStageTests(TestCase):
         self.assertEqual(self.shipment.status, ShipmentStatus.PREPARED)
         kinds = list(self.pallet.movements.order_by("at", "id").values_list("kind", flat=True))
         self.assertEqual(kinds[-2:], [MovementKind.SHIPMENT, MovementKind.SHIPMENT_UNDO])  # geçmiş korunur
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, self.shipment))  # yeniden okutma ile tekrar sevk
-        wh.mark_exited(self.w.depot, self.shipment)
+        wh.confirm_shipment(self.w.store, load(self.w.depot, self.shipment))  # yeniden okutma ile tekrar sevk
+        wh.mark_exited(self.w.store, self.shipment)
         with self.assertRaisesMessage(BusinessRuleError, "iade"):
-            wh.undo_shipment(self.w.depot, self.shipment, "Geç kaldı")
+            wh.undo_shipment(self.w.store, self.shipment, "Geç kaldı")
 
     def test_return_goes_to_new_pending_pallet_linked_to_shipment(self):
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, self.shipment))
-        wh.mark_exited(self.w.depot, self.shipment)
+        wh.confirm_shipment(self.w.store, load(self.w.depot, self.shipment))
+        wh.mark_exited(self.w.store, self.shipment)
         sl = self.shipment.lines.get()
         with self.assertRaisesMessage(BusinessRuleError, "en fazla"):
             wh.receive_return(self.w.depot, sl, 11, "Ezik")
@@ -124,7 +124,7 @@ class ShipmentStageTests(TestCase):
         s2 = wh.create_shipment(self.w.depot, other_order)
         wh.add_shipment_line(self.w.depot, s2, res, 3)
         with self.assertRaisesMessage(BusinessRuleError, "uygun"):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, s2))  # kalite kararı olmadan iade sevk edilemez
+            wh.confirm_shipment(self.w.store, load(self.w.depot, s2))  # kalite kararı olmadan iade sevk edilemez
 
     def test_pages_render_each_stage(self):
         self.client.force_login(self.w.depot)
@@ -135,6 +135,10 @@ class ShipmentStageTests(TestCase):
         self.client.post(reverse("warehouse:shipment_scan", args=[self.shipment.pk]),
                          {"idem_key": uuid.uuid4().hex, "raw": self.pallet.code})
         self.assertContains(self.client.get(url), "Eksik yok")
+        self.assertContains(self.client.get(url), "Son sevk onayını ambar yetkilisi verir")
+        self.assertEqual(self.client.post(reverse("warehouse:shipment_confirm", args=[self.shipment.pk]),
+                                          {"idem_key": uuid.uuid4().hex}).status_code, 403)  # depo: yetkisiz
+        self.client.force_login(self.w.store)
         self.client.post(reverse("warehouse:shipment_confirm", args=[self.shipment.pk]), {"idem_key": uuid.uuid4().hex})
         self.assertContains(self.client.get(url), "Araç çıktı")
         self.client.post(reverse("warehouse:shipment_exit", args=[self.shipment.pk]), {"idem_key": uuid.uuid4().hex})

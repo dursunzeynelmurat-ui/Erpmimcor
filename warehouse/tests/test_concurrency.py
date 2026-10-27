@@ -110,15 +110,15 @@ class ConcurrentShipmentTests(ConcurrencyTestCase):
                 Shipment.objects.select_for_update().get(pk=self.shipment.pk)
                 self.a_locked.set()
                 self.wait_event(self.b_waiting, "B beklemesi")
-                return wh.confirm_shipment(self.w.depot, self.shipment)
+                return wh.confirm_shipment(self.w.store, self.shipment)
 
-        a, b = self.run_race(a, lambda: wh.confirm_shipment(self.w.depot, self.shipment))
+        a, b = self.run_race(a, lambda: wh.confirm_shipment(self.w.store, self.shipment))
         self.assert_one_success_one_rule_error(a, b, "zaten sevk edildi")
         self.assert_single_shipment()
 
     def test_same_form_key_submitted_twice_concurrently(self):
         def confirm():
-            return wh.confirm_shipment(self.w.depot, self.shipment)
+            return wh.confirm_shipment(self.w.store, self.shipment)
 
         def a_fn():
             self.a_locked.set()  # anahtar satırı eklendi, transaction açık
@@ -144,7 +144,7 @@ class ConcurrentShipmentTests(ConcurrencyTestCase):
                 self.a_locked.set()
                 self.wait_event(self.b_waiting, "B beklemesi")
 
-        a, b = self.run_race(a, lambda: wh.confirm_shipment(self.w.depot, self.shipment))
+        a, b = self.run_race(a, lambda: wh.confirm_shipment(self.w.store, self.shipment))
         self.assert_one_success_one_rule_error(a, b, "bobin blokeli")
         self.assertEqual(PalletMovement.objects.filter(kind=MovementKind.SHIPMENT).count(), 0)
         self.assertEqual(Pallet.objects.get(pk=self.pallet.pk).box_count, 40)

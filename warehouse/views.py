@@ -361,14 +361,14 @@ def shipment_scan(request, pk):
 
 
 @require_POST
-@require_perm("shipment.approve")
+@require_perm("shipment.exit")
 def shipment_exit(request, pk):
     return _shipment_post(request, pk, ConfirmForm(request.POST), "shipment.exit",
                           lambda s, d: services.mark_exited(request.user, s), "Araç çıkışı kaydedildi.")
 
 
 @require_POST
-@require_perm("shipment.approve")
+@require_perm("shipment.undo")
 def shipment_undo(request, pk):
     return _shipment_post(request, pk, ReasonForm(request.POST), "shipment.undo",
                           lambda s, d: services.undo_shipment(request.user, s, d["reason"]),

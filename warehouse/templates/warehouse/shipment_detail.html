@@ -41,6 +41,7 @@
     <dt>Mükerrer okutma</dt><dd>{% for s in check.duplicates %}{{ s.pallet.code }} {% empty %}Yok{% endfor %}</dd>
   </dl>
   <div class="actions">
+  {% if check.missing %}{% elif not can.shipment_approve %}<p class="muted">Yükleme kontrolü tamam. Son sevk onayını ambar yetkilisi verir.</p>{% endif %}
   {% if can.shipment_approve and not check.missing %}{% url 'warehouse:shipment_confirm' shipment.pk as u %}
     <p class="muted">Onayla birlikte kutular fiziksel stoktan düşülür. Yalnız kalite durumu “Uygun” ve bobin bekletmesi olmayan paletler sevk edilebilir.</p>
     {% include "partials/confirm_button.html" with action=u label="Sevk et" %}{% endif %}
@@ -48,10 +49,11 @@
   </div>
 </section>
 {% endif %}
-{% if shipment.status == "sevk_edildi" and can.shipment_approve %}
+{% if shipment.status == "sevk_edildi" %}
 <section class="card"><h2>Araç çıkışı</h2><p class="muted">Çıkış kaydedilene kadar sevk kontrollü olarak geri alınabilir (ters stok hareketi). Çıkıştan sonra değişiklik yalnız müşteri iadesiyle yapılır.</p>
-<div class="actions">{% url 'warehouse:shipment_exit' shipment.pk as u %}{% include "partials/confirm_button.html" with action=u label="Araç çıktı" %}
-{% url 'warehouse:shipment_undo' shipment.pk as u %}{% include "partials/reason_button.html" with action=u label="Sevki geri al" btn_class="btn-danger" hint="Kutular aynı paletlere ve rezervasyona döner; sevkiyat yeniden yükleme kontrolüne alınır." %}</div></section>
+<div class="actions">{% if can.shipment_exit %}{% url 'warehouse:shipment_exit' shipment.pk as u %}{% include "partials/confirm_button.html" with action=u label="Araç çıktı" %}{% endif %}
+{% if can.shipment_undo %}{% url 'warehouse:shipment_undo' shipment.pk as u %}{% include "partials/reason_button.html" with action=u label="Sevki geri al" btn_class="btn-danger" hint="Kutular aynı paletlere ve rezervasyona döner; sevkiyat yeniden yükleme kontrolüne alınır." %}{% endif %}
+{% if not can.shipment_exit and not can.shipment_undo %}<p class="muted">Çıkış kaydı ve geri alma ambar yetkilisi tarafından yapılır.</p>{% endif %}</div></section>
 {% endif %}
 {% if shipment.status == "taslak" or shipment.status == "hazirlandi" %}{% if can.shipment_manage %}{% url 'warehouse:shipment_cancel' shipment.pk as u %}<div class="actions no-print">{% include "partials/reason_button.html" with action=u label="Sevkiyatı iptal et" btn_class="btn-danger" hint="Stok düşmemiş sevkiyat iptal edilir; satırlar serbest kalır, kayıt geçmişte korunur." %}</div>{% endif %}{% endif %}
 {% include "partials/history.html" %}

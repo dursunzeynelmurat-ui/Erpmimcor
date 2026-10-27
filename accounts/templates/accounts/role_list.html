@@ -10,6 +10,13 @@
     <td data-label="Rol"><a href="{% url 'accounts:role_edit' r.pk %}">{{ r.name }}</a>{% if r.is_template %} <span class="muted">(şablon)</span>{% endif %}</td>
     <td data-label="Durum"><span class="status{% if r.status == 'aktif' %} status-uygun{% elif r.status == 'taslak' %} status-kontrol_bekliyor{% else %} status-blokeli{% endif %}">{{ r.get_status_display }}</span></td>
     <td data-label="Yetki sayısı">{{ r.permissions.all|length }}</td><td data-label="Kullanıcı">{{ r.user_count }}</td>
-    <td data-label="İK atayabilir">{{ r.hr_assignable|yesno:"Evet,Hayır" }}</td></tr>{% endfor %}</tbody>
+    <td data-label="İK atayabilir">{{ r.hr_assignable|yesno:"Evet,Hayır" }}</td></tr>
+    {% if r.drift and r.drift.0 or r.drift and r.drift.1 or r.split_note %}<tr><td colspan="5" data-label="Uyarı">
+      {% if r.drift and r.drift.0 or r.drift and r.drift.1 %}<div class="conflict"><strong>Şablondan farklı</strong> ({{ r.user_count }} kullanıcı etkilenir) ·
+        Güncel şablonda olup rolde olmayan: {% for a, s in r.drift.0.items %}<code>{{ a }}</code>:{{ s }} {% empty %}—{% endfor %} ·
+        Rolde olup şablonda olmayan: {% for a, s in r.drift.1.items %}<code>{{ a }}</code>:{{ s }} {% empty %}—{% endfor %}
+        {% if can.role_manage %}{% url 'accounts:role_action' r.pk 'sablon' as u %}{% include "partials/reason_button.html" with action=u label="Önerilen şablonu uygula" hint="Rolün yetkileri güncel başlangıç şablonuna eşitlenir; özelleştirmeler kaldırılır ve işlem geçmişine yazılır." %}{% endif %}</div>{% endif %}
+      {% if r.split_note %}<p class="msg msg-warning">Bu rolde son sevk onayı var; çıkış öncesi geri alma (<code>shipment.undo</code>) ve araç çıkışı kaydı (<code>shipment.exit</code>) artık ayrı yetkilerdir ve bu role kendiliğinden verilmedi.</p>{% endif %}
+    </td></tr>{% endif %}{% endfor %}</tbody>
 </table></div>
 {% endblock %}

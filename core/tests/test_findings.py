@@ -69,7 +69,7 @@ class Finding1RevisionCompatibilityTests(TestCase):
         res = wh.reserve(self.w.depot, self.pallet70, self.line, 10)
         shipment = wh.create_shipment(self.w.depot, self.line.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
 
     def test_transfer_between_different_signatures_rejected(self):
         pallet30 = stock_pallet_with_revision(self.w, self.w.rev_a)
@@ -97,7 +97,7 @@ class Finding2OverReservationTests(TestCase):
         res = wh.reserve(self.w.depot, self.pallet, self.line, 12)
         shipment = wh.create_shipment(self.w.depot, self.line.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 12)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         self.line.refresh_from_db()
         self.assertEqual(self.line.status, LineStatus.SHIPPED)
 

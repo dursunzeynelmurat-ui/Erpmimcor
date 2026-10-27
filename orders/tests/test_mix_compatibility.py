@@ -34,7 +34,7 @@ class MixCompatibilityTests(TestCase):
         res = wh.reserve(self.w.depot, self.pallet_mix, self.line, 10)
         shipment = wh.create_shipment(self.w.depot, self.line.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
 
     def test_equivalence_scope_other_line_rejected(self):
         orders.approve_compatibility(self.w.planner, self.line, self.rev_mix, "Yalnız bu kalem")
@@ -59,7 +59,7 @@ class MixCompatibilityTests(TestCase):
         load(self.w.depot, shipment)
         orders.revoke_compatibility(self.w.planner, self.line.compatibility_exceptions.get(), "Müşteri vazgeçti")
         with self.assertRaisesMessage(BusinessRuleError, "karışım"):
-            wh.confirm_shipment(self.w.depot, shipment)
+            wh.confirm_shipment(self.w.store, shipment)
 
     def test_transfer_between_different_mixes_rejected(self):
         pallet_std = stock_pallet_with_revision(self.w, self.w.rev_a)

@@ -118,7 +118,7 @@ class ChangeCopyCancelTests(TestCase):
         self.assertEqual(res.status, "iptal")
         shipment = wh.create_shipment(self.w.depot, order, "34 KRG 01", "")
         wh.add_shipment_line(self.w.depot, shipment, line.reservations.get(), 10)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         order.refresh_from_db()
         self.assertEqual(order.status, OrderStatus.DONE)
 

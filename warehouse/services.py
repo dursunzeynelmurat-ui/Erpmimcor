@@ -731,7 +731,7 @@ def load_check(shipment):
 def mark_exited(actor, shipment):
     """Araç çıkışı: bundan sonra sevk geri alınamaz; değişiklik ancak iade ile yapılır."""
     shipment = _lock_shipment(shipment)
-    check(actor, "shipment.approve", shipment)
+    check(actor, "shipment.exit", shipment)
     if shipment.status != ShipmentStatus.SHIPPED:
         raise BusinessRuleError("Yalnız sevk onaylı sevkiyat için çıkış kaydedilir.")
     shipment.status, shipment.exited_by, shipment.exited_at = ShipmentStatus.EXITED, actor, timezone.now()
@@ -757,7 +757,7 @@ def undo_shipment(actor, shipment, reason):
     if not reason:
         raise BusinessRuleError("Geri alma gerekçesi zorunludur.", field="reason")
     shipment = _lock_shipment(shipment)
-    check(actor, "shipment.approve", shipment)
+    check(actor, "shipment.undo", shipment)
     if shipment.status == ShipmentStatus.EXITED:
         raise BusinessRuleError("Araç çıkışı yapılmış sevkiyat geri alınamaz; müşteri iadesi olarak kaydedin.")
     if shipment.status != ShipmentStatus.SHIPPED:

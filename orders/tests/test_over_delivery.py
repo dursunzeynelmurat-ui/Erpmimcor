@@ -43,7 +43,7 @@ class AllowanceLifecycleTests(TestCase):
         res = wh.reserve(self.w.depot, self.pallet, self.line, 12)
         shipment = wh.create_shipment(self.w.depot, self.line.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 12)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         with self.assertRaisesMessage(BusinessRuleError, "sevk edilmiş"):
             orders.set_over_delivery(self.w.planner, self.line, 0, "Geri al")
 

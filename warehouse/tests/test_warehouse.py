@@ -112,7 +112,7 @@ class ReservationAndShipmentTests(TestCase):
         res = wh.reserve(self.w.sales, self.pallet, self.line, 10)
         shipment = wh.create_shipment(self.w.depot, self.order)
         sl = wh.add_shipment_line(self.w.depot, shipment, res, 10)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         pallet = Pallet.objects.get(pk=self.pallet.pk)
         self.assertEqual(pallet.code, self.pallet.code)
         self.assertEqual(pallet.box_count, 30)
@@ -124,16 +124,16 @@ class ReservationAndShipmentTests(TestCase):
         self.line.refresh_from_db()
         self.assertEqual(self.line.status, LineStatus.SHIPPED)
         self.assertEqual(Pallet.objects.count(), 1)
-        self.assertTrue(AuditLog.objects.filter(action="pallet.sevk", object_code=pallet.code, user=self.w.depot).exists())
+        self.assertTrue(AuditLog.objects.filter(action="pallet.sevk", object_code=pallet.code, user=self.w.store).exists())
         self.assertEqual(pallet.weight_status, WeightStatus.REWEIGH)
 
     def test_duplicate_shipment_confirm_rejected(self):
         res = wh.reserve(self.w.sales, self.pallet, self.line, 10)
         shipment = wh.create_shipment(self.w.depot, self.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         with self.assertRaises(BusinessRuleError):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         self.assertEqual(PalletMovement.objects.filter(kind=MovementKind.SHIPMENT).count(), 1)
         # sipariş tamamlandı: ikinci sevkiyat açılamaz, aynı rezervasyon tekrar sevk edilemez
         with self.assertRaisesMessage(BusinessRuleError, "kapanmamış"):
@@ -144,7 +144,7 @@ class ReservationAndShipmentTests(TestCase):
         shipment = wh.create_shipment(self.w.depot, self.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
         load(self.w.depot, shipment)
-        self.client.force_login(self.w.depot)
+        self.client.force_login(self.w.store)
         url = reverse("warehouse:shipment_confirm", args=[shipment.pk])
         self.client.post(url, {"idem_key": "ship-1"})
         resp = self.client.post(url, {"idem_key": "ship-1"}, follow=True)
@@ -165,7 +165,7 @@ class ReservationAndShipmentTests(TestCase):
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
         wh.set_pallet_quality(self.w.depot, self.pallet, QualityStatus.BLOCKED, "Şikâyet incelemesi")
         with self.assertRaises(BusinessRuleError):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.box_count, 40)
         shipment.refresh_from_db()
@@ -177,7 +177,7 @@ class ReservationAndShipmentTests(TestCase):
         shipment = wh.create_shipment(self.w.depot, self.order)
         wh.add_shipment_line(self.w.depot, shipment, res, 10)
         with self.assertRaises(BusinessRuleError):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
 
     def test_cannot_reserve_more_than_available(self):
         wh.reserve(self.w.sales, self.pallet, self.line, 10)
@@ -449,7 +449,7 @@ class UnitLimitTests(TestCase):
             wh.add_shipment_line(self.w.depot, shipment, res, 10)
         ShipmentLine.objects.create(shipment=shipment, reservation=res, pallet=self.pallet, order_line=line, quantity=10)
         with self.assertRaisesMessage(BusinessRuleError, "yalnız kutu birimli"):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         self.pallet.refresh_from_db()
         res.refresh_from_db()
         line.refresh_from_db()
@@ -463,12 +463,12 @@ class UnitLimitTests(TestCase):
         res = wh.reserve(self.w.sales, self.pallet, line, 10)
         s1 = wh.create_shipment(self.w.depot, order)
         wh.add_shipment_line(self.w.depot, s1, res, 4)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, s1))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, s1))
         line.refresh_from_db()
         self.assertNotEqual(line.status, LineStatus.SHIPPED)
         s2 = wh.create_shipment(self.w.depot, order)
         wh.add_shipment_line(self.w.depot, s2, res, 6)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, s2))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, s2))
         line.refresh_from_db()
         self.pallet.refresh_from_db()
         self.assertEqual(line.status, LineStatus.SHIPPED)
@@ -508,7 +508,7 @@ class CoilBlockShipmentTests(TestCase):
         movements = PalletMovement.objects.count()
         before = Pallet.objects.get(pk=pallet.pk).box_count
         with self.assertRaisesMessage(BusinessRuleError, "bobin blokeli"):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         pallet.refresh_from_db()
         res.refresh_from_db()
         shipment.refresh_from_db()
@@ -580,10 +580,10 @@ class CoilBlockShipmentTests(TestCase):
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.quality_status, QualityStatus.BLOCKED)
         with self.assertRaisesMessage(BusinessRuleError, "kalite durumu"):
-            wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+            wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
 
     def test_unblocked_ok_pallet_ships(self):
         res, shipment = self._prepare(self.pallet)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.box_count, 30)

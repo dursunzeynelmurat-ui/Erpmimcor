@@ -112,12 +112,20 @@ class DemoBrowserTests(StaticLiveServerTestCase):
             depot.locator('[name=raw]').fill(self.live_server_url + f'/q/{line.pallet.qr_token}/')
             self.submit(depot, 'Okut')
         expect(depot.locator('#yukleme')).to_contain_text('Eksik yok')
-        self.shot(depot, 'sevkiyat-onay')
-        form = depot.locator(f'form[action="/sevkiyatlar/{shipment.pk}/onayla/"]')
+        expect(depot.locator('#yukleme')).to_contain_text('Son sevk onayını ambar yetkilisi verir')
+        # Depo personeli son onayı doğrudan POST ile de veremez
+        token = depot.locator('[name=csrfmiddlewaretoken]').first.input_value()
+        denied = depot.request.post(self.live_server_url + f'/sevkiyatlar/{shipment.pk}/onayla/',
+                                    form={'csrfmiddlewaretoken': token, 'idem_key': f'yetkisiz-{shipment.pk}'})
+        self.assertEqual(denied.status, 403)
+        store = self.page_for('5002')
+        self.go(store, f'/sevkiyatlar/{shipment.pk}/')
+        self.shot(store, 'sevkiyat-onay')
+        form = store.locator(f'form[action="/sevkiyatlar/{shipment.pk}/onayla/"]')
         payload = form.locator('input').evaluate_all('(nodes) => Object.fromEntries(nodes.map(n => [n.name,n.value]))')
-        self.submit(depot, 'Sevk et')
+        self.submit(store, 'Sevk et')
         # Kaydedilmiş POST'u aynı anahtarla yeniden gönder; stok yalnız bir kere azalmalı.
-        response = depot.request.post(self.live_server_url + f'/sevkiyatlar/{shipment.pk}/onayla/', form=payload)
+        response = store.request.post(self.live_server_url + f'/sevkiyatlar/{shipment.pk}/onayla/', form=payload)
         self.assertEqual(response.status, 200)
         self.assertEqual(PalletMovement.objects.filter(shipment_line__shipment=shipment).count(), 1)
         return shipment

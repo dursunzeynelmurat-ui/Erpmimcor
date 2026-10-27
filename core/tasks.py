@@ -8,6 +8,11 @@ from accounts.permissions import can, scoped
 LIMIT = 5
 
 
+def wh_missing(shipment):
+    from warehouse.services import load_check
+    return bool(load_check(shipment)["missing"])
+
+
 def _task(title, qs, url, label):
     items = list(qs[:LIMIT])
     return {"title": title, "count": qs.count(), "url": url, "items": [(label(o), o) for o in items]} if items else None
@@ -68,6 +73,12 @@ def task_lists(user):
         tasks.append(_task("Yükleme kontrolü bekleyen sevkiyatlar", qs, reverse("warehouse:shipment_list"),
                            lambda s: f"{s.code} · {s.order.customer.name}"))
     if can(user, "shipment.approve"):
+        qs = scoped(Shipment.objects.filter(status=ShipmentStatus.PREPARED), user, "shipment.view").select_related(
+            "order__customer")
+        qs = qs.filter(pk__in=[s.pk for s in qs if not wh_missing(s)])
+        tasks.append(_task("Son sevk onayı bekleyen sevkiyatlar (yükleme kontrolü tamam)", qs,
+                           reverse("warehouse:shipment_list"), lambda s: f"{s.code} · {s.order.customer.name}"))
+    if can(user, "shipment.exit"):
         qs = scoped(Shipment.objects.filter(status=ShipmentStatus.SHIPPED), user, "shipment.view").select_related(
             "order__customer")
         tasks.append(_task("Araç çıkışı bekleyen sevkiyatlar", qs, reverse("warehouse:shipment_list"),

@@ -41,6 +41,7 @@ class World:
         self.planner = user(Role.PLANNING)
         self.foreman = user(Role.PRODUCTION)
         self.depot = user(Role.WAREHOUSE)
+        self.store = user(Role.WAREHOUSE_MANAGER, "9006")  # son sevk onayı / geri alma / çıkış
         a = self.admin
         self.cust_a = cat.create_definition(a, Customer, {"code": "C-A", "name": "Kurgu A"})
         self.cust_b = cat.create_definition(a, Customer, {"code": "C-B", "name": "Kurgu B"})

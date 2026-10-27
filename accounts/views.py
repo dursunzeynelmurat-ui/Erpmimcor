@@ -133,8 +133,12 @@ def user_role_revoke(request, pk):
 
 @require_any("role.manage", "role.draft", "user.manage", "hr.user.manage")
 def role_list(request):
-    roles = AccessRole.objects.prefetch_related("permissions").annotate(
-        user_count=Count("assignments", filter=Q(assignments__revoked_at__isnull=True), distinct=True))
+    roles = list(AccessRole.objects.prefetch_related("permissions").annotate(
+        user_count=Count("assignments", filter=Q(assignments__revoked_at__isnull=True), distinct=True)))
+    for r in roles:
+        r.drift = services.template_drift(r)
+        codes = {p.action for p in r.permissions.all()}
+        r.split_note = "shipment.approve" in codes and not {"shipment.undo", "shipment.exit"} <= codes
     return render(request, "accounts/role_list.html", {"roles": roles})
 
 
@@ -180,6 +184,7 @@ def role_action(request, pk, action):
         "onayla": lambda d: services.approve_role(request.user, role),
         "pasif": lambda d: services.set_role_status(request.user, role, RoleStatus.INACTIVE, d["reason"]),
         "aktif": lambda d: services.set_role_status(request.user, role, RoleStatus.ACTIVE, d["reason"]),
+        "sablon": lambda d: services.apply_template(request.user, role, d["reason"]),
     }
     if action not in fns:
         raise Http404

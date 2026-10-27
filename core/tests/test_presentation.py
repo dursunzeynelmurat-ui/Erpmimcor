@@ -46,7 +46,7 @@ class PresentationTests(TestCase):
         self.assertEqual((row['produced'], row['reserved'], row['shipped']), (0, 10, 0))
         shipment = wh.create_shipment(self.w.depot, line.order)
         wh.add_shipment_line(self.w.depot, shipment, reservation, 4)
-        wh.confirm_shipment(self.w.depot, load(self.w.depot, shipment))
+        wh.confirm_shipment(self.w.store, load(self.w.depot, shipment))
         row = line_progress(line)
         self.assertEqual((row['produced'], row['reserved'], row['shipped']), (0, 6, 4))
 

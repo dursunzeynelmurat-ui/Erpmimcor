@@ -98,8 +98,10 @@ ACTIONS = [
     Action("warehouse.operate", "Depo kabul, tartım, aktarım, sayım, hasar, konum", "Depo", Kind.CHANGE),
     Action("reservation.manage", "Siparişe ayırma, azaltma, iptal", "Depo", Kind.CHANGE, CUST),
     Action("shipment.view", "Sevkiyatları görme", "Depo", Kind.VIEW, CUST),
-    Action("shipment.manage", "Sevkiyat hazırlama, yükleme kontrolü, iade kabulü", "Depo", Kind.CHANGE),
-    Action("shipment.approve", "Sevk onayı ve sevk geri alma", "Depo", Kind.APPROVE),
+    Action("shipment.manage", "Sevkiyat hazırlama, QR yükleme kontrolü, iade kabulü", "Depo", Kind.CHANGE),
+    Action("shipment.approve", "Son sevk onayı (stok düşer)", "Depo", Kind.APPROVE),
+    Action("shipment.undo", "Çıkış öncesi sevk geri alma", "Depo", Kind.CANCEL),
+    Action("shipment.exit", "Fiziksel araç çıkışını kaydetme", "Depo", Kind.APPROVE),
     Action("label.print", "Palet/kutu etiketi yazdırma", "Depo", Kind.PRINT),
     Action("stocklevel.manage", "Hedef/alt stok seviyesi tanımlama", "Depo", Kind.CHANGE),
     # Düzeltme
@@ -153,9 +155,10 @@ TEMPLATES = {
         "product.view": A, "machine.view": A}),
     "ambar_yetkilisi": ("Ambar yetkilisi", True, {
         **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A, "shipment.approve": A,
+        "shipment.undo": A, "shipment.exit": A,
         "label.print": A, "lot.receive": A, "quality.block": A, "correction.approve": A,
         "customer.document.view": A}),
     "depo": ("Depo personeli", True, {
-        **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A, "shipment.approve": A,
+        **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A,
         "label.print": A, "lot.receive": A, "quality.block": A, "customer.document.view": A}),
 }

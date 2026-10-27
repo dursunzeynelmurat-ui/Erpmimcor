@@ -268,3 +268,30 @@ def save_shift(actor, shift, data):
     if changes:
         audit(actor, "shift.update", shift, changes, code=shift.code)
     return shift
+
+
+# --- Başlangıç şablonu farkı ------------------------------------------------------------
+
+def template_drift(role):
+    """Şablon rolün kod şablonundan farkı: (eksik {işlem: kapsam}, fazla {işlem: kapsam}). Şablon değilse None."""
+    from .catalog import TEMPLATES
+    if not role.is_template or role.code not in TEMPLATES:
+        return None
+    template = TEMPLATES[role.code][2]
+    current = dict(role.permissions.values_list("action", "scope"))
+    missing = {a: s for a, s in template.items() if current.get(a) != s}
+    extra = {a: s for a, s in current.items() if template.get(a) != s}
+    return (missing, extra) if (missing or extra) else ({}, {})
+
+
+@transaction.atomic
+def apply_template(actor, role, reason):
+    """Yöneticinin açık kararıyla şablon rolü güncel kod şablonuna eşitler (özelleştirmeler kaldırılır)."""
+    from .catalog import TEMPLATES
+    check(actor, "role.manage")
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    if not role.is_template or role.code not in TEMPLATES:
+        raise BusinessRuleError("Bu rol bir başlangıç şablonu değil.")
+    return update_role(actor, role, name=role.name, description=role.description, hr_assignable=role.hr_assignable,
+                       perms=dict(TEMPLATES[role.code][2]), reason=f"Şablona eşitlendi: {reason}")
