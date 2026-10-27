@@ -97,6 +97,9 @@ class WorkOrderOperation(models.Model):
     machine = models.ForeignKey(Machine, on_delete=models.PROTECT, related_name="operations", verbose_name="Makine")
     planned_date = models.DateField("Planlanan tarih", null=True, blank=True)
     shift = models.ForeignKey("accounts.Shift", on_delete=models.PROTECT, null=True, blank=True, verbose_name="Vardiya")
+    responsible_shift = models.ForeignKey("accounts.Shift", on_delete=models.PROTECT, null=True, blank=True,
+                                          related_name="+", verbose_name="Sorumlu vardiya",
+                                          help_text="Planlanan vardiya; vardiya devri teslim alınınca devralan vardiya.")
     queue_position = models.PositiveIntegerField("Çalışma sırası", null=True, blank=True)
     status = models.CharField(max_length=20, choices=OperationStatus.choices, default=OperationStatus.WAITING)
     started_at = models.DateTimeField(null=True, blank=True)

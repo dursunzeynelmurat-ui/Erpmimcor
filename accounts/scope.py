@@ -75,7 +75,16 @@ def scope_q(model, scope, user):
     if scope == Scope.SHIFT and label in OPERATION_PATHS:
         if not user.shift_id:
             return None
-        return Q(**{_join(OPERATION_PATHS[label], "shift_id"): user.shift_id})
+        return Q(**{_join(OPERATION_PATHS[label], "responsible_shift_id"): user.shift_id})
+    if scope == Scope.MACHINE_SHIFT and label in OPERATION_PATHS:
+        # Tek kapsam içinde VE: aynı operasyon hem atanmış makinede hem kullanıcının vardiyasının sorumluluğunda
+        # olmalı (tek filter() çağrısında aynı ilişki satırına uygulanır). Vardiyası tanımsız kullanıcıya erişim yok.
+        if not user.shift_id:
+            return None
+        from .models import UserMachine
+        path = OPERATION_PATHS[label]
+        machines = UserMachine.objects.filter(user=user).values("machine_id")
+        return Q(**{_join(path, "machine__in"): machines, _join(path, "responsible_shift_id"): user.shift_id})
     return None
 
 

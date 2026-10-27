@@ -104,8 +104,7 @@ def workorder_detail(request, pk):
         "stop_reasons": StopReason.choices, "tech_labels": instructions.TECH_LABELS,
         "remaining": lifecycle.remaining_target(wo),
         "components": (wo.recipe_revision.components.select_related("material") if can(user, "recipe.view") else None),
-        "handovers": ShiftHandover.objects.filter(operation__work_order=wo).select_related(
-            "operation", "from_shift", "to_shift", "created_by", "acknowledged_by"),
+        "handovers": _handovers(wo, user),
         "coils": wo.coils.select_related("operation", "machine").order_by("operation__seq", "created_at"),
         "pallets": wo.pallets.all(),
         "issued": services.issued_by_lot(wo),
@@ -116,6 +115,14 @@ def workorder_detail(request, pk):
         "can_review_closure": can(user, "correction.approve", wo) or can(user, "planning.approve"),
         "history": history_for(wo),
     })
+
+
+def _handovers(wo, user):
+    rows = list(ShiftHandover.objects.filter(operation__work_order=wo).select_related(
+        "operation", "from_shift", "to_shift", "created_by", "acknowledged_by"))
+    for h in rows:
+        h.can_ack = not h.acknowledged_at and h.created_by_id != user.pk and lifecycle.can_acknowledge(user, h)
+    return rows
 
 
 CLOSURE_LABELS = {"issued": "Net verilen malzeme (kg)", "good": "Sağlam çıktı (kg)", "blocked": "Blokeli (kg)",
@@ -392,7 +399,9 @@ def handover_create(request, op_pk):
 @require_POST
 def handover_ack(request, pk):
     h = get_object_or_404(ShiftHandover.objects.select_related("operation__work_order"), pk=pk)
-    get_scoped_or_404(WorkOrderOperation.objects.all(), request.user, "production.hold", pk=h.operation_id)
+    get_scoped_or_404(WorkOrderOperation.objects.all(), request.user, "workorder.view", pk=h.operation_id)
+    if not lifecycle.can_acknowledge(request.user, h):
+        raise PermissionDenied("Bu devri teslim alma yetkiniz yok.")
     url = _wo_url(h.operation.work_order) + "#devirler"
     return _post_action(request, url, ConfirmForm(request.POST), "operation.handover_ack",
                         lambda d: lifecycle.acknowledge_handover(request.user, h), "Devir teslim alındı.")

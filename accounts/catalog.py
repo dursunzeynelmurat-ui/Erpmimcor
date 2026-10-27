@@ -12,10 +12,12 @@ class Scope:
     CUSTOMER = "customer"   # Kullanıcıya erişim verilmiş müşteriler (CustomerAccess)
     ASSIGNED = "assigned"   # Kullanıcıya (ustabaşı) atanmış iş emirleri
     MACHINE = "machine"     # Kullanıcının atandığı makinelerdeki operasyonlar
-    SHIFT = "shift"         # Kullanıcının vardiyasına planlanmış operasyonlar
+    SHIFT = "shift"         # Operasyonun sorumlu vardiyası kullanıcının vardiyası
+    MACHINE_SHIFT = "machine_shift"  # Atandığı makine VE sorumlu vardiyası kendi vardiyası olan operasyonlar
 
     LABELS = {ALL: "Tüm kayıtlar", CUSTOMER: "Erişim verilen müşteriler", ASSIGNED: "Kendisine atanmış işler",
-              MACHINE: "Atandığı makineler", SHIFT: "Kendi vardiyası"}
+              MACHINE: "Atandığı makineler", SHIFT: "Kendi vardiyası",
+              MACHINE_SHIFT: "Atandığı makine ve kendi vardiyası (ikisi birden)"}
     CHOICES = list(LABELS.items())
 
 
@@ -37,9 +39,9 @@ class Action:
     admin_only: bool = False  # Yalnız yönetici verebilir; İK taslağına giremez.
 
 
-A, C, AS, M, SH = Scope.ALL, Scope.CUSTOMER, Scope.ASSIGNED, Scope.MACHINE, Scope.SHIFT
+A, C, AS, M, SH, MS = Scope.ALL, Scope.CUSTOMER, Scope.ASSIGNED, Scope.MACHINE, Scope.SHIFT, Scope.MACHINE_SHIFT
 CUST = (A, C)
-PROD = (A, AS, M, SH)
+PROD = (A, AS, M, SH, MS)
 
 ACTIONS = [
     # Sistem ve personel
@@ -105,7 +107,7 @@ ACTIONS = [
     Action("label.print", "Palet/kutu etiketi yazdırma", "Depo", Kind.PRINT),
     Action("stocklevel.manage", "Hedef/alt stok seviyesi tanımlama", "Depo", Kind.CHANGE),
     # Düzeltme
-    Action("correction.request", "Düzeltme talebi açma", "Düzeltme", Kind.CORRECTION_REQUEST, (A, C, AS, M, SH)),
+    Action("correction.request", "Düzeltme talebi açma", "Düzeltme", Kind.CORRECTION_REQUEST, (A, C, AS, M, SH, MS)),
     Action("correction.approve", "Düzeltme talebini onaylama/reddetme", "Düzeltme", Kind.CORRECTION_APPROVE),
 ]
 BY_CODE = {a.code: a for a in ACTIONS}
@@ -148,8 +150,10 @@ TEMPLATES = {
         "instruction.view": AS, "instruction.print": AS, "quality.decide": AS, "quality.block": AS,
         "quality.release": AS, "machine.view": A, "material.view": A, "stock.view": A}),
     "operator": ("Usta / operatör", True, {
-        "workorder.view": M, "production.execute": M, "production.hold": M, "instruction.view": M,
-        "quality.block": M, "machine.view": A}),
+        # Geçmiş kayıt: atandığı makinelerdeki işler. Aktif teknik bilgi ve üretim kaydı: atandığı makine VE
+        # operasyonun sorumlu vardiyası kendi vardiyası (vardiya devri teslim alınınca sorumluluk yeni vardiyaya geçer).
+        "workorder.view": M, "production.execute": MS, "production.hold": MS, "instruction.view": MS,
+        "quality.block": MS, "machine.view": A}),
     "kalite": ("Kalite sorumlusu", True, {
         "workorder.view": A, "stock.view": A, "quality.decide": A, "quality.block": A, "quality.release": A,
         "product.view": A, "machine.view": A}),

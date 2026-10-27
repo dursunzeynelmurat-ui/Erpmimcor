@@ -65,7 +65,7 @@
   Kalan iş: {{ h.remaining_note }}{% if h.machine_side_material %}<br>Makine başı: {{ h.machine_side_material }}{% endif %}{% if h.notes %}<br>Not: {{ h.notes }}{% endif %}
   {% if h.open_coils %}<br><small>Açık bobinler: {% for c in h.open_coils %}{{ c.code }} ({{ c.remaining_kg }} kg){% if not forloop.last %}, {% endif %}{% endfor %}</small>{% endif %}
   <br>{% if h.acknowledged_at %}<span class="status status-uygun">Teslim alındı: {{ h.acknowledged_by.full_name }} · {{ h.acknowledged_at|date:"d.m.Y H:i" }}</span>
-  {% elif can_hold_any %}{% url 'production:handover_ack' h.pk as u %}{% include "partials/confirm_button.html" with action=u label="Devri teslim aldım" btn_class="btn" %}{% else %}<span class="status">Teslim bekliyor</span>{% endif %}
+  {% elif h.can_ack %}{% url 'production:handover_ack' h.pk as u %}{% include "partials/confirm_button.html" with action=u label="Devri teslim aldım" btn_class="btn" %}{% else %}<span class="status">Teslim bekliyor</span>{% endif %}
 </li>{% endfor %}</ul></section>{% endif %}
 {% include "partials/workorder_extra.html" %}
 {% include "partials/history.html" %}

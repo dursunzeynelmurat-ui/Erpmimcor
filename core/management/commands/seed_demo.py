@@ -20,6 +20,7 @@ USERS = [  # (personel no, ad, rol şablonu, vardiya kodu)
     ("4001", "Hasan Ustabaşı", Role.PRODUCTION, "V1"),
     ("4002", "Elif Üretim Yetkilisi", Role.PRODUCTION_MANAGER, None),
     ("4003", "Can Operatör", Role.OPERATOR, "V1"),
+    ("4005", "Ece Gece Operatörü", Role.OPERATOR, "V2"),
     ("4004", "Zeynep Kalite", Role.QUALITY, None),
     ("5001", "Deniz Depo", Role.WAREHOUSE, None),
     ("5002", "Burak Ambar", Role.WAREHOUSE_MANAGER, None),
@@ -36,6 +37,7 @@ CUSTOMERS = [
     ("M-NORD", "Nordfolie Beispiel GmbH (kurgusal)", {
         "short_name": "Nordfolie", "country": "DE", "language": "de", "tax_id_type": "vat", "tax_id": "DE000000000"}),
 ]
+OPERATOR_MACHINES = {"4003": ["EXT-01", "PER-01"], "4005": ["EXT-01", "PER-01"]}
 SALES_ACCESS = {"2001": ["M-ORNEK", "M-DENEME"], "2002": ["M-KURGU", "M-NORD"]}
 # Aynı teknik ürün (30 µ şeffaf poşet filmi) iki müşteride farklı ürün kodlarıyla.
 PRODUCTS = [
@@ -92,6 +94,11 @@ class Command(BaseCommand):
                                     units_per_box=per_box, notes="Kurgusal demo ürünü")
         for code, name, mtype in MACHINES:
             ensure(Machine, code, name=name, machine_type=mtype)
+        from accounts.models import UserMachine
+        for no, codes in OPERATOR_MACHINES.items():  # operatör erişimi: atandığı makine VE kendi vardiyası
+            for code in codes:
+                UserMachine.objects.get_or_create(user=User.objects.get(personnel_no=no),
+                                                  machine=Machine.objects.get(code=code))
         materials = {code: ensure(Material, code, name=name, kind=kind, unit="kg") for code, name, kind in MATERIALS}
 
         if not materials["HM-LDPE"].lots.exists():

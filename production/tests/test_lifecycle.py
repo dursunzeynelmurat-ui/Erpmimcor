@@ -183,20 +183,26 @@ class InstructionAndRecipeAccessTests(TestCase):
         self.w = World()
         self.wo = self.w.work_order(machines=[self.w.ext, self.w.prn])
         self.op1, self.op2 = self.wo.operations.order_by("seq")
-        self.operator = User.objects.create_user("9413", PASSWORD, full_name="Matbaa Ustası", role=Role.OPERATOR)
+        v1 = Shift.objects.get(code="V1")
+        self.operator = User.objects.create_user("9413", PASSWORD, full_name="Matbaa Ustası", role=Role.OPERATOR,
+                                                 shift=v1)
         UserMachine.objects.create(user=self.operator, machine=self.w.prn)
+        for op in (self.op1, self.op2):  # ustabaşı operasyonları V1'e planladı (sorumlu vardiya V1)
+            lifecycle.schedule_operation(self.w.foreman, op, planned_date=timezone.localdate(), shift=v1,
+                                         machine=op.machine, queue_position=1)
+            op.refresh_from_db()
 
     def test_reprint_same_content_reuses_version_change_supersedes(self):
         a = instructions.issue_for_print(self.w.foreman, self.op1)
         b = instructions.issue_for_print(self.w.foreman, self.op1)
         self.assertEqual((a.pk, a.prints.count()), (b.pk, 2))
         lifecycle.schedule_operation(self.w.foreman, self.op1, planned_date=timezone.localdate(),
-                                     shift=Shift.objects.get(code="V1"), machine=self.w.ext, queue_position=1)
+                                     shift=Shift.objects.get(code="V2"), machine=self.w.ext, queue_position=1)
         a.refresh_from_db()
         self.assertEqual(a.status, InstructionStatus.SUPERSEDED)
         c = instructions.issue_for_print(self.w.foreman, self.op1)
         self.assertEqual(c.version, 2)
-        self.assertEqual(c.snapshot["vardiya"], str(Shift.objects.get(code="V1")))
+        self.assertEqual(c.snapshot["vardiya"], str(Shift.objects.get(code="V2")))
         with self.assertRaisesMessage(BusinessRuleError, "geçersiz"):
             instructions.acknowledge(self.w.foreman, a, "teslim_aldim")
         instructions.acknowledge(self.w.foreman, c, "teslim_aldim")

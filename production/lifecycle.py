@@ -5,6 +5,7 @@ Hareket oluşmuş iş emri silinmez; başlamış işte ürün ve kullanılmış 
 """
 from decimal import Decimal
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 
@@ -199,6 +200,8 @@ def schedule_operation(actor, op, *, planned_date, shift, machine, queue_positio
     changes = diff(op, data)
     for f, (_, new) in changes.items():
         setattr(op, f, new)
+    if "shift" in changes and not op.handovers.filter(acknowledged_at__isnull=False).exists():
+        op.responsible_shift = shift  # devir teslim alınmadıkça sorumlu vardiya = planlanan vardiya
     op.save()
     affected = list(machine_queue(machine, planned_date, shift, exclude=op))
     if changes:
@@ -287,17 +290,37 @@ def create_handover(actor, op, *, to_shift, remaining_note, machine_side_materia
     return h
 
 
+def can_acknowledge(actor, handover):
+    """Teslim alabilir: operasyon üzerinde duruş/devir yetkisi olan (ör. ustabaşı, üretim yetkilisi) veya devralan
+    vardiyada olup o makineye atanmış ve duruş/devir yetkisi taşıyan kişi."""
+    from accounts.models import UserMachine
+    from accounts.permissions import can
+    op = handover.operation
+    if can(actor, "production.hold", op):
+        return True
+    return (can(actor, "production.hold") and actor.shift_id == handover.to_shift_id
+            and UserMachine.objects.filter(user=actor, machine_id=op.machine_id).exists())
+
+
 @transaction.atomic
 def acknowledge_handover(actor, handover):
     h = ShiftHandover.objects.select_for_update(of=("self",)).select_related("operation").get(pk=handover.pk)
-    check(actor, "production.hold", h.operation)
+    if not can_acknowledge(actor, h):
+        raise PermissionDenied("Bu devri teslim alma yetkiniz yok.")
     if h.acknowledged_at:
         raise BusinessRuleError("Devir zaten teslim alınmış.")
     if h.created_by_id == actor.pk:
         raise BusinessRuleError("Devri yapan kişi kendi devrini teslim alamaz.")
     h.acknowledged_by, h.acknowledged_at = actor, timezone.now()
     h.save()
-    audit(actor, "operation.handover_ack", h.operation, {"teslim": (None, actor.personnel_no)})
+    # Sorumluluk devralan vardiyaya geçer: eski vardiyanın operatörünün aktif teknik erişimi (makine+vardiya kapsamı)
+    # kapanır; geçmiş kayıtları (makine kapsamlı görüntüleme) görmeye devam eder.
+    op = WorkOrderOperation.objects.select_for_update(of=("self",)).get(pk=h.operation_id)
+    old_shift = op.responsible_shift_id
+    op.responsible_shift = h.to_shift
+    op.save(update_fields=["responsible_shift", "updated_at"])
+    audit(actor, "operation.handover_ack", h.operation, {"teslim": (None, actor.personnel_no),
+                                                         "sorumlu_vardiya": (old_shift, h.to_shift_id)})
     return h
 
 
