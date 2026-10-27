@@ -12,7 +12,7 @@ from accounts.permissions import can, check
 from core.exceptions import BusinessRuleError
 from core.services import audit, diff
 
-from .models import (Customer, CustomerAccess, CustomerAddress, CustomerContact, CustomerDocument, TaxIdType)
+from .models import (AccessSource, Customer, CustomerAccess, CustomerAddress, CustomerContact, CustomerDocument, TaxIdType)
 
 STAGES = {"taslak": "Taslak", "siparis": "Sipariş onayı", "sevkiyat": "Sevkiyat"}
 FIRM_SUFFIXES = r"\b(a\.?s\.?|ltd\.?|sti\.?|san\.?|tic\.?|ve|limited|sirketi|anonim|gmbh|bv|llc|inc)\b"
@@ -126,7 +126,7 @@ def create_customer(actor, data, confirm_similar=False):
     audit(actor, "customer.create", customer, {k: (None, v) for k, v in data.items()},
           reason="Benzer kayıt uyarısı onaylandı: " + ", ".join(c.code for c in similar) if similar else "")
     CustomerAccess.objects.create(customer=customer, user=actor, valid_from=timezone.localdate(), granted_by=actor,
-                                  reason="Müşteriyi açan kullanıcı")
+                                  reason="Müşteriyi açan kullanıcı", source=AccessSource.NEW_CUSTOMER)
     return customer
 
 
@@ -278,7 +278,8 @@ def grant_access(actor, customer, user, valid_from, valid_until=None, reason="")
     if not user.is_active:
         raise BusinessRuleError("Pasif kullanıcıya erişim verilemez.", field="user")
     access = CustomerAccess.objects.create(customer=customer, user=user, valid_from=valid_from,
-                                           valid_until=valid_until, reason=reason, granted_by=actor)
+                                           valid_until=valid_until, reason=reason, granted_by=actor,
+                                           source=AccessSource.DEPUTY if valid_until else AccessSource.ADMIN)
     audit(actor, "customer.access_grant", customer,
           {"erisim": (None, f"{user.personnel_no} {valid_from}–{valid_until or 'kalıcı'}")}, reason=reason)
     return access
@@ -296,6 +297,59 @@ def revoke_access(actor, access, reason):
     access.save()
     audit(actor, "customer.access_revoke", access.customer, {"erisim": (access.user.personnel_no, None)}, reason=reason)
     return access
+
+
+# --- Erişim incelemesi (yükseltmede toplu açılan / kaynağı belirsiz erişimler) -----------------------
+
+REVIEW_ACTIONS = {"onayla": "Onayla (kalıcı kalsın)", "sureli": "Süreli erişime çevir", "kaldir": "Erişimi kaldır"}
+
+
+def access_review_queryset():
+    return (CustomerAccess.objects.filter(revoked_at__isnull=True)
+            .select_related("customer", "user", "granted_by", "reviewed_by").order_by("user__personnel_no", "customer__code"))
+
+
+def preview_review(ids, action):
+    """Toplu işlemde etkilenecek kullanıcı × müşteri listesi (hiçbir şey değiştirmez)."""
+    if action not in REVIEW_ACTIONS:
+        raise BusinessRuleError("Geçersiz inceleme işlemi.")
+    rows = list(access_review_queryset().filter(pk__in=ids))
+    if not rows:
+        raise BusinessRuleError("En az bir aktif erişim seçin.")
+    return rows
+
+
+@transaction.atomic
+def review_accesses(actor, ids, action, reason, valid_until=None):
+    """Seçilen erişimleri onaylar, süreliye çevirir veya kaldırır. Kaldırma yalnız erişimi kapatır;
+    müşteri, sipariş ve işlem geçmişi silinmez."""
+    check(actor, "customer.access.manage")
+    rows = preview_review(ids, action)
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    if action == "sureli" and (valid_until is None or valid_until < timezone.localdate()):
+        raise BusinessRuleError("Süreli erişim için bugünden ileri bir bitiş tarihi girin.", field="valid_until")
+    now = timezone.now()
+    done = []
+    for access in CustomerAccess.objects.select_for_update().filter(pk__in=[r.pk for r in rows]).order_by("pk"):
+        if access.revoked_at:
+            continue
+        old = {"kaynak": access.source, "bitis": str(access.valid_until) if access.valid_until else None}
+        if action == "kaldir":
+            access.revoked_at, access.revoked_by = now, actor
+            change, log = (access.user.personnel_no, None), "customer.access_revoke"
+        elif action == "sureli":
+            access.valid_until = valid_until
+            change, log = (old["bitis"] or "kalıcı", str(valid_until)), "customer.access_review"
+        else:
+            change, log = ("inceleme bekliyor" if access.needs_review else "onaylı", "onaylandı"), "customer.access_review"
+        access.needs_review, access.reviewed_by, access.reviewed_at = False, actor, now
+        access.review_note = reason[:200]
+        access.save()
+        audit(actor, log, access.customer, {"erisim": change, "satisci": (None, access.user.personnel_no),
+                                            "kaynak": (None, access.get_source_display())}, reason=reason)
+        done.append(access)
+    return done
 
 
 def order_snapshot(customer):

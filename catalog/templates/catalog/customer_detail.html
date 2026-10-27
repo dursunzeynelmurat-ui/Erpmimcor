@@ -95,9 +95,9 @@
 
 {% if accesses is not None %}
 <section class="card" id="erisim"><h2>Sorumlular ve müşteri erişimleri</h2>
-  <div class="table-wrap"><table class="table compact"><thead><tr><th>Kullanıcı</th><th>Geçerlilik</th><th>Veren</th><th>Durum</th><th></th></tr></thead><tbody>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Kullanıcı</th><th>Geçerlilik</th><th>Kaynak / veren</th><th>Durum</th><th></th></tr></thead><tbody>
   {% for a in accesses %}<tr class="{% if not a.is_current %}inactive{% endif %}"><td>{{ a.user }}</td>
-    <td>{{ a.valid_from|date:"d.m.Y" }} – {{ a.valid_until|date:"d.m.Y"|default:"kalıcı" }}</td><td>{{ a.granted_by.full_name|default:"—" }}</td>
+    <td>{{ a.valid_from|date:"d.m.Y" }} – {{ a.valid_until|date:"d.m.Y"|default:"kalıcı" }}</td><td>{{ a.get_source_display }} · {{ a.granted_by.full_name|default:"sistem" }}{% if a.needs_review %} <span class="status status-kontrol_bekliyor">İnceleme bekliyor</span>{% endif %}</td>
     <td>{% if a.revoked_at %}Kaldırıldı {{ a.revoked_at|date:"d.m.Y" }}{% elif a.is_current %}<span class="status status-uygun">Geçerli</span>{% else %}Süre dışı{% endif %}</td>
     <td>{% if not a.revoked_at %}<form method="post" action="{% url 'catalog:access_revoke' customer.pk a.pk %}" class="inline-form">{% csrf_token %}{% idem_input %}
       <label class="visually-hidden" for="acc-reason-{{ a.pk }}">Gerekçe</label><input id="acc-reason-{{ a.pk }}" name="reason" placeholder="Gerekçe" required>

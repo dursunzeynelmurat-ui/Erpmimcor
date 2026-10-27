@@ -188,6 +188,14 @@ class CustomerDocument(models.Model):
         return f"{self.title} (s.{self.version})"
 
 
+class AccessSource(models.TextChoices):
+    NEW_CUSTOMER = "yeni_musteri", "Müşteriyi açan kullanıcı"
+    ADMIN = "yonetici", "Yönetici ataması (kalıcı)"
+    DEPUTY = "vekalet", "Süreli erişim / vekâlet"
+    MIGRATED = "tasima", "Eski sistemden taşınan (toplu)"
+    UNKNOWN = "belirsiz", "Kaynağı belirsiz"
+
+
 class CustomerAccess(models.Model):
     """Satışçının müşteriye erişimi. Süresi dolan erişim sorguda kendiliğinden düşer; kayıt silinmez."""
 
@@ -202,6 +210,12 @@ class CustomerAccess(models.Model):
     revoked_at = models.DateTimeField(null=True, blank=True)
     revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
                                    related_name="+")
+    source = models.CharField("Kaynak", max_length=15, choices=AccessSource.choices, default=AccessSource.ADMIN)
+    needs_review = models.BooleanField("Yönetici incelemesi bekliyor", default=False)
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                    related_name="+")
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_note = models.CharField("İnceleme notu", max_length=200, blank=True)
 
     class Meta:
         ordering = ["customer", "-granted_at"]

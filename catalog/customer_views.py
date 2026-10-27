@@ -216,3 +216,55 @@ def access_revoke(request, pk, access_pk):
                            fn=lambda d: svc.revoke_access(request.user, access, d["reason"]),
                            success_message="Erişim kaldırıldı.", url_for=lambda _: url)
     return resp or redirect(url)
+
+
+# --- Müşteri–satışçı erişim incelemesi ----------------------------------------------------
+
+def _parse_date(value):
+    import datetime
+    try:
+        return datetime.date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
+@require_perm("customer.access.manage")
+def access_review(request):
+    """Yönetici: aktif erişimleri kaynağıyla listeler; seçilenleri önce önizler, sonra onaylar/süreliye çevirir/
+    kaldırır. Varsayılan görünüm yalnız inceleme bekleyenler (toplu taşınan ve kaynağı belirsiz)."""
+    from core.forms import ConfirmForm
+    from .models import AccessSource
+    qs = svc.access_review_queryset()
+    f = {k: request.GET.get(k, "") for k in ("durum", "kaynak", "satisci", "musteri")}
+    if f["durum"] != "tumu":
+        qs = qs.filter(needs_review=True)
+    if f["kaynak"] in AccessSource.values:
+        qs = qs.filter(source=f["kaynak"])
+    if f["satisci"]:
+        qs = qs.filter(user__personnel_no=f["satisci"])
+    if f["musteri"]:
+        qs = qs.filter(customer__code__iexact=f["musteri"])
+    ctx = {"rows": qs[:500], "total": qs.count(), "f": f, "sources": AccessSource.choices,
+           "actions": svc.REVIEW_ACTIONS, "pending": svc.access_review_queryset().filter(needs_review=True).count()}
+    if request.method == "POST":
+        ids = [int(i) for i in request.POST.getlist("ids") if i.isdigit()]
+        action, reason = request.POST.get("islem", ""), request.POST.get("reason", "").strip()
+        valid_until = _parse_date(request.POST.get("valid_until", ""))
+        if request.POST.get("adim") == "uygula":
+            resp = run_form_action(
+                request, ConfirmForm(request.POST), action="customer.access_review",
+                fn=lambda d: svc.review_accesses(request.user, ids, action, reason, valid_until),
+                success_message=lambda done: f"{len(done)} erişim işlendi.",
+                url_for=lambda _: reverse("catalog:access_review"))
+            if resp:
+                return resp
+        try:
+            ctx["preview"] = svc.preview_review(ids, action)
+        except Exception as exc:  # noqa: BLE001 - kullanıcıya iş kuralı mesajı
+            from django.contrib import messages
+            messages.error(request, getattr(exc, "message", str(exc)))
+            return render(request, "catalog/access_review.html", ctx)
+        ctx.update(ids=ids, islem=action, islem_label=svc.REVIEW_ACTIONS[action], reason=reason,
+                   valid_until=valid_until, users=sorted({r.user.full_name for r in ctx["preview"]}),
+                   customers=sorted({r.customer.code for r in ctx["preview"]}))
+    return render(request, "catalog/access_review.html", ctx)

@@ -24,6 +24,7 @@
       {% block nav_extra %}{% include "partials/nav_warehouse.html" %}{% endblock %}
       <span class="nav-sep">Tanımlar</span>
       {% if can.customer_view %}<a href="{% url 'catalog:customer_list' %}">Müşteriler</a>{% endif %}
+      {% if can.customer_access_manage %}<a href="{% url 'catalog:access_review' %}">Müşteri erişimleri</a>{% endif %}
       {% if can.product_view %}<a href="{% url 'catalog:definition_list' 'urunler' %}">Ürünler{% if can.recipe_view %} ve reçeteler{% endif %}</a>{% endif %}
       {% if can.machine_view %}<a href="{% url 'catalog:definition_list' 'makineler' %}">Makineler</a>{% endif %}
       {% if can.material_view %}<a href="{% url 'catalog:definition_list' 'malzemeler' %}">Hammadde / katkı</a>

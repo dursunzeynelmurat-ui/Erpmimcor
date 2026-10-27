@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Müşteri erişimleri{% endblock %}
+{% block content %}
+<h1>Müşteri–satışçı erişim incelemesi</h1>
+<p class="muted">İnceleme bekleyen: <strong>{{ pending }}</strong>. Yükseltmede önceki sürümün "satış tüm müşterileri görür" davranışı korunmak için açılan erişimler ve kaynağı kesin belirlenemeyenler aktif kalır ve burada inceleme bekler; sessizce silinmez. Erişimi kaldırmak müşteri, sipariş veya işlem geçmişini silmez.</p>
+{% if preview %}
+<section class="card"><h2>Önizleme: {{ islem_label }}</h2>
+<p>{{ preview|length }} erişim · Kullanıcılar: {{ users|join:", " }} · Müşteriler: {{ customers|join:", " }}{% if valid_until %} · Yeni bitiş: {{ valid_until|date:"d.m.Y" }}{% endif %}</p>
+<ul class="list">{% for a in preview %}<li>{{ a.user.full_name }} ({{ a.user.personnel_no }}) → {{ a.customer.code }} · {{ a.get_source_display }}</li>{% endfor %}</ul>
+<form method="post" class="form">{% csrf_token %}{% idem_input %}<input type="hidden" name="adim" value="uygula"><input type="hidden" name="islem" value="{{ islem }}">
+{% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}<input type="hidden" name="reason" value="{{ reason }}"><input type="hidden" name="valid_until" value="{{ valid_until|date:'Y-m-d' }}">
+<div class="actions"><button class="btn btn-primary" type="submit">{{ islem_label }} – uygula</button><a class="btn" href="{% url 'catalog:access_review' %}">Vazgeç</a></div></form></section>
+{% endif %}
+<form method="get" class="card form toolbar"><label>Görünüm<select name="durum"><option value="">İnceleme bekleyenler</option><option value="tumu" {% if f.durum == "tumu" %}selected{% endif %}>Tüm aktif erişimler</option></select></label>
+<label>Kaynak<select name="kaynak"><option value="">Tümü</option>{% for v, l in sources %}<option value="{{ v }}" {% if f.kaynak == v %}selected{% endif %}>{{ l }}</option>{% endfor %}</select></label>
+<label>Satışçı (personel no)<input name="satisci" value="{{ f.satisci }}"></label><label>Müşteri kodu<input name="musteri" value="{{ f.musteri }}"></label><button class="btn" type="submit">Süz</button></form>
+<form method="post" class="card form">{% csrf_token %}<input type="hidden" name="adim" value="onizle">
+<div class="table-wrap"><table class="table table-responsive"><thead><tr><th>Seç</th><th>Satışçı</th><th>Müşteri</th><th>Kaynak</th><th>Geçerlilik</th><th>Veren</th><th>İnceleme</th></tr></thead><tbody>
+{% for a in rows %}<tr><td data-label="Seç"><input type="checkbox" name="ids" value="{{ a.pk }}" aria-label="{{ a.user.personnel_no }} {{ a.customer.code }}"></td>
+<td data-label="Satışçı">{{ a.user.full_name }} ({{ a.user.personnel_no }})</td><td data-label="Müşteri"><a href="{% url 'catalog:customer_detail' a.customer.pk %}#erisim">{{ a.customer.code }}</a></td>
+<td data-label="Kaynak">{{ a.get_source_display }}</td><td data-label="Geçerlilik">{{ a.valid_from|date:"d.m.Y" }} – {% if a.valid_until %}{{ a.valid_until|date:"d.m.Y" }}{% else %}kalıcı{% endif %}{% if not a.is_current %} <span class="status status-iptal">süresi dışında</span>{% endif %}</td>
+<td data-label="Veren">{{ a.granted_by.full_name|default:"— (sistem)" }}</td><td data-label="İnceleme">{% if a.needs_review %}<span class="status status-kontrol_bekliyor">İnceleme bekliyor</span>{% else %}{{ a.reviewed_by.full_name|default:"—" }}{% endif %}</td></tr>
+{% empty %}<tr><td colspan="7" class="muted">Kayıt yok.</td></tr>{% endfor %}</tbody></table></div>
+{% if total > 500 %}<p class="muted">İlk 500 kayıt gösteriliyor; süzgeç kullanın.</p>{% endif %}
+<div class="row-2"><label>İşlem<select name="islem" required>{% for v, l in actions.items %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+<label>Süreli erişim bitişi<input type="date" name="valid_until"></label></div>
+<label>Gerekçe (zorunlu)<input name="reason" required></label>
+<button class="btn btn-primary" type="submit">Önizle</button></form>
+{% endblock %}

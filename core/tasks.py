@@ -27,6 +27,13 @@ def task_lists(user):
             .exclude(requested_by=user).order_by("requested_at")
         tasks.append(_task("Onay bekleyen düzeltme talepleri", qs, reverse("corrections:correction_list"),
                            lambda c: f"{c.code} · {c.get_kind_display()} · {c.target_code}"))
+    if can(user, "customer.access.manage"):
+        from catalog.models import CustomerAccess
+        qs = (CustomerAccess.objects.filter(needs_review=True, revoked_at__isnull=True)
+              .select_related("user", "customer").order_by("user__personnel_no"))
+        tasks.append(_task("İncelenmemiş müşteri erişimleri (toplu taşınan / belirsiz)", qs,
+                           reverse("catalog:access_review"),
+                           lambda a: f"{a.user.full_name} → {a.customer.code} · {a.get_source_display()}"))
     if can(user, "order.approve"):
         qs = scoped(SalesOrder.objects.filter(status=OrderStatus.DRAFT), user, "order.view").select_related("customer")
         tasks.append(_task("Onay bekleyen taslak siparişler", qs, reverse("orders:order_list") + "?durum=taslak",
