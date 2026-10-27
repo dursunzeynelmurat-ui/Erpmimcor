@@ -91,17 +91,27 @@ class OrderLine(models.Model):
 
 
 class CompatibilityException(models.Model):
-    """Kalemin onaylı revizyonundan teknik olarak farklı (ör. 30 µ yerine 70 µ) stokla karşılamaya yetkili onay."""
+    """Teknik eşdeğerlik onayı: kalemin onay anındaki hedef revizyonundan teknik olarak farklı (ölçü, renk, baskı,
+    perfore veya karışım) bir kaynak revizyonla üretilmiş stokla karşılamaya yetkili, gerekçeli izin.
+    Yalnız bu kalem + bu kaynak revizyon + bu hedef revizyon için geçerlidir; kalem başka revizyona yeniden
+    onaylanırsa veya onay geri alınırsa uygulanmaz."""
 
     order_line = models.ForeignKey(OrderLine, on_delete=models.PROTECT, related_name="compatibility_exceptions")
     revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, related_name="+",
-                                 verbose_name="Kabul edilen revizyon")
+                                 verbose_name="Kabul edilen kaynak revizyon")
+    target_revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, null=True, related_name="+",
+                                        verbose_name="Onay anındaki hedef revizyon")
     reason = models.TextField("Gerekçe")
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name="+")
+    revoke_reason = models.TextField(blank=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["order_line", "revision"], name="uniq_compat_exception")]
+        constraints = [models.UniqueConstraint(fields=["order_line", "revision", "target_revision"],
+                                               condition=Q(revoked_at__isnull=True), name="uniq_active_compat_exception")]
 
 
 class OverDeliveryAllowance(models.Model):

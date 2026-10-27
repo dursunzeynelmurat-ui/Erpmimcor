@@ -209,7 +209,7 @@ class OrderLineActionsRenderTests(TestCase):
         self.client.force_login(w.admin)
         html = self.client.get(reverse("orders:order_detail", args=[line.order.pk])).content.decode()
         self.assertIn("Miktar / termin değiştir</a>", html)
-        self.assertIn("Teknik uygunluk istisnası</a>", html)
+        self.assertIn("Teknik eşdeğerlik onayı</a>", html)
         self.assertNotIn('">{% if', html)
         self.assertNotIn('<a class="btn" href="/siparisler/kalem/{}/degistir/">\n'.format(line.pk), html)
 

@@ -328,13 +328,19 @@ SIGNATURE_FIELDS = (("width_mm", "en"), ("thickness_micron", "kalınlık"), ("le
                     ("color", "renk"), ("print_spec", "baskı"), ("perforation_spec", "perfore"))
 
 
+def mix_signature(revision):
+    """Karışım: (malzeme kimliği, oran) çiftleri; oran ondalık gösterimden bağımsız (98 = 98.000)."""
+    return tuple(sorted((c.material_id, num(c.percentage)) for c in revision.components.all()))
+
+
 def tech_signature(revision):
-    """Sevk uyumluluğu için teknik imza. Revizyon numarası değil, müşteriye giden ürünün özellikleri karşılaştırılır."""
+    """Sevk uyumluluğu için teknik imza: ölçü, renk, baskı, perfore ve karışım (hammadde/katkı ve oranları).
+    Revizyon numarası karşılaştırılmaz; aynı içerikteki yeni revizyon numarası gereksiz ret üretmez."""
     def norm(v):
         if v is None:
             return None
         return num(v) if hasattr(v, "normalize") else " ".join(str(v).split()).casefold()
-    return tuple(norm(getattr(revision, f)) for f, _ in SIGNATURE_FIELDS)
+    return tuple(norm(getattr(revision, f)) for f, _ in SIGNATURE_FIELDS) + (mix_signature(revision),)
 
 
 def required_revision(line):
@@ -348,28 +354,49 @@ def compatibility_problem(line, revision):
         return f"{line.code}: paletin teknik revizyonu bilinmiyor; teknik uygunluk doğrulanamaz."
     if required is None or required.pk == revision.pk or tech_signature(required) == tech_signature(revision):
         return None
-    if line.compatibility_exceptions.filter(revision=revision).exists():
+    if line.compatibility_exceptions.filter(revision=revision, target_revision=required, revoked_at__isnull=True).exists():
         return None
-    diffs = [label for (f, label), a, b in zip(SIGNATURE_FIELDS, tech_signature(required), tech_signature(revision))
-             if a != b]
+    labels = [label for _, label in SIGNATURE_FIELDS] + ["karışım (hammadde/katkı veya oran)"]
+    diffs = [label for label, a, b in zip(labels, tech_signature(required), tech_signature(revision)) if a != b]
     return (f"{line.code} Rev.{required.rev_no} ile onaylı; palet Rev.{revision.rev_no} ile üretilmiş. Farklı teknik "
-            f"özellik: {', '.join(diffs)}. Yetkili teknik uygunluk istisnası olmadan ayrılamaz/sevk edilemez.")
+            f"özellik: {', '.join(diffs)}. Planlama/yöneticinin bu kalem ve revizyon için gerekçeli teknik eşdeğerlik "
+            "onayı olmadan ayrılamaz/sevk edilemez.")
 
 
 @transaction.atomic
 def approve_compatibility(actor, line, revision, reason):
+    """Teknik eşdeğerlik onayı: kaynak revizyon + kalem + kalemin şu anki hedef revizyonu ile sınırlı."""
     from .models import CompatibilityException
     check(actor, "exception.approve")
     if not reason:
-        raise BusinessRuleError("İstisna gerekçesi zorunludur.", field="reason")
+        raise BusinessRuleError("Eşdeğerlik onayı için gerekçe zorunludur.", field="reason")
     line = OrderLine.objects.select_for_update(of=("self",)).select_related("product").get(pk=line.pk)
     if revision.recipe.product_id != line.product_id:
         raise BusinessRuleError("Revizyon bu kalemin ürününe ait değil.", field="revision")
+    target = required_revision(line)
     exc, created = CompatibilityException.objects.get_or_create(
-        order_line=line, revision=revision, defaults={"reason": reason, "approved_by": actor})
+        order_line=line, revision=revision, target_revision=target, revoked_at=None,
+        defaults={"reason": reason, "approved_by": actor})
     if created:
-        audit(actor, "order.compatibility_exception", line, {"kabul_edilen": (None, f"Rev.{revision.rev_no}")},
+        audit(actor, "order.compatibility_exception", line,
+              {"kabul_edilen": (None, f"Rev.{revision.rev_no} → hedef Rev.{target.rev_no if target else '—'}")},
               reason=reason, code=line.code)
+    return exc
+
+
+@transaction.atomic
+def revoke_compatibility(actor, exception, reason):
+    from .models import CompatibilityException
+    check(actor, "exception.approve")
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    exc = CompatibilityException.objects.select_for_update().select_related("order_line", "revision").get(pk=exception.pk)
+    if exc.revoked_at:
+        raise BusinessRuleError("Onay zaten geri alınmış.")
+    exc.revoked_at, exc.revoked_by, exc.revoke_reason = timezone.now(), actor, reason
+    exc.save()
+    audit(actor, "order.compatibility_revoke", exc.order_line, {"kabul_edilen": (f"Rev.{exc.revision.rev_no}", None)},
+          reason=reason, code=exc.order_line.code)
     return exc
 
 

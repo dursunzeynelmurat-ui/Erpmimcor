@@ -118,9 +118,10 @@ class LineChangeForm(IdemForm):
 
 
 class CompatibilityForm(IdemForm):
-    revision = forms.ModelChoiceField(label="Kabul edilecek teknik revizyon", queryset=RecipeRevision.objects.none())
+    revision = forms.ModelChoiceField(label="Eşdeğer kabul edilecek kaynak revizyon", queryset=RecipeRevision.objects.none())
     reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}),
-                             help_text="Ör. 'Müşteri 30 µ yerine 70 µ stoğu yazılı olarak kabul etti'.")
+                             help_text="Ör. 'Müşteri %3 katkılı stoğu yazılı olarak kabul etti'. Onay yalnız bu kalem ve "
+                                       "kalemin şu anki onaylı revizyonu için geçerlidir.")
 
     def __init__(self, line, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -2,11 +2,12 @@
   {% if can.order_change %}<a class="btn" href="{% url 'orders:line_change' p.line.pk %}">{% if p.line.needs_review %}Miktar/termini onayla{% else %}Miktar / termin değiştir{% endif %}</a>{% endif %}
   {% if can.order_cancel %}{% url 'orders:line_cancel' p.line.pk as u %}{% include "partials/reason_button.html" with action=u label="Kalemi iptal et" btn_class="btn-danger" %}{% endif %}
   {% if can.exception_approve and p.line.unit == "kutu" %}
-  <a class="btn" href="{% url 'orders:line_exception' p.line.pk 'uyumluluk' %}">Teknik uygunluk istisnası</a>
+  <a class="btn" href="{% url 'orders:line_exception' p.line.pk 'uyumluluk' %}">Teknik eşdeğerlik onayı</a>
   <a class="btn" href="{% url 'orders:line_exception' p.line.pk 'fazla-teslim' %}">Fazla teslim izni</a>
   {% endif %}
 {% endif %}
-{% if p.line.compatibility_exceptions.all %}<p class="muted">Kabul edilen farklı revizyon: {% for e in p.line.compatibility_exceptions.all %}Rev.{{ e.revision.rev_no }} ({{ e.reason }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+{% for e in p.line.compatibility_exceptions.all %}{% if not e.revoked_at %}<p class="muted">Teknik eşdeğerlik onayı: kaynak Rev.{{ e.revision.rev_no }} → hedef Rev.{{ e.target_revision.rev_no|default:"—" }}{% if p.line.approved_revision and e.target_revision_id != p.line.approved_revision_id %} <span class="status status-iptal">hedef değişti, geçersiz</span>{% endif %} · {{ e.approved_by.full_name }}: {{ e.reason }}
+{% if can.exception_approve %}{% url 'orders:compat_revoke' e.pk as u %}{% include "partials/reason_button.html" with action=u label="Onayı geri al" %}{% endif %}</p>{% endif %}{% endfor %}
 {% if p.line.over_delivery.all %}<p class="muted">Fazla teslim izni: {% for e in p.line.over_delivery.all %}+{{ e.extra_quantity }} kutu ({{ e.reason }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
 {% if p.line.needs_review %}<p class="msg msg-warning">Kopyadan geldi: miktar ve termin onay bekliyor.</p>{% endif %}
 {% if p.line.cancel_reason %}<p class="muted">İptal gerekçesi: {{ p.line.cancel_reason }}</p>{% endif %}

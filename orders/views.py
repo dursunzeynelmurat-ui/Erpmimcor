@@ -219,7 +219,7 @@ def line_exception(request, pk, kind):
     if kind == "uyumluluk":
         form = CompatibilityForm(line, request.POST or None)
         fn = lambda d: services.approve_compatibility(request.user, line, d["revision"], d["reason"])  # noqa: E731
-        title, msg = "Teknik uygunluk istisnası", "Teknik uygunluk istisnası kaydedildi."
+        title, msg = "Teknik eşdeğerlik onayı", "Teknik eşdeğerlik onayı kaydedildi (bu kalem ve hedef revizyon için)."
     elif kind == "fazla-teslim":
         form = OverDeliveryForm(request.POST or None)
         fn = lambda d: services.allow_over_delivery(request.user, line, d["extra"], d["reason"])  # noqa: E731
@@ -235,3 +235,14 @@ def line_exception(request, pk, kind):
     return render(request, "core/form_page.html", {
         "form": form, "title": f"{line.code}: {title}", "submit": "Kaydet", "back": _order_url(order),
         "intro": (f"Kalem Rev.{rev.rev_no} ile onaylı." if rev else "") + " Kayıt gerekçesiyle işlem geçmişine yazılır."})
+
+
+@require_POST
+@require_perm("exception.approve")
+def compat_revoke(request, pk):
+    from .models import CompatibilityException
+    exc = get_object_or_404(CompatibilityException.objects.select_related("order_line"), pk=pk)
+    order = _get_order(request, exc.order_line.order_id)
+    return _post(request, order, ReasonForm(request.POST), "order.compatibility_revoke",
+                 lambda d: services.revoke_compatibility(request.user, exc, d["reason"]),
+                 "Eşdeğerlik onayı geri alındı; ayrılmış/hazırlanan stok sevkte yeniden kontrol edilir.")

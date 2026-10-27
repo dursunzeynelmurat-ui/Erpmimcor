@@ -21,4 +21,5 @@ urlpatterns += [
     path("siparisler/kalem/<int:pk>/degistir/", views.line_change, name="line_change"),
     path("siparisler/kalem/<int:pk>/iptal/", views.line_cancel, name="line_cancel"),
     path("siparisler/kalem/<int:pk>/istisna/<str:kind>/", views.line_exception, name="line_exception"),
+    path("siparisler/esdegerlik/<int:pk>/geri-al/", views.compat_revoke, name="compat_revoke"),
 ]
