@@ -22,7 +22,7 @@ jobs:
           POSTGRES_PASSWORD: ci-only-password
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U mimcor" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,7 +46,7 @@ jobs:
           POSTGRES_PASSWORD: ci-only-password
         ports: ["5432:5432"]
         options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+          --health-cmd "pg_isready -U mimcor" --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/browser-artifacts/failures
       DEMO_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/demo

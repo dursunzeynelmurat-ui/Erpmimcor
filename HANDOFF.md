@@ -1,3 +1,37 @@
+# Kabul öncesi yetki ve veri tutarlılığı düzeltmeleri — 27 Ekim 2026 (güncel)
+
+Branch: `fix/mimcor-yetki-veri-tutarliligi` (kaynak `feature/mimcor-operasyon-genisletme` @ `9902c1e`; merge/PR/canlı
+yayın yok). Ayrıntı, önceki/yeni davranış tablosu, migration etkisi ve UAT adımları:
+**[docs/operasyon-genisletme.md](docs/operasyon-genisletme.md) bölüm 5–8**.
+
+| # | Konu | Özet |
+|---|---|---|
+| 1 | Stok düzeltmesi | Doğrudan lot/palet sayım yolları (gerçekten açıktı, testle kanıtlandı) kapatıldı; sayım farkı yalnız talep + başka yetkilinin onayı. Mal kabulünde tedarikçi parti zorunlu. |
+| 2 | Müşteri erişimi | Kaynak (açan/yönetici/vekâlet/taşınan/belirsiz) + yönetici inceleme ekranı, önizlemeli toplu işlem. Hiçbir erişim silinmedi. |
+| 3 | Karışım | Malzeme/oran farkı teknik eşdeğer sayılmaz; eşdeğerlik onayı kalem + kaynak + hedef revizyonla sınırlı. |
+| 4 | Fazla teslim | İzin artır/azalt/kaldır; sınır ayrılmış+sevk edilenin altına inemez; eş zamanlılık testli. |
+| 5 | Sevk yetkileri | `shipment.approve` / `shipment.undo` / `shipment.exit` ayrı; depo = hazırlama + QR. Özelleştirilmiş roller yeniden yazılmaz. |
+| 6 | Kapalı iş emri | İlk kapanış ve düzeltmeler sonrası güncel denge ayrı; tolerans aşılırsa yeniden değerlendirme. |
+| 7 | İade | Yerine gönderim iade kaydına bağlı kalem; ilk sevk / iade / yerine gönderim / net ayrı. |
+| 8 | Vardiya | Operatör: atanmış makine **ve** sorumlu vardiya; devir teslim sorumluluğu taşır; saat kuralı yok. |
+| 9 | CI | Django + ayrı Chromium tarayıcı işi; ekran görüntüleri ve hata trace'i artifact. |
+
+**Doğrulama:** yerelde 301/301 Django testi ve 6/6 tarayıcı testi (1440 px + 390 px **emülasyon; gerçek telefon testi
+yapılmadı**). GitHub Actions'ta iki iş de çalışır; sonuç teslim raporunda commit bazında verilmiştir. Yükseltme: orijinal
+demo veritabanı ve UAT veritabanının **kopyalarında** migrate edildi; temiz kurulum + `seed_demo` ×2. Kullanıcı
+veritabanları değiştirilmedi.
+
+**Testlerin geçmesi işletme onayı değildir.** Kod şu varsayımlarla çalışır (bölüm 7): fazla teslim 0; karışım farkı her
+zaman onay ister; çıkış kaydı ambar yetkilisi + yönetici; ustabaşı/ambar talep hakkı varsayılan kapalı; yükseltmedeki
+geniş müşteri erişimleri inceleme bitene kadar aktif; mal kabulünde tedarikçi parti zorunlu.
+
+**Yükseltmede yöneticinin yapması gerekenler:** (1) Müşteri erişimleri ekranında "inceleme bekliyor" kayıtları karara
+bağlamak; (2) Roller ekranında "Şablondan farklı" uyarılarını incelemek (ör. UAT kopyasında depo rolü eski bir ara
+şablondan kaldığı için otomatik güncellenmedi ve hâlâ son sevk onayına sahip); (3) operatörlere makine ve vardiya
+atamak (vardiyası tanımsız operatör teknik bilgiyi göremez).
+
+---
+
 # Operasyon genişletmesi — 26 Ekim 2026 (güncel)
 
 Branch: `feature/mimcor-operasyon-genisletme` (kaynak `design/mimcor-demo-2026-10-30` @ `5bc44c2`; merge/canlı yayın yok).
@@ -6,7 +40,7 @@ döngüsü, ustabaşı planı, vardiya devri, makine talimatı; düzeltme talebi
 sevkiyat aşamaları ve QR yükleme kontrolü, geri alma, iade, etiket, stok seviyesi, iş listeleri.
 
 **Doğrulama:** 248/248 Django testi; 6/6 tarayıcı testi (Demo A/B, sipariş ürün filtresi, 4 saha senaryosu; 1440 px ve
-390 px **emülasyon — fiziksel telefon testi yapılmadı**). **Tarayıcı testleri CI'da çalışmaz**; CI yalnız Django testleri,
+390 px **emülasyon — fiziksel telefon testi yapılmadı**). **(26 Ekim itibarıyla) tarayıcı testleri CI'da çalışmıyordu** — 27 Ekim düzeltme branch'inde ayrı CI işi eklendi; o tarihte CI yalnız Django testleri,
 `makemigrations --check` ve `seed_demo` çalıştırır. Yükseltme (orijinal demo DB kopyası, UAT DB kopyası) ve temiz kurulum
 ayrı ayrı denendi.
 

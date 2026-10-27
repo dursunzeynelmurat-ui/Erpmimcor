@@ -9,7 +9,8 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | `1d9be13` | 2 — İş emri ve sipariş yaşam döngüsü, ustabaşı planı, tek aktif iş (bulgu 7), duruş/vardiya devri, makine talimatı |
 | `df631b8` | 3 — Düzeltme talebi/onayı, kalite blokaj kaldırma, teknik uygunluk ve miktar bulguları (1, 2, 3, 6, 8, 9, 11) |
 | `e1183e2` | 4 — Sevkiyat aşamaları + QR yükleme kontrolü, geri alma, iade, etiket, stok seviyesi, iş listeleri |
-| (son commit) | Kabul: saha senaryosu tarayıcı testleri, sunum etiketleri, belge |
+| `9902c1e` | Kabul: saha senaryosu tarayıcı testleri, sunum etiketleri, belge |
+| `fix/mimcor-yetki-veri-tutarliligi` | Kabul öncesi yetki ve veri tutarlılığı düzeltmeleri (bölüm 5; ayrı branch, kaynağa merge edilmedi) |
 
 ## 1. Yetki modeli
 
@@ -17,9 +18,12 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
   düzeltme talebi, düzeltme onayı, yazdırma. Roller veritabanında (`AccessRole`, `RolePermission`, `UserRole`); yönetici
   ekrandan rol oluşturur/değiştirir (Kullanıcılar → Roller).
 - **Kapsamlar:** `T` tüm kayıtlar, `M` erişim verilen müşteriler, `A` kendisine atanmış işler (ustabaşı),
-  `Mk` atandığı makineler, `V` vardiyası (tanımlı; varsayılan şablonlarda kullanılmıyor, rol düzenlemede seçilebilir).
+  `Mk` atandığı makineler, `V` operasyonun sorumlu vardiyası kendi vardiyası, `Mk+V` atandığı makine **ve** sorumlu
+  vardiya (tek kapsam içinde ikisi birden; usta/operatör şablonu aktif teknik bilgi ve üretim kaydı için bunu kullanır).
 - **Birleşim kuralı:** kullanıcının yetkileri aktif rollerinin birleşimidir; bir eylemin kapsamı o eylemi veren rollerin
-  kapsamlarının birleşimidir. `T` yalnız bir rol açıkça `T` veriyorsa geçerlidir. Kapsam kuralı tanımsız modelde o
+  kapsamlarının birleşimidir (**VEYA**). `T` yalnız bir rol açıkça `T` veriyorsa geçerlidir. Bir kullanıcıya ikinci
+  bir rol verilmesi erişimi genişletebilir (ör. `Mk+V` operatöre ayrıca `V` kapsamlı talimat görme verilirse aynı
+  vardiyadaki başka makineler de açılır) — bu, rol atamasında yöneticinin kararıdır ve testle gösterilmiştir. Kapsam kuralı tanımsız modelde o
   kapsam erişim vermez (varsayılan kapalı). Kapsam dışı kayıt detayı **404** döner (varlığı sızdırılmaz).
 - **Uygulama noktaları:** view (`require_perm`, `get_scoped_or_404`), servis (`check(actor, eylem, nesne)` her yazma
   servisinde), liste/arama/dashboard/endpoint (`scoped()`), çıktılar (talimat, etiket, belge indirme).
@@ -31,7 +35,7 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
   atar, `system.admin` içeren rolü atayamaz, kendi rol/izinlerini değiştiremez; rol taslağı açabilir, etkinleşmesi
   yönetici onayı ister. Rol/hesap değişikliklerinin hepsi işlem geçmişinde.
 
-### Başlangıç şablonları (veritabanına yazılır; yönetici değiştirebilir)
+### Başlangıç şablonları (veritabanına yazılır; yönetici değiştirebilir) — koddan üretildi
 
 | Yetki | Yönetici | İK | Satış | Planlama | Üretim yetkilisi | Ustabaşı | Usta / operatör | Kalite sorumlusu | Ambar yetkilisi | Depo personeli |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -60,7 +64,6 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | `material.view` Hammadde/katkı ve lotları görme | T | · | · | T | T | T | · | · | T | T |
 | `material.manage` Hammadde/katkı tanımlama | T | · | · | T | · | · | · | · | · | · |
 | `lot.receive` Malzeme lot girişi | T | · | · | · | · | · | · | · | T | T |
-| `lot.adjust` Lot sayım düzeltmesi (doğrudan) | T | · | · | · | · | · | · | · | T | T |
 | `order.view` Siparişleri ve üretim ilerlemesini görme | T | · | M | T | T | · | · | · | T | T |
 | `order.create` Sipariş ve kalem oluşturma | T | · | M | · | · | · | · | · | · | · |
 | `order.change` Sipariş/kalem değiştirme, kopyalama, taslak silme | T | · | M | · | · | · | · | · | · | · |
@@ -73,20 +76,22 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | `workorder.release` İş emrini serbest bırakma/geri çekme | T | · | · | T | · | · | · | · | · | · |
 | `workorder.cancel` İş emri iptali | T | · | · | T | · | · | · | · | · | · |
 | `workorder.schedule` Operasyonları tarih/makine/vardiya/sıraya dağıtma | T | · | · | T | T | A | · | · | · | · |
-| `production.execute` Üretim kaydı (başlat, bobin, malzeme, palet, kapanış) | T | · | · | · | T | A | Mk | · | · | · |
-| `production.hold` Duruş/devam ve vardiya devri | T | · | · | · | T | A | Mk | · | · | · |
-| `instruction.view` Operasyon teknik talimatını görme ve teslim alma | T | · | · | T | T | A | Mk | · | · | · |
+| `production.execute` Üretim kaydı (başlat, bobin, malzeme, palet, kapanış) | T | · | · | · | T | A | Mk+V | · | · | · |
+| `production.hold` Duruş/devam ve vardiya devri | T | · | · | · | T | A | Mk+V | · | · | · |
+| `instruction.view` Operasyon teknik talimatını görme ve teslim alma | T | · | · | T | T | A | Mk+V | · | · | · |
 | `instruction.print` Makine iş talimatı yazdırma | T | · | · | T | T | A | · | · | · | · |
 | `material.deviation` Reçete dışı malzeme kullanımına gerekçeli izin | T | · | · | T | T | · | · | · | · | · |
 | `quality.decide` Kalite: uygun/kontrol bekliyor kararı | T | · | · | · | T | A | · | T | · | · |
-| `quality.block` Kalite blokajı koyma | T | · | · | · | T | A | Mk | T | T | T |
+| `quality.block` Kalite blokajı koyma | T | · | · | · | T | A | Mk+V | T | T | T |
 | `quality.release` Kalite blokajını gerekçeyle kaldırma | T | · | · | T | · | A | · | T | · | · |
 | `stock.view` Palet/stok görme | T | · | M | T | T | T | · | T | T | T |
 | `warehouse.operate` Depo kabul, tartım, aktarım, sayım, hasar, konum | T | · | · | · | · | · | · | · | T | T |
 | `reservation.manage` Siparişe ayırma, azaltma, iptal | T | · | M | · | · | · | · | · | T | T |
 | `shipment.view` Sevkiyatları görme | T | · | M | T | T | · | · | · | T | T |
-| `shipment.manage` Sevkiyat hazırlama, yükleme kontrolü, iade kabulü | T | · | · | · | · | · | · | · | T | T |
-| `shipment.approve` Sevk onayı ve sevk geri alma | T | · | · | · | · | · | · | · | T | T |
+| `shipment.manage` Sevkiyat hazırlama, QR yükleme kontrolü, iade kabulü | T | · | · | · | · | · | · | · | T | T |
+| `shipment.approve` Son sevk onayı (stok düşer) | T | · | · | · | · | · | · | · | T | · |
+| `shipment.undo` Çıkış öncesi sevk geri alma | T | · | · | · | · | · | · | · | T | · |
+| `shipment.exit` Fiziksel araç çıkışını kaydetme | T | · | · | · | · | · | · | · | T | · |
 | `label.print` Palet/kutu etiketi yazdırma | T | · | · | · | · | · | · | · | T | T |
 | `stocklevel.manage` Hedef/alt stok seviyesi tanımlama | T | · | · | T | · | · | · | · | · | · |
 | `correction.request` Düzeltme talebi açma | T | · | M | T | T | · | · | · | · | · |
@@ -94,17 +99,27 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 
 İK atayabilir: Satış, Planlama, Üretim yetkilisi, Ustabaşı, Usta / operatör, Kalite sorumlusu, Ambar yetkilisi, Depo personeli
 
+Şablon değişiklikleri yükseltmede yalnız **değiştirilmemiş** şablon rollerine uygulanır; özelleştirilmiş roller yeniden
+yazılmaz, rol listesinde "Şablondan farklı" uyarısı, önerilen fark ve etkilenen kullanıcı sayısıyla gösterilir.
+
 ## 2. Satışçı–müşteri erişimi
 
-- Müşteriyi açan satışçıya otomatik **kalıcı** erişim; yönetici (veya `customer.access.manage`) kalıcı ya da
-  **başlangıç–bitiş tarihli geçici** erişim verir/kaldırır. Süre dolunca erişim sorguda tarihle düşer (zamanlanmış iş
-  gerekmez). Verilen/kaldırılan erişim müşteri kartı geçmişinde.
-- Müşteri kapsamı arama, URL, ürün listesi endpoint'i (`/siparisler/musteri/<id>/urunler/`), dashboard, raporlar,
-  stok özeti, sevkiyat, belge indirme ve düzeltme taleplerinde aynı fonksiyondan (`accounts/scope.py`) geçer.
-- Operasyon rolleri (planlama, üretim, depo) müşteri **operasyon** bilgisini `T` kapsamla görür; **ticari** bilgi
-  (vade, ödeme, para birimi, fatura adresi) ayrı `customer.commercial.view` yetkisidir.
-- Upgrade: mevcut satış kullanıcılarına mevcut müşterilere kalıcı erişim verildi (davranış değişmesin diye);
-  yönetici kısıtlamalıdır (bkz. işletme soruları).
+- Müşteriyi açan satışçıya otomatik **kalıcı** erişim; yönetici (`customer.access.manage`) kalıcı ya da
+  **başlangıç–bitiş tarihli** (vekâlet) erişim verir/kaldırır. Süre dolunca erişim sorguda tarihle düşer; liste, detay,
+  belge indirme, ürün endpoint'i, sipariş, palet/etiket, sevkiyat ve stok özetinde kapanır (testli).
+- Müşteri kapsamı tüm yüzeylerde aynı fonksiyondan (`accounts/scope.py`) geçer; kapsam dışı detay 404.
+- Operasyon rolleri müşteri **operasyon** bilgisini `T` kapsamla görür; **ticari** bilgi ayrı `customer.commercial.view`.
+- **Erişim kaynağı** her kayıtta: müşteriyi açan kullanıcı / yönetici ataması / süreli (vekâlet) / eski sistemden
+  taşınan (toplu) / kaynağı belirsiz. Yükseltmedeki toplu erişimler kesin imzayla (veren boş + 0004 migration'ının tam
+  gerekçe metni) ayrılır; imzası tutmayan sistem kayıtları "belirsiz" olur. **Hiçbiri silinmez veya kapatılmaz**;
+  toplu taşınan ve belirsiz kayıtlar aktif kalır ve "inceleme bekliyor" işaretlenir.
+- **Yönetici inceleme ekranı** (menü: Müşteri erişimleri): kaynak/inceleme/satışçı/müşteri süzgeci; onayla, süreliye
+  çevir, kaldır; toplu işlemde etkilenecek kullanıcı × müşteri listesi önce önizlenir. Kaldırma yalnız erişimi kapatır;
+  müşteri, sipariş ve işlem geçmişi silinmez. Ana sayfada "İncelenmemiş müşteri erişimleri" iş listesi.
+- **Durum:** inceleme aracı hazır; mevcut geniş erişimlerin **kimde kalacağı işletme kararıdır ve henüz verilmedi**.
+  Yükseltilmiş kurulumda yönetici bu listeyi bitirene kadar satışçılar eski geniş erişimi korur.
+- Kurgusal demo: 2001 → M-ORNEK, M-DENEME; 2002 → M-KURGU, M-NORD + M-ORNEK'e 7 günlük vekâlet. 2002 M-DENEME'yi
+  listede, URL'de ve ürün endpoint'inde göremez (tarayıcı senaryosu 0).
 
 ## 3. Veri modeli ve migration'lar
 
@@ -121,6 +136,12 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | warehouse | 0002 | Sevkiyat iptal durumu |
 | warehouse | 0003 | Sevkiyat aşamaları (hazırlandı/çıkış), `ShipmentScan`, `ReturnReceipt`, `PalletLocationChange`, `StockLevel`, etiket basım durumu; eski "sevk edildi" kayıtlar "çıkış yapıldı" sayılır (test edildi) |
 | corrections | 0001 | `CorrectionRequest` (yeni uygulama, aynı proje/şablon yapısı) |
+| accounts | 0005 | `lot.adjust` rol satırları silinir (işlem geçmişine yazılır) |
+| accounts | 0006–0007 | Sevk onayı/geri alma/çıkış ayrımı; operatör makine+vardiya. Yalnız değiştirilmemiş şablon rolleri güncellenir (`accounts/template_sync.py`) |
+| catalog | 0008 | Müşteri erişimi kaynağı + inceleme; kesin imzalı sınıflandırma, silme yok |
+| corrections | 0002 | `lot_sayim` düzeltme türü |
+| orders | 0005–0007 | Eşdeğerlik onayı hedef revizyon + geri alma (eski onaylar o anki hedefe bağlanır); fazla teslim izin geçmişi; yerine gönderim bağı |
+| production | 0007–0008 | `ClosureReview`; `responsible_shift` (son teslim alınmış devirden doldurulur) |
 
 Hareketli kayıtlar silinmez; düzeltme ters/ek hareketle yapılır (`PalletMovement` türleri: `duzeltme`,
 `sevk_geri_alma`, `iade_girisi`). Taslak sipariş silme içeriği işlem geçmişine yazılır.
@@ -141,7 +162,7 @@ Durum: **Tamam** = uygulandı ve testle doğrulandı · **Kısmi** = sınırı y
 | 1 | Son yönetici, rol/hesap audit, açık oturumda geri alma, superuser atlatmaz | Tamam | aynı |
 | 1 | İK sınırları ve rol taslağı onayı | Tamam | aynı |
 | 1 | Satışçı–müşteri kalıcı/geçici erişim, tüm yüzeylerde izolasyon | Tamam | sipariş/ürün endpoint/belge/stok testleri |
-| 1 | Vardiya kapsamı | Kısmi | Kapsam tanımlı ve sorguya bağlı; hiçbir varsayılan şablon kullanmıyor |
+| 1 | Vardiya kapsamı | Tamam | Operatör şablonu makine + sorumlu vardiya (bölüm 5, madde 8) |
 | 2 | Müşteri kartı (kimlik, kişiler, adresler, ticari, operasyon, belgeler, erişim, durum/geçmiş) | Tamam | `catalog/tests/test_customer_card.py` |
 | 2 | Aşamalı zorunluluk (taslak/sipariş onayı/sevkiyat), yabancıda TR formatı yok, mükerrer + benzer ünvan | Tamam | |
 | 2 | Belge sürüm/tarih/görünürlük, indirme yetkisi, boyut/tür/imza kontrolü | Tamam | Virüs taraması yok (kapsam dışı) |
@@ -165,13 +186,13 @@ Durum: **Tamam** = uygulandı ve testle doğrulandı · **Kısmi** = sınırı y
 | 8 | Kutu/rulo etiketi toplu basım, yeniden basım kimlik/stok üretmez, basım talebi ≠ başarı, QR APP_BASE_URL | Tamam | Yazıcı sürücüsü yok (kapsam dışı) — "basıldı" kullanıcı bildirimidir |
 | 8 | Alt/hedef stok + ihtiyaç listesi, uygulama içi iş listeleri, paket tipi, kg dönüşümü yok | Tamam | |
 | — | Fiziksel telefon testi | **Yapılmadı** | Yalnız 390 px Chromium emülasyonu |
-| — | Tarayıcı testlerinin CI'da çalışması | **Yapılmadı** | CI yalnız Django testlerini çalıştırır |
+| — | Tarayıcı testlerinin CI'da çalışması | Tamam | Ayrı "Tarayıcı testleri (Chromium)" işi (bölüm 5, madde 9) |
 
 ### Bulgular (1–12)
 
 | # | Düzeltme | Regresyon testi | Düzeltme öncesi başarısızlık kanıtı |
 |---|---|---|---|
-| 1 | Teknik imza (en, kalınlık, boy, renk, baskı, perfore) uyuşmazsa ayırma/sevk/aktarım reddi; yetkili gerekçeli istisna | `core/tests/test_findings.py::Finding1…` | Var (FAIL) |
+| 1 | Teknik imza (en, kalınlık, boy, renk, baskı, perfore; kabul öncesi düzeltmeyle + karışım) uyuşmazsa ayırma/sevk/aktarım reddi; yetkili gerekçeli istisna | `core/tests/test_findings.py::Finding1…` | Var (FAIL) |
 | 2 | Ayırma + sevk ≤ kalem miktarı + yetkili fazla teslim; kalem satır kilidi | `Finding2…`, eş zamanlı `Finding2ConcurrencyTests` | Var (FAIL, eş zamanlı test dahil) |
 | 3 | Kapanışta üretilen < sipariş → "Üretim kapandı – eksik" | `Finding3…`, `test_coils` güncellendi | Var (ERROR: durum yoktu) |
 | 4 | Sipariş üst durumu kalemlerden türetilir | `test_order_lifecycle`, `test_phase4` | Kaydedilmedi (Aşama 2'de düzeltildi) |
@@ -184,59 +205,95 @@ Durum: **Tamam** = uygulandı ve testle doğrulandı · **Kısmi** = sınırı y
 | 11 | Adet/rulo kalemde kutudan üretim türetilmez | `Finding11…` | Var |
 | 12 | Mutlak oturum süresi giriş anından; hareketsizlik ayrı | `test_roles_scopes` (oturum testleri) | Kaydedilmedi (Aşama 1) |
 
-## 5. Test sonuçları (26.10.2026, PostgreSQL 16, Chromium 1243 headless)
+## 5. Kabul öncesi yetki ve veri tutarlılığı düzeltmeleri (`fix/mimcor-yetki-veri-tutarliligi`)
 
-- Django: **248 test, tamamı başarılı** (`python3 manage.py test accounts catalog orders production warehouse core corrections`).
-  Not: `--parallel` ile çalıştırmada bir hata olduğunda Django çalıştırıcısı "cannot pickle traceback" ile çöküyor;
-  hata ayıklarken seri çalıştırın.
-- Tarayıcı (yalnız yerelde, **CI'da yok**): `ui_checks.browser_checks` (Demo A + B, 1440 ve 390 px),
-  `ui_checks.order_product_filter_checks` (2), `ui_checks.field_scenarios_checks` (4 saha senaryosu, 1440 ve 390 px)
-  — **6/6 başarılı**. 390 px bir **ekran emülasyonudur; gerçek telefonda deneme yapılmadı**.
-- Eş zamanlılık: aynı sevkiyatın iki kez onayı, aynı form anahtarı, bobin blokajı–sevk yarışı, paralel ayırma (bulgu 2).
+Kaynak: `feature/mimcor-operasyon-genisletme` @ `9902c1e`. Her başlık ayrı commit. "Önce" sütunundaki davranışlar,
+düzeltmeden önce yazılan testlerin mevcut kodda başarısız olmasıyla doğrulandı (1 ve 3 için kayıtlı; diğerleri kod
+okuması + yeni test).
 
-Çalıştırma: `CHROMIUM_PATH=<chromium> python3 manage.py test ui_checks.browser_checks ui_checks.order_product_filter_checks ui_checks.field_scenarios_checks`
-(`browser_checks` `docs/screenshots` altına yazar; istemeden değişiklik commit'lenmesin).
+| # | Önceki davranış | Yapılan değişiklik | Doğrulama | Veri taşıma / sınır |
+|---|---|---|---|---|
+| 1 Stok düzeltmesi | Depo personeli `lot.adjust` ile lot sayfasından ve `warehouse.operate` ile palet "Sayım düzeltmesi" formundan miktarı doğrudan değiştirebiliyordu (testte 40→30 kutu, 1000→900 kg). | `lot.adjust`, `adjust_lot_to`, `adjust_count` kaldırıldı; `move_lot` doğrudan çağrıda giriş/sayım türlerini reddeder. Sayım farkı yalnız düzeltme talebi (palet `sayim`, lot `lot_sayim`) + başka yetkilinin onayı, onayda yeniden kontrol. Eski adresler stok değiştirmez; talep ekranına ya da "yetkilisine bildirin" uyarısına yönlendirir. Mal kabulünde tedarikçi parti/irsaliye zorunlu (her zaman yeni lot). | `corrections/tests/test_no_bypass.py` (doğrudan POST, servis, kendi onayı, değişmiş kayıt, şablonlar); tarayıcı senaryosu 2. | `lot.adjust` rol satırları silinir, işlem geçmişine yazılır. Gözlem: üretimden palete giriş kutu adedi serbest girilir (bobin + başlamış iş emri zorunlu); hasar ayırma/aktarım toplam stoğu değiştirmez — düzeltme yerine kullanılamaz. |
+| 2 Müşteri erişimi | Yükseltmede tüm satışçılara tüm müşteriler kalıcı açıldı ve ayırt edilemiyordu. | Kaynak + inceleme alanları, kesin imzalı sınıflandırma, yönetici inceleme ekranı, önizlemeli toplu işlem, iş listesi. | `catalog/tests/test_access_review.py` (migration sınıflandırması, önizleme/uygulama, yetki, süresi dolan vekâlet her yüzeyde, iki satışçı izolasyonu); tarayıcı senaryosu 0. | Erişim silinmez; karar yöneticide. Orijinal demo kopyasında 3 erişim "taşınan / inceleme bekliyor" çıktı. |
+| 3 Karışım | Teknik imza karışımı içermiyordu; istisna hedef revizyona bağlı değildi. | İmza = ölçü, renk, baskı, perfore + (malzeme kimliği, oran) çiftleri; rev no karşılaştırılmaz. Mevcut istisna modeli genişletildi: kaynak revizyon + kalem + **onay anındaki hedef revizyon**, geri alınabilir. Kontrol ayırma, sevk satırı, sevk onayı (eski rezervasyonlar dahil) ve aktarımda. | `orders/tests/test_mix_compatibility.py` (farklı katkı oranı/malzeme ret, onayla izin, başka kalem ret, yeniden onaylanan kalemde düşer, aynı içerik farklı rev no izin, 98 = 98.000, geri alınan onayda sevk ret). | Eski onaylar yükseltme anındaki kalem hedefine bağlanır. Varsayım: karışım farkında tolerans yok. |
+| 4 Fazla teslim | İzin yalnız eklenebiliyordu (birikimli). | `set_over_delivery`: artır/azalt/0=kaldır, gerekçe, kaleme özel; yeni sınır sevk + ayrılmışın altına inemez (etkilenen rezervasyon/sevkiyat listelenir); eski izinler "yerine geçildi". | `orders/tests/test_over_delivery.py` (eş zamanlı izin azaltma + ayırma, paralel iki ayırma). | Varsayılan 0; müşteri yüzdesi yok. |
+| 5 Sevk yetkileri | `shipment.approve` = onay + geri alma + çıkış; depo şablonunda da vardı. | `shipment.approve` / `shipment.undo` / `shipment.exit` ayrı. Depo = hazırlama + QR; ambar yetkilisi + yönetici = üçü. Rol listesinde şablon farkı ve "önerilen şablonu uygula". | `warehouse/tests/test_shipment_permissions.py` (doğrudan POST 403, bağımsız yetkiler, çıkış → iade, migration'ın özelleştirilmiş rolü yeniden yazmaması). | Yalnız değiştirilmemiş şablonlar güncellenir. UAT kopyasında depo rolü ara bir şablon sürümünden kaldığı için **dokunulmadı** ve rol listesinde gösterilir. Fiziksel çıkışı **ambar yetkilisi ve yönetici** kaydeder (varsayım). |
+| 6 Kapalı iş emri | Kapanıştan sonraki düzeltmeler ekranda görünmüyordu; paletli bobin düzeltmesi tartımı etkilemiyordu. | İlk kapanış (değişmez) ve güncel denge yan yana; kapanıştan sonra uygulanan düzeltmeler; tolerans aşılırsa "yeniden değerlendirme bekliyor" + gerekçeli `ClosureReview`. Paletli bobin: stoktaki palet yeniden tartım bekler, sevk edilmiş palet → ret. | `production/tests/test_closure_corrections.py`: verilen 100 kg, sağlam 95, fire 5 → fark 0; çıkış 110 kg'a düzeltilince ilk kapanış 100/0 kalır, güncel 110/10 kg (> %3 = 3,3 kg) → değerlendirme; seri ve eş zamanlı çift onay tek hareket. | Kapanış yeniden hesaplanıp üzerine yazılmaz. |
+| 7 İade / yerine gönderim | Yerine gönderimin iade ile bağı yoktu. | `OrderLine.replacement_for`: asıl siparişe iade kaydına bağlı kalem (yeni satış sayılmaz), miktar ≤ iade − önceki yerine gönderimler; kartta ilk sevk / iade / yerine gönderim / müşteride kalan net. | `warehouse/tests/test_replacement.py` (zincir ve net, sınırlar, yetki, eş zamanlı iade). | Muhasebe/fatura yok (kapsam dışı). |
+| 8 Vardiya + makine | Vardiya kapsamı kullanılmıyordu; operatör makinesindeki tüm vardiyaların teknik bilgisini görüyordu; devralan operatör devri teslim alamıyordu. | `Mk+V` kapsamı; operasyonun `responsible_shift` alanı (planlanan vardiya, devir teslim alınınca devralan vardiya). Eski vardiyanın aktif teknik erişimi devirle kapanır; geçmiş (makine kapsamlı iş emri görünümü) açık. Devralan vardiyadaki, o makineye atanmış kişi devri teslim alabilir. Saat kuralı yok. | `production/tests/test_shift_scope.py` (VE kuralı, gece vardiyası, geçmiş/aktif, devir, vardiyasız operatör, çoklu rol genişlemesi, şablon migration'ı). Seed: 4003 (V1) ve 4005 (V2) EXT-01/PER-01. | Sorumlu vardiya mevcut kayıtlarda son teslim alınmış devirden doldurulur. Planlanmamış (vardiyasız) operasyonun teknik bilgisi operatöre açılmaz; ustabaşı planlamalıdır. |
+| 9 CI | Tarayıcı testleri yalnız yerelde. | Ayrı "Tarayıcı testleri (Chromium)" işi; ekran görüntüleri ve başarısızlıkta trace "tarayici-ciktilari" artifact'ı. | Başarısızlık artifact'ı geçici başarısız testle doğrulandı. | Emülasyon; gerçek telefon değil. |
 
-### UAT senaryoları (kullanıcı kabulü için)
+## 6. Test sonuçları (27.10.2026, PostgreSQL 16, Chromium headless)
+
+- Django: **301 test, tamamı başarılı** (`python3 manage.py test accounts catalog orders production warehouse core corrections`;
+  seri çalıştırıldı — `--parallel` bir hata olduğunda "cannot pickle traceback" ile çöküyor).
+- Tarayıcı: `ui_checks.browser_checks` (Demo A + B), `ui_checks.order_product_filter_checks`,
+  `ui_checks.field_scenarios_checks` (satış izolasyonu + 4 saha senaryosu), her biri 1440 ve 390 px — yerelde **6/6**.
+  **CI'da ayrı iş olarak çalışır** (sonuç HANDOFF.md'de). 390 px bir ekran emülasyonudur; **gerçek telefonda deneme yapılmadı**.
+- Eş zamanlılık: aynı sevkiyatın iki kez onayı, aynı form anahtarı, bobin blokajı–sevk yarışı, paralel ayırma,
+  izin azaltma–ayırma yarışı, eş zamanlı çift düzeltme onayı, eş zamanlı iade.
+- Ekran görüntüleri: `docs/screenshots/saha-senaryolari/` (güncel), `docs/screenshots/saha-senaryolari/9902c1e/` (önceki tur).
+
+Yerel çalıştırma: `CHROMIUM_PATH=<chromium> DEMO_SCREENSHOT_DIR=/tmp/demo python3 manage.py test ui_checks.browser_checks
+ui_checks.order_product_filter_checks ui_checks.field_scenarios_checks` (`DEMO_SCREENSHOT_DIR` verilmezse `docs/screenshots`
+üzerine yazar). CI'da `pip install -r requirements-browser.txt && python -m playwright install --with-deps chromium`.
+
+### UAT senaryoları (kullanıcı kabulü için; testlerin geçmesi işletme onayı değildir)
+
+0. **Satış izolasyonu:** 2002 ile girin; Müşteriler listesinde M-DENEME yok, M-ORNEK (vekâlet bitiş tarihiyle) var.
+   Yönetici (1001) "Müşteri erişimleri" ekranında kaynakları görür; yükseltilmiş kurulumda "inceleme bekliyor"
+   kayıtları önizleyip onaylar / süreliye çevirir / kaldırır.
 
 1. **Müşteri değiştirdi:** Satış (2001) onaylı kalemde miktarı 20 → 15 yapar; ekran etkilenen iş emrini listeler ve onay
    ister. İş emri hedefi 20 kalır, iş emri sayfasında çelişki görünür. Planlama (3001) iş emrini gerekçeyle geri çeker
    (basılı talimatlar geçersiz damgalanır), hedefi 15 yapar, yeniden serbest bırakır.
-2. **Usta yanlış girdi:** Üretim yetkilisi (4002) bobin sayfasından 97 → 79 kg düzeltme talebi açar; kayıt değişmez.
-   Ambar yetkilisi (5002) "Düzeltme talepleri"nden onaylar; bobin 79 kg olur, geçmişte eski değer kalır. 4002 kendi
-   talebini onaylayamaz.
-3. **Vardiya bitti:** Ustabaşı (4001, V1) çalışan operasyonda "Vardiya devri" ile kalan işi ve makine başı malzemeyi yazar
-   (açık bobinler otomatik eklenir). Başka bir yetkili (4002) devri teslim alır; iş emri ve hedef sürer.
+2. **Usta yanlış girdi / sayım farkı:** Depo (5001) palet sayım adresine gider → miktar değişmez, "yetkilisine
+   bildirin" uyarısı. Üretim yetkilisi (4002) bobin 97 → 79 kg (veya lot/palet sayım) düzeltme talebi açar; kayıt
+   değişmez. Ambar yetkilisi (5002) onaylar; geçmişte eski değer kalır. 4002 kendi talebini onaylayamaz.
+3. **Vardiya bitti:** Ustabaşı (4001, V1) çalışan operasyonu V1'e planlamışsa operatör 4003 (V1, EXT-01) teknik bilgiyi
+   görür, 4005 (V2) görmez. 4001 "Vardiya devri" ile kalan işi yazar; 4005 veya üretim yetkilisi teslim alır. Bundan
+   sonra 4005 teknik bilgiyi görür, 4003 görmez (iş emri geçmişini görmeye devam eder).
 4. **Ürün iade geldi:** Depo (5001) çıkışı yapılmış sevkiyattan "İade al" ile 3 kutu alır; ayrı iade paleti "kontrol
-   bekliyor" açılır, eski sevkiyat ve sipariş değişmez. Kalite (4004) kararı verir (ör. blokeli).
+   bekliyor" açılır, eski sevkiyat ve sipariş değişmez. Kalite (4004) kararı verir. Yerine gönderim gerekiyorsa satış
+   kalem kartındaki iade satırından "Yerine gönderim oluştur" der; kartta ilk sevk / iade / yerine gönderim / net görünür.
 5. **Yükleme kontrolü:** Depo sevkiyatı "Hazırlandı" yapar, paletleri okutur; yanlış palet ve mükerrer okutma
-   uyarılır, eksik palet varken "Sevk et" çıkmaz. Sevk sonrası araç çıkmadan "Sevki geri al" stoğu geri koyar.
+   uyarılır. Depo son onayı veremez ("Son sevk onayını ambar yetkilisi verir"). Ambar yetkilisi (5002) "Sevk et",
+   gerekirse araç çıkmadan "Sevki geri al", sonra "Araç çıktı".
+6. **Karışım farkı:** Planlama aynı ölçüde katkı oranı farklı bir revizyonla stok üretirse bu stok onaylı kaleme
+   ayrılamaz; kalem kartından gerekçeli "Teknik eşdeğerlik onayı" verilince ayrılabilir; kalem başka revizyona yeniden
+   onaylanırsa onay düşer.
+7. **Kapalı iş emri düzeltmesi:** Kapalı iş emrinde malzeme çıkışı düzeltmesi onaylanınca iş emri sayfası ilk kapanış ve
+   güncel değeri yan yana gösterir; tolerans aşıldıysa üretim yetkilisi/planlama "Güncel dengeyi değerlendir" der.
 
-## 6. Varsayımlar ve işletme kararı gereken sorular
+## 7. Varsayımlar ve işletme kararı gereken sorular (kod bunlara göre çalışır; işletme onayı henüz yok)
 
-1. **Fazla teslim toleransı 0.** Örnek: 10 kutuluk kaleme 12 kutu göndermek için planlama/yönetici "Fazla teslim izni
-   +2" verir. Müşteri bazında sabit tolerans (ör. %5) istenirse ayrı karar gerekir.
-2. **Teknik uygunluk imzası:** en, kalınlık, rulo boyu, renk, baskı, perfore. Karışım oranı farkı tek başına
-   uyumsuzluk sayılmıyor (aynı ölçü/renk, farklı katkı → uyumlu). Örnek: Rev.1 ve Rev.2 yalnız katkı oranında farklıysa
-   stok paleti kaleme ayrılabilir. Karışım farkı da engellemeli mi?
+1. **Fazla teslim toleransı 0**; fazla teslim yalnız kaleme gerekçeli, miktarı belirli izinle.
+2. **Karışım farkı her zaman eşdeğerlik onayı ister** (oran toleransı yok). Örnek: LDPE %98 / katkı %2 ile onaylı kaleme
+   LDPE %97 / katkı %3 stoğu ancak planlama onayıyla gider. Belirli bir oran farkının (ör. ±0,5 puan) serbest olması
+   istenirse ayrı karar gerekir.
 3. **Kendi düzeltmesini onaylama kapalı** (`CORRECTION_SELF_APPROVAL=0`).
 4. **Talep/onay şablonları:** talep — üretim yetkilisi, planlama, satış (müşteri kapsamlı); onay — üretim yetkilisi,
-   ambar yetkilisi; operatör ve kalite talep açamaz; ustabaşı ve ambar yetkilisinin talep hakkı varsayılan kapalı,
-   rol düzenlemeyle verilebilir.
-5. **Blokaj kaldırma:** yönetici, planlama, ustabaşı (kendi işleri), kalite. Depo yalnız blokeler.
-6. **Sevk onayı ve geri alma** (`shipment.approve`) şablonda hem ambar yetkilisi hem depo personelinde. Yalnız ambar
-   yetkilisi mi onaylamalı?
-7. **Vardiya saatleri** V1 07–19, V2 19–07 örnektir (ekrandan değiştirilebilir).
-8. **İade varsayılanı** "kontrol bekliyor"; iade sipariş durumunu değiştirmez (yeniden sevk gerekiyorsa yeni sipariş/kalem).
-9. Upgrade'de mevcut satışçılara mevcut müşterilere kalıcı erişim verildi; işletme isterse daraltılmalı.
+   ambar yetkilisi. Operatör, kalite, ustabaşı, ambar yetkilisi ve depo personeli talep açamaz (ustabaşı/ambar için
+   ayrıca atanabilir).
+5. **Fiziksel çıkış kaydı** ambar yetkilisi ve yönetici; depo personeli yalnız hazırlama ve QR kontrolü. Kapıda depo
+   personelinin çıkış kaydetmesi istenirse `shipment.exit` ayrıca verilir.
+6. **Mal kabulünde tedarikçi parti/irsaliye no zorunlu.**
+7. **Yükseltilmiş kurulumda geniş müşteri erişimleri** inceleme sonuçlanana kadar aktif kalır.
+8. **Vardiya:** saat kuralı yok; devir gecikirse eski vardiya teslim alınana kadar sorumlu; vardiyası tanımsız operatöre
+   teknik erişim yok. Vardiya saatleri V1 07–19, V2 19–07 örnektir.
+9. **İade varsayılanı** "kontrol bekliyor"; yerine gönderim asıl siparişe bağlı kalem olarak açılır.
+10. **Blokaj kaldırma:** yönetici, planlama, ustabaşı (kendi işleri), kalite. Depo yalnız blokeler.
 
-## 7. Riskler ve sınırlar
+## 8. Riskler ve sınırlar
 
 - **Fiziksel cihaz testi yok:** el okuyucu (klavye emülasyonu) ile QR okutma ve mobil kullanım gerçek cihazda denenmedi.
 - **Yazıcı:** tarayıcı yazdırma; "basıldı" kullanıcının beyanıdır, cihazdan doğrulanmaz.
 - **Bobin bekletmesi ihtiyatlı:** aktarımla ilişkili paletler de bekletilir (sağlam kutular bekleyebilir).
-- **Malzeme düzeltmesi tamamlanmış/kapalı iş emrinde:** kapanış dengesi kapanış anındaki değerlerle kalır; fark
-  geçmişte görünür, kapanış yeniden hesaplanmaz.
+- **Kapalı iş emrinde düzeltme:** ilk kapanış değişmez; güncel denge ve yeniden değerlendirme ayrı gösterilir. Fire,
+  kapanışta girilen değerdir (sonradan düzeltilemez; gerekirse değerlendirme gerekçesinde açıklanır).
+- **Şablon farkı:** özelleştirilmiş roller yükseltmede otomatik güncellenmez; yönetici rol listesindeki uyarıları
+  inceleyip karar vermelidir.
+- **Üretimden giriş kutu adedi** kullanıcı beyanıdır (bobin ve başlamış iş emri şartı var); sonradan düzeltme talep–onayla.
 - **Çok süreçli kurulum:** hatalı giriş kilidi süreç belleğinde; paylaşılan cache gerekir. Canlı kurulum yapılandırması
   (HTTPS, gunicorn, statik dosya sunumu, `MEDIA_ROOT` yedeği) yapılmadı.
 - **Rol değişikliği kapsamı:** yönetici bir şablonu genişletirse tüm atanmış kullanıcılar etkilenir; değişiklik
