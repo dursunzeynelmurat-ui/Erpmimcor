@@ -21,13 +21,14 @@ from django.utils import timezone
 from playwright.sync_api import expect, sync_playwright
 
 from accounts.models import Shift, User
-from catalog.models import Machine, MaterialLot, Product, Unit
+from catalog.models import Customer, Machine, MaterialLot, Product, Unit
 from core.models import QualityStatus
 from orders import services as orders
 from production import lifecycle
 from production import services as prod
 from production.models import WorkOrder, WorkOrderStatus
 from ui_checks import browser_checks as demo
+from ui_checks import support
 from warehouse import services as wh
 from warehouse.models import Pallet
 
@@ -50,13 +51,13 @@ class FieldScenarioBrowserTests(StaticLiveServerTestCase):
         guard.start()
         self.addCleanup(guard.stop)
         self.pw = sync_playwright().start()
-        self.browser = self.pw.chromium.launch(executable_path=os.getenv("CHROMIUM_PATH", "/usr/bin/chromium"),
-                                               headless=True, args=["--no-sandbox"])
+        self.browser = support.launch(self.pw)
         self.contexts = {}
         self.screens = Path(os.getenv("SCENARIO_SCREENSHOT_DIR", "/tmp/mimcor-senaryo"))
         self.screens.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
+        support.finish_contexts(self, [p.context for p in self.contexts.values()])
         self.browser.close()
         connections.close_all()
         self.pw.stop()
@@ -82,6 +83,17 @@ class FieldScenarioBrowserTests(StaticLiveServerTestCase):
         return wo
 
     # --- senaryolar -------------------------------------------------------------------------
+    def sales_isolation(self):
+        """İki satışçı, farklı müşteri erişimleri: 2002 M-DENEME'yi listede, URL'de ve ürün endpoint'inde göremez."""
+        kerem = self.page_for("2002")
+        deneme = Customer.objects.get(code="M-DENEME")
+        self.go(kerem, "/musteriler/")
+        expect(kerem.locator("main")).not_to_contain_text("M-DENEME")
+        expect(kerem.locator("main")).to_contain_text("M-KURGU")
+        self.assertEqual(kerem.request.get(self.live_server_url + f"/musteriler/{deneme.pk}/").status, 404)
+        self.assertEqual(kerem.request.get(self.live_server_url + f"/siparisler/musteri/{deneme.pk}/urunler/").status, 404)
+        self.shot(kerem, "senaryo0-satis-izolasyonu")
+
     def customer_changed(self):
         sales, planner = self.page_for("2001"), self.page_for("3001")
         product = Product.objects.get(code="ORN-PF-030")
@@ -123,7 +135,12 @@ class FieldScenarioBrowserTests(StaticLiveServerTestCase):
     def wrong_entry(self):
         wo = self.started_work_order()
         coil = prod.record_coil(U("4001"), wo.operations.get(), weight_kg=D("97"))
-        manager, approver = self.page_for("4002"), self.page_for("5002")
+        manager, approver, depot = self.page_for("4002"), self.page_for("5002"), self.page_for("5001")
+        # Depo personeli palet/lot miktarını doğrudan değiştiremez; yetkiliye bildirmesi söylenir.
+        pallet = Pallet.objects.filter(status="depoda").first()
+        self.go(depot, f"/paletler/{pallet.pk}/sayim/")
+        expect(depot.locator(".messages")).to_contain_text("yetkilisine bildirin")
+        self.assertEqual(Pallet.objects.get(pk=pallet.pk).box_count, pallet.box_count)
         self.go(manager, f"/bobinler/{coil.pk}/")
         manager.get_by_role("link", name="Ağırlık düzeltme talebi").click()
         expect(manager.locator("main")).to_contain_text("Etkilenecek kayıtlar")
@@ -196,6 +213,7 @@ class FieldScenarioBrowserTests(StaticLiveServerTestCase):
 
     def run_all(self, width):
         self.width = width
+        self.sales_isolation()
         self.customer_changed()
         self.wrong_entry()
         self.shift_ended()

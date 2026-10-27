@@ -1,7 +1,41 @@
 name: tests
 on: [push, pull_request]
+
+env:
+  DJANGO_SECRET_KEY: ci-only-not-secret
+  POSTGRES_DB: mimcor
+  POSTGRES_USER: mimcor
+  POSTGRES_PASSWORD: ci-only-password
+  POSTGRES_HOST: localhost
+  DEMO_USER_PASSWORD: ci-demo-password
+
 jobs:
   test:
+    name: Django testleri
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: mimcor
+          POSTGRES_USER: mimcor
+          POSTGRES_PASSWORD: ci-only-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python manage.py makemigrations --check --dry-run
+      - run: python manage.py test
+      - run: python manage.py migrate && python manage.py seed_demo
+
+  browser:
+    # Gerçek Chromium + PostgreSQL ile tarayıcı senaryoları (1440 px ve 390 px emülasyon; gerçek telefon testi değildir).
+    name: Tarayıcı testleri (Chromium)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -14,18 +48,26 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      DJANGO_SECRET_KEY: ci-only-not-secret
-      POSTGRES_DB: mimcor
-      POSTGRES_USER: mimcor
-      POSTGRES_PASSWORD: ci-only-password
-      POSTGRES_HOST: localhost
-      DEMO_USER_PASSWORD: ci-demo-password
+      BROWSER_ARTIFACT_DIR: ${{ github.workspace }}/browser-artifacts/failures
+      DEMO_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/demo
+      SCENARIO_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/saha-senaryolari
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python manage.py makemigrations --check --dry-run
-      - run: python manage.py test
-      - run: python manage.py migrate && python manage.py seed_demo
+      - run: pip install -r requirements.txt -r requirements-browser.txt
+      - name: Chromium ve sistem bağımlılıkları
+        run: python -m playwright install --with-deps chromium
+      - name: Tarayıcı testleri
+        run: >-
+          python manage.py test --noinput
+          ui_checks.browser_checks ui_checks.order_product_filter_checks ui_checks.field_scenarios_checks
+      - name: Ekran görüntüleri ve hata trace'leri
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tarayici-ciktilari
+          path: browser-artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

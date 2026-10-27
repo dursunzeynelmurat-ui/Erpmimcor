@@ -12,6 +12,8 @@ from django.db import connections
 from django.test import override_settings
 from playwright.sync_api import expect, sync_playwright
 
+from ui_checks import support
+
 from catalog.models import Customer, Product
 from orders.models import SalesOrder
 
@@ -37,10 +39,11 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         guard.start()
         self.addCleanup(guard.stop)
         self.pw = sync_playwright().start()
-        self.browser = self.pw.chromium.launch(executable_path=os.getenv("CHROMIUM_PATH", "/usr/bin/chromium"),
-                                               headless=True, args=["--no-sandbox"])
+        self.browser = support.launch(self.pw)
+        self.contexts = []
 
     def tearDown(self):
+        support.finish_contexts(self, self.contexts)
         self.browser.close()
         connections.close_all()
         self.pw.stop()
@@ -57,7 +60,8 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         return page.locator("[name=product] option").evaluate_all("(os) => os.map(o => o.value).filter(Boolean)")
 
     def run_flow(self, width):
-        context = self.browser.new_context(viewport={"width": width, "height": 900 if width > 600 else 844})
+        context = support.new_context(self.browser, viewport={"width": width, "height": 900 if width > 600 else 844})
+        self.contexts.append(context)
         page = context.new_page()
         page.set_default_timeout(10000)
         page.goto(self.live_server_url + "/giris/")
@@ -146,7 +150,6 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         expect(page.locator(".msg-success")).to_contain_text("Sipariş oluşturuldu")
         self.assertEqual(SalesOrder.objects.count(), before + 1)
         self.assertEqual(SalesOrder.objects.latest("created_at").lines.get().product_id, int(b_prod))
-        context.close()
 
     def test_filter_desktop(self):
         self.run_flow(1440)

@@ -11,6 +11,8 @@ from django.test import override_settings
 from django.db import connections
 from playwright.sync_api import sync_playwright, expect
 
+from ui_checks import support
+
 from accounts.models import User
 from catalog.models import Product, Customer, Machine, MaterialLot
 from orders.models import SalesOrder
@@ -31,20 +33,21 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         guard.start()
         self.addCleanup(guard.stop)
         self.pw = sync_playwright().start()
-        self.browser = self.pw.chromium.launch(executable_path=os.getenv('CHROMIUM_PATH', '/usr/bin/chromium'),
-                                             headless=True, args=['--no-sandbox'])
+        self.browser = support.launch(self.pw)
         self.contexts = {}
-        self.screens = Path('docs/screenshots')
+        self.screens = Path(os.getenv('DEMO_SCREENSHOT_DIR', 'docs/screenshots'))
         self.screens.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
+        support.finish_contexts(self, [p.context for p in self.contexts.values()])
         self.browser.close()
         connections.close_all()
         self.pw.stop()
 
     def page_for(self, no):
         if no not in self.contexts:
-            context = self.browser.new_context(viewport={'width': self.width, 'height': 900 if self.width > 600 else 844})
+            context = support.new_context(self.browser, viewport={'width': self.width,
+                                                                  'height': 900 if self.width > 600 else 844})
             page = context.new_page()
             page.set_default_timeout(10000)
             page.goto(self.live_server_url + '/giris/')
