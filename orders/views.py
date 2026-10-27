@@ -221,7 +221,7 @@ def line_exception(request, pk, kind):
         fn = lambda d: services.approve_compatibility(request.user, line, d["revision"], d["reason"])  # noqa: E731
         title, msg = "Teknik eşdeğerlik onayı", "Teknik eşdeğerlik onayı kaydedildi (bu kalem ve hedef revizyon için)."
     elif kind == "fazla-teslim":
-        form = OverDeliveryForm(request.POST or None)
+        form = OverDeliveryForm(request.POST or None, initial={"extra": services.current_over_delivery(line)})
         fn = lambda d: services.allow_over_delivery(request.user, line, d["extra"], d["reason"])  # noqa: E731
         title, msg = "Fazla teslim izni", "Fazla teslim izni kaydedildi."
     else:

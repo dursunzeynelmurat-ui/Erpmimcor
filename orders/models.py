@@ -115,10 +115,15 @@ class CompatibilityException(models.Model):
 
 
 class OverDeliveryAllowance(models.Model):
-    """Kalem miktarının üzerinde ayırma/sevk için yetkili, gerekçeli ek miktar (varsayılan tolerans 0)."""
+    """Kalem miktarının üzerinde ayırma/sevk için yetkili, gerekçeli ek miktar (varsayılan tolerans 0).
+    Geçerli izin = yerine yenisi konmamış kayıtların toplamı; değişiklikte eski kayıtlar silinmez, 'yerine geçildi'
+    işaretlenir (artırma, azaltma ve kaldırma geçmişte kalır)."""
 
     order_line = models.ForeignKey(OrderLine, on_delete=models.PROTECT, related_name="over_delivery")
     extra_quantity = models.PositiveIntegerField("Ek miktar")
     reason = models.TextField("Gerekçe")
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    superseded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                      related_name="+")

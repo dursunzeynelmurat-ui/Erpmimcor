@@ -400,10 +400,13 @@ def revoke_compatibility(actor, exception, reason):
     return exc
 
 
-def line_limit(line):
+def current_over_delivery(line):
     from django.db.models import Sum
-    extra = line.over_delivery.aggregate(s=Sum("extra_quantity"))["s"] or 0
-    return line.quantity + extra
+    return line.over_delivery.filter(superseded_at__isnull=True).aggregate(s=Sum("extra_quantity"))["s"] or 0
+
+
+def line_limit(line):
+    return line.quantity + current_over_delivery(line)
 
 
 def committed_quantity(line):
@@ -414,15 +417,40 @@ def committed_quantity(line):
 
 
 @transaction.atomic
-def allow_over_delivery(actor, line, extra, reason):
+def set_over_delivery(actor, line, extra, reason):
+    """Kalemin fazla teslim iznini belirler (artırma, azaltma; 0 = kaldırma). Kalem satırı kilitlenir: ayırma ve sevk
+    onayıyla sıralı çalışır. Yeni sınır, sevk edilmiş + açık ayrılmış miktarın altına inemez (önce onlar azaltılır)."""
+    from warehouse.models import OPEN_SHIPMENT_STATES, ReservationStatus
+
     from .models import OverDeliveryAllowance
     check(actor, "exception.approve")
     if not reason:
-        raise BusinessRuleError("Fazla teslim için gerekçe zorunludur.", field="reason")
-    if extra is None or int(extra) != extra or extra <= 0:
-        raise BusinessRuleError("Ek miktar pozitif tam sayı olmalı.", field="extra")
+        raise BusinessRuleError("Fazla teslim izni için gerekçe zorunludur.", field="reason")
+    if extra is None or int(extra) != extra or extra < 0:
+        raise BusinessRuleError("Ek miktar 0 veya pozitif tam sayı olmalı (0 = izni kaldır).", field="extra")
+    extra = int(extra)
     line = OrderLine.objects.select_for_update(of=("self",)).get(pk=line.pk)
-    allowance = OverDeliveryAllowance.objects.create(order_line=line, extra_quantity=int(extra), reason=reason,
+    old = current_over_delivery(line)
+    if extra == old:
+        raise BusinessRuleError("Kalemin geçerli fazla teslim izni zaten bu miktar.", field="extra")
+    committed = committed_quantity(line)
+    if line.quantity + extra < committed:
+        details = [f"{r.pallet.code}: {r.quantity} kutu ({r.get_status_display()})" for r in line.reservations.exclude(
+            status=ReservationStatus.CANCELLED).select_related("pallet")]
+        drafts = [sl.shipment.code for sl in line.shipment_lines.filter(shipment__status__in=OPEN_SHIPMENT_STATES)
+                  .select_related("shipment")]
+        raise BusinessRuleError(
+            f"{line.code}: sevk edilmiş + ayrılmış {committed} kutu; yeni sınır {num(line.quantity)} + {extra} bunun "
+            f"altında kalır. Önce rezervasyonu azaltın/iptal edin. Rezervasyonlar: {'; '.join(details)}"
+            + (f". Hazırlanan sevkiyatlar: {', '.join(drafts)}" if drafts else ""), field="extra")
+    now = timezone.now()
+    line.over_delivery.filter(superseded_at__isnull=True).update(superseded_at=now, superseded_by=actor)
+    allowance = OverDeliveryAllowance.objects.create(order_line=line, extra_quantity=extra, reason=reason,
                                                      approved_by=actor)
-    audit(actor, "order.over_delivery", line, {"ek_miktar": (None, int(extra))}, reason=reason, code=line.code)
+    audit(actor, "order.over_delivery", line, {"ek_miktar": (old, extra)}, reason=reason, code=line.code)
     return allowance
+
+
+def allow_over_delivery(actor, line, extra, reason):
+    """Geriye uyumluluk: fazla teslim iznini verilen miktara ayarlar."""
+    return set_over_delivery(actor, line, extra, reason)

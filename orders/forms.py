@@ -131,5 +131,7 @@ class CompatibilityForm(IdemForm):
 
 
 class OverDeliveryForm(IdemForm):
-    extra = forms.IntegerField(label="Ek miktar (kutu)", min_value=1)
+    extra = forms.IntegerField(label="Geçerli ek miktar (kutu)", min_value=0,
+                               help_text="Kalem miktarının üzerine izin verilen toplam. 0 = izni kaldır. Sevk edilmiş + "
+                                         "ayrılmış miktarın altına indirilemez.")
     reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))
