@@ -14,6 +14,8 @@ def sync_template_role(apps, code, old_perms, new_perms, reason):
     if role is None:
         return "yok"
     current = dict(RolePermission.objects.filter(role=role).values_list("action", "scope"))
+    if current == dict(new_perms):
+        return "guncel"  # rol zaten yeni şablonla oluşturulmuş (ör. eski veritabanında rolleri bu sürüm yarattı)
     if current != dict(old_perms):
         AuditLog.objects.create(user=None, action="role.template_drift", object_type="accounts.accessrole",
                                 object_id=str(role.pk), object_code=role.code,

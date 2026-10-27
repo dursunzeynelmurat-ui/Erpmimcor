@@ -103,3 +103,16 @@ class TemplateMigrationTests(TransactionTestCase):
         self.assertIn("order.change", ambar)
         from core.models import AuditLog
         self.assertTrue(AuditLog.objects.filter(action="role.template_drift", object_code="ambar_yetkilisi").exists())
+
+
+class TemplateSyncNoopTests(TestCase):
+    def test_role_already_on_new_template_is_not_reported_as_drift(self):
+        from django.apps import apps
+        from accounts.bootstrap import install_defaults
+        from accounts.template_sync import sync_template_role
+        from core.models import AuditLog
+        import importlib
+        install_defaults()  # güncel şablonla oluşturulur
+        mig = importlib.import_module("accounts.migrations.0006_shipment_permission_split")
+        self.assertEqual(sync_template_role(apps, "depo", mig.DEPO_OLD, mig.DEPO_NEW, "test"), "guncel")
+        self.assertFalse(AuditLog.objects.filter(action="role.template_drift").exists())
