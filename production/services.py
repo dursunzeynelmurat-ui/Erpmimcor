@@ -1,10 +1,11 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 
-from accounts.permissions import check
+from accounts.permissions import can, check
 from catalog.models import LotMovementKind, MachineType, MaterialUnit, RecipeRevision
 from catalog.services import move_lot
 from core.models import QualityStatus, ValueSource
@@ -379,3 +380,56 @@ def close_work_order(actor, wo, *, scrap_kg, remaining_confirmed, reason=""):
                 set_line_status(actor, line, LineStatus.PRODUCED_SHORT,
                                 reason=f"İş emirleri kapandı; üretilen {shown}, sipariş {line.quantity}")
     return wo
+
+
+# --- Kapanış sonrası düzeltmeler ---------------------------------------------------------
+
+def _closure_snapshot(values):
+    return {k: str(v) for k, v in values.items()}
+
+
+def closure_status(wo):
+    """İlk kapanış (değişmez kayıt) ile onaylı düzeltmeler sonrası güncel denge. Fark tolerans dışındaysa ve son
+    değerlendirmeden sonra değiştiyse 'yeniden değerlendirme bekliyor'."""
+    from corrections.models import CorrectionRequest, CorrectionStatus
+    closure = getattr(wo, "closure", None)
+    if closure is None:
+        return None
+    s = closure_summary(wo)
+    current = {"issued": s["issued"], "good": s["good"], "blocked": s["blocked"], "wip": s["wip"],
+               "scrap": closure.scrap_kg, "boxes": Decimal(s["boxes"])}
+    current["difference"] = current["issued"] - (current["good"] + current["blocked"] + current["wip"] + current["scrap"])
+    original = {"issued": closure.issued_kg, "good": closure.good_kg, "blocked": closure.blocked_kg,
+                "wip": closure.wip_kg, "scrap": closure.scrap_kg, "boxes": Decimal(closure.good_boxes),
+                "difference": closure.difference_kg}
+    changed = any(original[k] != current[k] for k in original)
+    limit = current["issued"] * s["tolerance_pct"] / 100
+    corrections = list(CorrectionRequest.objects.filter(work_order=wo, status=CorrectionStatus.APPLIED,
+                                                        decided_at__gt=closure.closed_at).select_related("decided_by"))
+    review = closure.reviews.first()
+    reviewed_current = review is not None and review.snapshot == _closure_snapshot(current)
+    needs_review = changed and abs(current["difference"]) > limit and not reviewed_current
+    rows = [(k, original[k], current[k]) for k in ("issued", "good", "blocked", "wip", "scrap", "boxes", "difference")]
+    return {"closure": closure, "original": original, "current": current, "changed": changed, "rows": rows,
+            "corrections": corrections, "needs_review": needs_review, "review": review, "limit": limit,
+            "tolerance_pct": s["tolerance_pct"]}
+
+
+@transaction.atomic
+def review_closure(actor, wo, reason):
+    """Düzeltmeler sonrası güncel dengeyi değerlendirildi olarak kaydeder; ilk kapanış kaydına dokunmaz."""
+    from .models import ClosureReview
+    if not (can(actor, "correction.approve", wo) or can(actor, "planning.approve")):
+        raise PermissionDenied("Kapanış değerlendirmesi üretim yetkilisi veya planlama tarafından yapılır.")
+    if not reason:
+        raise BusinessRuleError("Değerlendirme gerekçesi zorunludur.", field="reason")
+    wo = _lock_wo(wo)
+    status = closure_status(wo)
+    if status is None or not status["changed"]:
+        raise BusinessRuleError("Kapanıştan sonra değişen bir denge yok.")
+    review = ClosureReview.objects.create(closure=status["closure"], snapshot=_closure_snapshot(status["current"]),
+                                          reason=reason, reviewed_by=actor)
+    audit(actor, "workorder.closure_review", wo, {"guncel_fark_kg": (str(status["original"]["difference"]),
+                                                                     str(status["current"]["difference"]))},
+          reason=reason)
+    return review

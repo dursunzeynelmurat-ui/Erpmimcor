@@ -293,3 +293,17 @@ class MaterialDeviation(models.Model):
     reason = models.TextField("Gerekçe")
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ClosureReview(models.Model):
+    """Kapanıştan sonra onaylı düzeltmelerle değişen dengenin yetkili tarafından değerlendirilmesi. İlk kapanış kaydı
+    (WorkOrderClosure) değişmez; değerlendirme anındaki güncel değerler ayrı saklanır."""
+
+    closure = models.ForeignKey(WorkOrderClosure, on_delete=models.PROTECT, related_name="reviews")
+    snapshot = models.JSONField()
+    reason = models.TextField("Değerlendirme gerekçesi")
+    reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    reviewed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-reviewed_at", "-id"]

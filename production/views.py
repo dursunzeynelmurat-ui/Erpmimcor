@@ -111,8 +111,24 @@ def workorder_detail(request, pk):
         "issued": services.issued_by_lot(wo),
         "lot_movements": wo.lot_movements.select_related("lot__material"),
         "closure": getattr(wo, "closure", None),
+        "closure_state": services.closure_status(wo),
+        "closure_labels": CLOSURE_LABELS,
+        "can_review_closure": can(user, "correction.approve", wo) or can(user, "planning.approve"),
         "history": history_for(wo),
     })
+
+
+CLOSURE_LABELS = {"issued": "Net verilen malzeme (kg)", "good": "Sağlam çıktı (kg)", "blocked": "Blokeli (kg)",
+                  "wip": "Ara stok bobin (kg)", "scrap": "Fire (kg, kapanışta girilen)", "boxes": "Palete alınan kutu",
+                  "difference": "Denge farkı (kg)"}
+
+
+@require_POST
+def closure_review(request, pk):
+    wo = _get_wo(request, pk)
+    return _post_action(request, _wo_url(wo) + "#kapanis", ReasonForm(request.POST), "workorder.closure_review",
+                        lambda d: services.review_closure(request.user, wo, d["reason"]),
+                        "Güncel denge değerlendirildi; ilk kapanış kaydı değişmedi.")
 
 
 @require_POST

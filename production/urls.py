@@ -33,4 +33,5 @@ urlpatterns += [
     path("talimat/<int:pk>/", views.instruction_view, name="instruction_view"),
     path("talimat/<int:pk>/onay/<str:kind>/", views.instruction_ack, name="instruction_ack"),
     path("uretim-plani/", views.floor_plan, name="floor_plan"),
+    path("is-emirleri/<int:pk>/kapanis-degerlendir/", views.closure_review, name="closure_review"),
 ]

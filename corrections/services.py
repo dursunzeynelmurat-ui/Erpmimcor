@@ -216,6 +216,20 @@ def _apply(actor, cr, target):
         if cr.new_value < consumed:
             raise BusinessRuleError(f"{target.code} bobininden {num(consumed)} kg tüketilmiş; ağırlık bunun altına "
                                     "düşürülemez.")
+        link = getattr(target, "pallet_link", None) if hasattr(target, "pallet_link") else None
+        if link is not None:
+            from warehouse.models import MovementKind as MK, PalletStatus, WeightStatus
+            from warehouse.services import _lock
+            (pallet,) = _lock(link.pallet)
+            if pallet.status == PalletStatus.EMPTY or pallet.movements.filter(kind=MK.SHIPMENT).exists():
+                raise BusinessRuleError(f"{target.code} bobini {pallet.code} paletiyle sevk edilmiş; ağırlık düzeltmesi "
+                                        "fiziksel kayıtla çelişir. Gerekirse müşteri iadesi/kalite süreciyle ele alın.")
+            if pallet.weight_status == WeightStatus.CURRENT:
+                pallet.weighings.filter(is_current=True).update(is_current=False)
+                pallet.weight_status = WeightStatus.REWEIGH
+                pallet.save()
+                audit(actor, "pallet.weigh_invalidated", pallet, {"weight_status": (WeightStatus.CURRENT,
+                                                                                    WeightStatus.REWEIGH)}, reason=why)
         old_w, old_r = target.weight_kg, target.remaining_kg
         target.weight_kg = cr.new_value
         target.remaining_kg = old_r + delta

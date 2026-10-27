@@ -31,10 +31,14 @@
   {% empty %}<li class="muted">Palet yok.</li>{% endfor %}</ul>
 </section>
 {% if closure %}
-<section class="card"><h2>Kapanış</h2>
-  <dl class="kv"><dt>Net verilen malzeme</dt><dd>{{ closure.issued_kg|qty }} kg</dd><dt>Sağlam çıktı</dt><dd>{{ closure.good_kg|qty }} kg · {{ closure.good_boxes }} kutu</dd>
-  <dt>Blokeli</dt><dd>{{ closure.blocked_kg|qty }} kg</dd><dt>Ara stok</dt><dd>{{ closure.wip_kg|qty }} kg</dd><dt>Fire</dt><dd>{{ closure.scrap_kg|qty }} kg</dd>
-  <dt>Denge farkı</dt><dd>{{ closure.difference_kg|qty }} kg</dd>{% if closure.reason %}<dt>Gerekçe</dt><dd>{{ closure.reason }}</dd>{% endif %}
-  <dt>Kapatan</dt><dd>{{ closure.closed_by.full_name }} · {{ closure.closed_at|date:"d.m.Y H:i" }}</dd></dl>
+<section class="card" id="kapanis"><h2>Kapanış</h2>
+  {% if closure_state.needs_review %}<div class="conflict" role="status"><strong>Kapanış yeniden değerlendirme bekliyor:</strong> kapanıştan sonra onaylanan düzeltmelerle güncel denge farkı {{ closure_state.current.difference|qty }} kg (tolerans ±{{ closure_state.limit|qty }} kg).</div>{% endif %}
+  <div class="table-wrap"><table class="table compact"><thead><tr><th></th><th>İlk kapanış ({{ closure.closed_at|date:"d.m.Y H:i" }})</th>{% if closure_state.changed %}<th>Düzeltmeler sonrası güncel</th>{% endif %}</tr></thead><tbody>
+  {% for key, old, new in closure_state.rows %}<tr><td>{{ closure_labels|get_item:key }}</td><td>{{ old|qty }}</td>{% if closure_state.changed %}<td>{% if old != new %}<strong>{{ new|qty }}</strong>{% else %}{{ new|qty }}{% endif %}</td>{% endif %}</tr>{% endfor %}
+  </tbody></table></div>
+  <p class="muted">İlk kapanış kaydı değiştirilmez. {% if closure.reason %}Kapanış gerekçesi: {{ closure.reason }} · {% endif %}Kapatan: {{ closure.closed_by.full_name }}</p>
+  {% if closure_state.corrections %}<h3>Kapanıştan sonra uygulanan düzeltmeler</h3><ul class="list">{% for c in closure_state.corrections %}<li><a href="{% url 'corrections:correction_detail' c.pk %}">{{ c.code }}</a> · {{ c.get_kind_display }} · {{ c.target_code }}: {{ c.old_value|qty }} → {{ c.new_value|qty }} {{ c.unit }} · {{ c.decided_by.full_name }} {{ c.decided_at|date:"d.m.Y H:i" }}</li>{% endfor %}</ul>{% endif %}
+  {% if closure_state.review %}<p class="muted">Son değerlendirme: {{ closure_state.review.reviewed_by.full_name }} · {{ closure_state.review.reviewed_at|date:"d.m.Y H:i" }} · {{ closure_state.review.reason }}</p>{% endif %}
+  {% if closure_state.needs_review and can_review_closure %}{% url 'production:closure_review' wo.pk as u %}{% include "partials/reason_button.html" with action=u label="Güncel dengeyi değerlendir" hint="Değerlendirme ayrı kayıttır; ilk kapanış değerleri değişmez." %}{% endif %}
 </section>
 {% endif %}

@@ -50,6 +50,16 @@ def task_lists(user):
               .select_related("order__customer", "product").order_by("due_date", "order__due_date"))
         tasks.append(_task("Termini geçmiş kalemler", qs, reverse("orders:progress_list"),
                            lambda ln: f"{ln.code} · {ln.product.code} · {ln.order.customer.name}"))
+    if can(user, "correction.approve") or can(user, "planning.approve"):
+        from production.services import closure_status
+        closed = scoped(WorkOrder.objects.filter(status=WorkOrderStatus.CLOSED, corrections__status="uygulandi")
+                        .distinct(), user, "workorder.view").select_related("closure")
+        pending = [w for w in closed if (closure_status(w) or {}).get("needs_review")]
+        if pending:
+            tasks.append({"title": "Yeniden değerlendirme bekleyen kapanışlar", "count": len(pending),
+                          "url": reverse("production:workorder_detail", args=[pending[0].pk]) + "#kapanis",
+                          "items": [(f"{w.code} · güncel fark {closure_status(w)['current']['difference']} kg", w)
+                                    for w in pending[:LIMIT]]})
     if can(user, "workorder.release"):
         qs = scoped(WorkOrder.objects.filter(status=WorkOrderStatus.DRAFT, archived_at__isnull=True), user,
                     "workorder.view").select_related("product")
