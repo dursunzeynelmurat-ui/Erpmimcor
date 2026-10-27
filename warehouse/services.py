@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import Max, Sum
 from django.utils import timezone
 
 from accounts.permissions import check
@@ -946,3 +946,59 @@ def planning_needs(user):
         rows.append({"level": level, "available": available, "planned": planned,
                      "need": max(level.target_boxes - available - planned, 0), "work_orders": list(open_wos)})
     return rows
+
+
+# --- İade → yerine gönderim ------------------------------------------------------------------
+
+def replaced_quantity(receipt):
+    from orders.models import LineStatus
+    return receipt.replacement_lines.exclude(status=LineStatus.CANCELLED).aggregate(s=Sum("quantity"))["s"] or 0
+
+
+@transaction.atomic
+def create_replacement_line(actor, receipt, quantity, reason):
+    """İade edilen ürünün yerine gönderilecek kalemi asıl siparişe ekler. Kalem iade kaydına bağlıdır (yeni satış
+    sayılmaz); miktarı iade edilenden önceki yerine gönderimler düşülerek fazla olamaz. Normal teknik uygunluk,
+    ayırma ve sevk sınırları bu kalemde de geçerlidir."""
+    from orders.models import LineStatus, OrderLine, OrderStatus, SalesOrder
+    receipt = ReturnReceipt.objects.select_for_update(of=("self",)).select_related(
+        "shipment_line__order_line__order", "shipment_line__order_line__approved_revision").get(pk=receipt.pk)
+    src = receipt.shipment_line.order_line
+    order = SalesOrder.objects.select_for_update(of=("self",)).get(pk=src.order_id)
+    check(actor, "order.change", order)
+    if not reason:
+        raise BusinessRuleError("Gerekçe zorunludur.", field="reason")
+    if quantity is None or int(quantity) != quantity or quantity <= 0:
+        raise BusinessRuleError("Miktar pozitif tam sayı olmalı.", field="quantity")
+    left = receipt.quantity - replaced_quantity(receipt)
+    if quantity > left:
+        raise BusinessRuleError(f"{receipt.code} için en fazla {left} kutu yerine gönderilebilir "
+                                f"(iade {receipt.quantity}, önceki yerine gönderim {receipt.quantity - left}).",
+                                field="quantity")
+    if order.status == OrderStatus.CANCELLED:
+        raise BusinessRuleError("İptal edilmiş siparişe yerine gönderim eklenemez.")
+    line_no = (order.lines.aggregate(m=Max("line_no"))["m"] or 0) + 1
+    line = OrderLine.objects.create(
+        order=order, line_no=line_no, product=src.product, quantity=quantity, unit=src.unit, due_date=src.due_date,
+        replacement_for=receipt, approved_revision=src.approved_revision, approved_by=src.approved_by,
+        approved_at=src.approved_at,
+        status=LineStatus.APPROVED if src.approved_revision_id else LineStatus.WAITING_PLANNING,
+        planning_note=f"Yerine gönderim: {receipt.code} ({src.code})")
+    audit(actor, "order.replacement", line, {"iade": (None, receipt.code), "kaynak_kalem": (None, src.code),
+                                             "quantity": (None, quantity)}, reason=reason, code=line.code)
+    refresh_order_status(actor, order)
+    return line
+
+
+def line_fulfilment(line):
+    """Asıl kalem için ilk sevk, iade, yerine gönderim (sevk edilen) ve müşteride kalan net (kutu)."""
+    from orders.services import shipped_quantity
+    shipped = shipped_quantity(line)
+    receipts = ReturnReceipt.objects.filter(shipment_line__order_line=line)
+    returned = receipts.aggregate(s=Sum("quantity"))["s"] or 0
+    repl_lines = [ln for r in receipts.prefetch_related("replacement_lines") for ln in r.replacement_lines.all()]
+    replaced_planned = sum(ln.quantity for ln in repl_lines if ln.status != "iptal")
+    replaced_shipped = sum(shipped_quantity(ln) for ln in repl_lines)
+    return {"shipped": shipped, "returned": returned, "replacement_planned": replaced_planned,
+            "replacement_shipped": replaced_shipped, "net": shipped - returned + replaced_shipped,
+            "receipts": list(receipts.select_related("shipment_line__shipment", "pallet"))}

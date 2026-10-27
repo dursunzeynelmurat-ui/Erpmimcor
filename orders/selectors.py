@@ -41,4 +41,13 @@ def line_progress(line):
         "stage": stage,
         "last_update": max(t for t in timestamps if t),
         "work_orders": work_orders,
+        "fulfilment": _fulfilment(line),
     }
+
+
+def _fulfilment(line):
+    from warehouse.models import ReturnReceipt
+    if line.unit != "kutu" or not ReturnReceipt.objects.filter(shipment_line__order_line=line).exists():
+        return None
+    from warehouse.services import line_fulfilment
+    return line_fulfilment(line)

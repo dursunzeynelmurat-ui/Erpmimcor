@@ -71,6 +71,10 @@ class OrderLine(models.Model):
     approved_at = models.DateTimeField(null=True, blank=True)
     planning_note = models.TextField("Planlama notu", blank=True)
     needs_review = models.BooleanField("Kopyadan geldi; miktar/termin onayı bekliyor", default=False)
+    replacement_for = models.ForeignKey("warehouse.ReturnReceipt", on_delete=models.PROTECT, null=True, blank=True,
+                                        related_name="replacement_lines",
+                                        verbose_name="Yerine gönderim (iade)",
+                                        help_text="Doluysa bu kalem yeni satış değil, iade edilen ürünün yerine gönderimdir.")
     cancel_reason = models.TextField("İptal gerekçesi", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

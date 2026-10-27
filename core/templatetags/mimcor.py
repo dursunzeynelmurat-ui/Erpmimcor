@@ -86,7 +86,7 @@ ACTION_LABELS = {
     "order.delete_draft": "Taslak sipariş silindi", "order.line_change": "Kalem değiştirildi",
     "order.line_cancel": "Kalem iptal edildi", "order.archive": "Sipariş arşivlendi",
     "order.compatibility_exception": "Teknik eşdeğerlik onayı", "order.compatibility_revoke": "Eşdeğerlik onayı geri alındı", "order.over_delivery": "Fazla teslim izni",
-    "order.return": "Müşteri iadesi", "correction.request": "Düzeltme talebi",
+    "order.return": "Müşteri iadesi", "order.replacement": "Yerine gönderim kalemi", "correction.request": "Düzeltme talebi",
     "correction.uygulandi": "Düzeltme onaylandı ve uygulandı", "correction.ret": "Düzeltme reddedildi",
     "correction.geri_cekildi": "Düzeltme talebi geri çekildi", "coil.correction": "Bobin ağırlığı düzeltildi",
     "pallet.duzeltme": "Onaylı üretim düzeltmesi", "pallet.sevk_geri_alma": "Sevk geri alındı",

@@ -483,3 +483,27 @@ def stock_needs(request):
             if resp:
                 return resp
     return render(request, "warehouse/stock_needs.html", {"rows": rows, "levels": levels, "form": form})
+
+
+def replacement_create(request, pk):
+    from .models import ReturnReceipt
+    receipt = get_object_or_404(ReturnReceipt.objects.select_related("shipment_line__order_line__order", "pallet"), pk=pk)
+    order = get_scoped_or_404(SalesOrder.objects.all(), request.user, "order.change",
+                              pk=receipt.shipment_line.order_line.order_id)
+    left = receipt.quantity - services.replaced_quantity(receipt)
+    form = ReturnForm(request.POST or None, initial={"quantity": left})
+    del form.fields["location"]
+    form.fields["reason"].label = "Gerekçe"
+    if request.method == "POST":
+        resp = run_form_action(request, form, action="order.replacement",
+                               fn=lambda d: services.create_replacement_line(request.user, receipt, d["quantity"],
+                                                                             d["reason"]),
+                               success_message=lambda ln: f"Yerine gönderim kalemi {ln.code} eklendi.",
+                               url_for=lambda ln: reverse("orders:order_detail", args=[order.pk]))
+        if resp:
+            return resp
+    return render(request, "core/form_page.html", {
+        "form": form, "title": f"Yerine gönderim: {receipt.code}", "submit": "Kalemi ekle",
+        "back": reverse("orders:order_detail", args=[order.pk]),
+        "intro": f"{receipt.shipment_line.order_line.code} kaleminden {receipt.quantity} kutu iade alındı; en fazla "
+                 f"{left} kutu yerine gönderilebilir. Kalem asıl siparişe iade kaydına bağlı eklenir ve yeni satış sayılmaz."})

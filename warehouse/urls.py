@@ -18,6 +18,7 @@ urlpatterns = [
     path("sevkiyatlar/<int:pk>/cikis/", views.shipment_exit, name="shipment_exit"),
     path("sevkiyatlar/<int:pk>/geri-al/", views.shipment_undo, name="shipment_undo"),
     path("sevkiyat-satiri/<int:pk>/iade/", views.shipment_return, name="shipment_return"),
+    path("iade/<int:pk>/yerine-gonderim/", views.replacement_create, name="replacement_create"),
     path("paletler/<int:pk>/", views.pallet_detail, name="pallet_detail"),
     path("paletler/<int:pk>/kabul/", views.pallet_accept, name="pallet_accept"),
     path("paletler/<int:pk>/tartim/", views.pallet_weigh, name="pallet_weigh"),

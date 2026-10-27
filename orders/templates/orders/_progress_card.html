@@ -1,6 +1,11 @@
 {% load mimcor %}
 <article class="card progress-card">
-  <header><strong>{{ p.line.code }}</strong> · {{ p.line.product.code }} <span class="status status-{{ p.line.status }}">{{ p.line.get_status_display }}</span></header>
+  <header><strong>{{ p.line.code }}</strong> · {{ p.line.product.code }} <span class="status status-{{ p.line.status }}">{{ p.line.get_status_display }}</span>{% if p.line.replacement_for %} <span class="status status-kontrol_bekliyor">Yerine gönderim · {{ p.line.replacement_for.code }}</span>{% endif %}</header>
+  {% if p.line.replacement_for %}<p class="muted">Yeni satış değildir: {{ p.line.replacement_for.shipment_line.order_line.code }} kaleminden {{ p.line.replacement_for.code }} ile iade edilen ürünün yerine gönderilir.</p>{% endif %}
+  {% if p.fulfilment %}<dl class="kv"><dt>İlk sevk</dt><dd>{{ p.fulfilment.shipped }} kutu</dd><dt>İade</dt><dd>{{ p.fulfilment.returned }} kutu</dd>
+    <dt>Yerine gönderim</dt><dd>{{ p.fulfilment.replacement_shipped }} kutu sevk edildi{% if p.fulfilment.replacement_planned != p.fulfilment.replacement_shipped %} ({{ p.fulfilment.replacement_planned }} planlı){% endif %}</dd>
+    <dt>Müşteride kalan net</dt><dd><strong>{{ p.fulfilment.net }} kutu</strong></dd></dl>
+    {% for r in p.fulfilment.receipts %}<p class="muted">{{ r.code }}: {{ r.quantity }} kutu ({{ r.shipment_line.shipment.code }}) – {{ r.reason }}{% if can.order_change %} · <a href="{% url 'warehouse:replacement_create' r.pk %}">Yerine gönderim oluştur</a>{% endif %}</p>{% endfor %}{% endif %}
   <dl class="kv">
     <dt>Sipariş miktarı</dt><dd>{{ p.line.quantity|qty }} {{ p.line.get_unit_display }}</dd>
     {% if p.production_supported %}<dt>Gerçekleşen üretim</dt><dd><strong>{{ p.produced|qty }} {{ p.produced_unit }}</strong></dd>{% else %}<dt>Gerçekleşen üretim</dt><dd>Bu birimde üretim özeti desteklenmiyor.</dd>{% endif %}
