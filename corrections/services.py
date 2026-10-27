@@ -16,7 +16,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from accounts.permissions import check
-from catalog.models import LotMovement, LotMovementKind
+from catalog.models import LotMovement, LotMovementKind, MaterialLot
 from catalog.services import move_lot
 from core.exceptions import BusinessRuleError
 from core.services import audit, next_code, num
@@ -32,6 +32,7 @@ TARGETS = {
     CorrectionKind.PALLET_BOXES: PalletMovement,
     CorrectionKind.WEIGHING: PalletWeighing,
     CorrectionKind.COUNT: Pallet,
+    CorrectionKind.LOT_COUNT: MaterialLot,
 }
 DISCRETE = (CorrectionKind.PALLET_BOXES, CorrectionKind.COUNT)
 
@@ -54,6 +55,8 @@ def current_value(kind, target):
         return Decimal(target.quantity) + _applied_delta(kind, target)
     if kind == CorrectionKind.WEIGHING:
         return target.gross_kg
+    if kind == CorrectionKind.LOT_COUNT:
+        return target.quantity
     return Decimal(target.box_count)
 
 
@@ -71,6 +74,8 @@ def describe(kind, target):
     if kind == CorrectionKind.WEIGHING:
         return (f"{target.pallet.code} tartım #{target.pk}", "kg", target.pallet.product.customer,
                 target.pallet.work_order, target.pallet)
+    if kind == CorrectionKind.LOT_COUNT:
+        return f"Lot {target.code} ({target.material.code})", target.material.unit, None, None, None
     return target.code, "kutu", target.product.customer, target.work_order, target
 
 
@@ -86,6 +91,9 @@ def affected_records(kind, target):
     elif kind in (CorrectionKind.MATERIAL_ISSUE, CorrectionKind.MATERIAL_RETURN):
         out.append(f"Lot {target.lot.code} bakiyesi")
         wo = target.work_order
+    elif kind == CorrectionKind.LOT_COUNT:
+        out.append(f"Lot {target.code} bakiyesi (iş emirlerine verilmiş miktarlar değişmez)")
+        wo = None
     else:
         pallet = target if kind == CorrectionKind.COUNT else target.pallet
         for r in pallet.reservations.filter(status=ReservationStatus.ACTIVE).select_related("order_line__order"):
@@ -240,6 +248,8 @@ def _apply(actor, cr, target):
         _record_weighing(actor, pallet, {"gross_kg": cr.new_value, "pallet_tare_kg": target.pallet_tare_kg,
                                          "box_tare_kg": target.box_tare_kg, "core_tare_kg": target.core_tare_kg,
                                          "roll_weights": target.roll_weights, "note": f"Düzeltme {cr.code}"})
+    elif kind == CorrectionKind.LOT_COUNT:
+        move_lot(actor, target, LotMovementKind.ADJUST, delta, reason=f"Düzeltme {why}", _skip_perm=True)
     else:
         from warehouse.services import _lock, _move, _reserved
         (pallet,) = _lock(target)

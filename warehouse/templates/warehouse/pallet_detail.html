@@ -32,7 +32,7 @@
 {% if weigh_form %}{% url 'warehouse:pallet_weigh' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=weigh_form action=u title="Yeniden tartım" submit="Tartımı kaydet" %}{% endif %}
 {% if reserve_form %}{% url 'warehouse:pallet_reserve' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=reserve_form action=u title="Siparişe ayır" submit="Ayır" note="Ayırma fiziksel stoğu azaltmaz; sevkiyatla düşülür." %}{% endif %}
 {% if transfer_form %}{% url 'warehouse:pallet_transfer' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=transfer_form action=u title="Başka palete aktar" submit="Aktar" note="Hedef palet aynı ürün koduna ait olmalı. Kaynak ve hedef birlikte güncellenir." %}{% endif %}
-{% if count_form %}{% url 'warehouse:pallet_count' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=count_form action=u title="Sayım düzeltmesi" submit="Kaydet" %}{% endif %}
+{% if pallet.status == "depoda" and not can.correction_request and can.warehouse_operate %}<p class="msg msg-warning no-print">Sayımda fark görürseniz palet miktarını siz değiştiremezsiniz; üretim veya ambar yetkilisine bildirin. Yetkili düzeltme talebi açar, başka bir yetkili onaylar.</p>{% endif %}
 {% if damage_form %}{% url 'warehouse:pallet_damage' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=damage_form action=u title="Hasarlı ürün ayır" submit="Ayır" btn="btn-danger" note="Hasarlı kutular blokeli yeni palete alınır." %}{% endif %}
 {% if quality_form %}{% url 'warehouse:pallet_quality' pallet.pk as u %}{% include "warehouse/_form_card.html" with form=quality_form action=u title="Kalite durumu" submit="Kaydet" %}{% endif %}
 

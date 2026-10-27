@@ -86,10 +86,17 @@ class LotMovementTests(TestCase):
         self.assertEqual(self.w.lot.quantity, D("1000"))
         self.assertEqual(self.w.lot.movements.count(), 1)
 
-    def test_adjust_requires_reason_and_writes_movement(self):
+    def test_adjust_only_through_approved_correction(self):
+        # Doğrudan sayım düzeltmesi kaldırıldı; talep + başka yetkilinin onayı (corrections/tests/test_no_bypass).
+        from accounts.models import Role, User
+        from core.tests.factories import PASSWORD
+        from corrections import services as corr
+        from corrections.models import CorrectionKind
+        mgr = User.objects.create_user("9811", PASSWORD, full_name="Üretim yetkilisi", role=Role.PRODUCTION_MANAGER)
+        appr = User.objects.create_user("9812", PASSWORD, full_name="Ambar", role=Role.WAREHOUSE_MANAGER)
         with self.assertRaises(BusinessRuleError):
-            cat.adjust_lot_to(self.w.depot, self.w.lot, D("990"), "")
-        cat.adjust_lot_to(self.w.depot, self.w.lot, D("990"), "Sayım farkı")
+            corr.request_correction(mgr, CorrectionKind.LOT_COUNT, self.w.lot, D("990"), "")
+        corr.approve(appr, corr.request_correction(mgr, CorrectionKind.LOT_COUNT, self.w.lot, D("990"), "Sayım farkı"))
         self.w.lot.refresh_from_db()
         self.assertEqual(self.w.lot.quantity, D("990"))
         self.assertEqual(self.w.lot.movements.first().quantity, D("-10"))

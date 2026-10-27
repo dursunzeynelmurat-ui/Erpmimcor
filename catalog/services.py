@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Max
 
@@ -157,6 +158,10 @@ def receive_lot(actor, material, quantity, supplier_lot=""):
         raise BusinessRuleError("Pasif malzeme için lot girişi yapılamaz.")
     if quantity <= 0:
         raise BusinessRuleError("Giriş miktarı sıfırdan büyük olmalı.", field="quantity")
+    if not (supplier_lot or "").strip():
+        # Mal kabulü her zaman yeni bir lot açar ve tedarikçi belgesine bağlanır; mevcut lottaki sayım farkını
+        # kapatmak için kullanılamaz (o iş düzeltme talebi ile yapılır).
+        raise BusinessRuleError("Mal kabulünde tedarikçi parti / irsaliye no zorunludur.", field="supplier_lot")
     lot = MaterialLot.objects.create(code=next_code("LOT"), material=material, supplier_lot=supplier_lot)
     move_lot(actor, lot, LotMovementKind.RECEIPT, quantity, _skip_perm=True)
     return lot
@@ -164,10 +169,13 @@ def receive_lot(actor, material, quantity, supplier_lot=""):
 
 def move_lot(actor, lot, kind, quantity, work_order=None, reason="", _skip_perm=False):
     """Lot miktarını değiştirmenin tek yolu. quantity işaretli (+ giriş, - çıkış).
-    Bakiye negatife düşerse işlem tümüyle reddedilir."""
+    Bakiye negatife düşerse işlem tümüyle reddedilir.
+    Giriş yalnız receive_lot, sayım düzeltmesi yalnız onaylı düzeltme talebi (corrections) üzerinden yazılır;
+    bu iki tür doğrudan çağrıda reddedilir (_skip_perm yalnız bu iki iç servis içindir)."""
     if not _skip_perm:
-        perm = {LotMovementKind.ADJUST: "lot.adjust"}.get(kind, "production.execute")
-        check(actor, perm)
+        if kind in (LotMovementKind.ADJUST, LotMovementKind.RECEIPT):
+            raise PermissionDenied("Lot girişi mal kabulüyle, sayım farkı onaylı düzeltme talebiyle kaydedilir.")
+        check(actor, "production.execute")
     if kind == LotMovementKind.ADJUST and not reason:
         raise BusinessRuleError("Sayım düzeltmesi için gerekçe zorunludur.", field="reason")
     if quantity == 0:
@@ -186,13 +194,3 @@ def move_lot(actor, lot, kind, quantity, work_order=None, reason="", _skip_perm=
         audit(actor, f"lot.{kind}", lot, {"quantity": (old, new_balance)}, reason=reason)
     return mv
 
-
-@transaction.atomic
-def adjust_lot_to(actor, lot, counted, reason):
-    """Sayım sonucu: farkı kilit altında hesaplayıp düzeltme hareketi yazar."""
-    check(actor, "lot.adjust")
-    lot = MaterialLot.objects.select_for_update().get(pk=lot.pk)
-    delta = counted - lot.quantity
-    if delta == 0:
-        raise BusinessRuleError("Sayılan miktar mevcut miktarla aynı; düzeltme gerekmiyor.", field="counted")
-    return move_lot(actor, lot, LotMovementKind.ADJUST, delta, reason=reason)

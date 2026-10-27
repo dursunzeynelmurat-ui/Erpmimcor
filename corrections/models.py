@@ -9,6 +9,7 @@ class CorrectionKind(models.TextChoices):
     PALLET_BOXES = "palet_kutu", "Paletteki üretim kutu adedi"
     WEIGHING = "tartim", "Palet brüt tartımı"
     COUNT = "sayim", "Palet sayım adedi"
+    LOT_COUNT = "lot_sayim", "Malzeme lotu sayım miktarı"
 
 
 class CorrectionStatus(models.TextChoices):

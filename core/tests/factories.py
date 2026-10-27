@@ -57,7 +57,7 @@ class World:
         self.slit = cat.create_definition(a, Machine, {"code": "D1", "name": "Dil", "machine_type": MachineType.SLITTING})
         self.ldpe = cat.create_definition(a, Material, {"code": "LDPE", "name": "LDPE", "kind": MaterialKind.RAW, "unit": "kg"})
         self.slip = cat.create_definition(a, Material, {"code": "SLIP", "name": "Slip", "kind": MaterialKind.ADDITIVE, "unit": "kg"})
-        self.lot = cat.receive_lot(a, self.ldpe, D("1000"))
+        self.lot = cat.receive_lot(a, self.ldpe, D("1000"), supplier_lot="TED-TEST-1")
         self.rev_a = cat.create_revision(self.planner, self.prod_a, self.spec(), self.mix())
         self.rev_b = cat.create_revision(self.planner, self.prod_b, self.spec(), self.mix())
 

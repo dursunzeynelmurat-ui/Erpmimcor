@@ -169,7 +169,7 @@ class Finding8MaterialUnitTests(TestCase):
         self.w = World()
         self.ink = cat.create_definition(self.w.admin, Material, {"code": "MUR", "name": "Mürekkep",
                                                                   "kind": MaterialKind.ADDITIVE, "unit": "lt"})
-        self.ink_lot = cat.receive_lot(self.w.admin, self.ink, D("50"))
+        self.ink_lot = cat.receive_lot(self.w.admin, self.ink, D("50"), supplier_lot="TED-MUR-1")
 
     def test_unit_choices_and_unit_frozen_after_movement(self):
         with self.assertRaises(BusinessRuleError):
@@ -192,7 +192,7 @@ class Finding9OffRecipeMaterialTests(TestCase):
         self.w = World()
         self.other = cat.create_definition(self.w.admin, Material, {"code": "HDPE", "name": "HDPE",
                                                                     "kind": MaterialKind.RAW, "unit": "kg"})
-        self.other_lot = cat.receive_lot(self.w.admin, self.other, D("200"))
+        self.other_lot = cat.receive_lot(self.w.admin, self.other, D("200"), supplier_lot="TED-HDPE-1")
         self.wo = self.w.started_wo(machines=[self.w.ext])
 
     def test_off_recipe_issue_requires_justified_deviation(self):

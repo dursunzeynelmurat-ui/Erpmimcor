@@ -70,7 +70,6 @@ ACTIONS = [
     Action("material.view", "Hammadde/katkı ve lotları görme", "Tanımlar", Kind.VIEW),
     Action("material.manage", "Hammadde/katkı tanımlama", "Tanımlar", Kind.CHANGE),
     Action("lot.receive", "Malzeme lot girişi", "Tanımlar", Kind.CREATE),
-    Action("lot.adjust", "Lot sayım düzeltmesi (doğrudan)", "Tanımlar", Kind.CHANGE),
     # Sipariş
     Action("order.view", "Siparişleri ve üretim ilerlemesini görme", "Sipariş", Kind.VIEW, CUST),
     Action("order.create", "Sipariş ve kalem oluşturma", "Sipariş", Kind.CREATE, CUST),
@@ -154,9 +153,9 @@ TEMPLATES = {
         "product.view": A, "machine.view": A}),
     "ambar_yetkilisi": ("Ambar yetkilisi", True, {
         **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A, "shipment.approve": A,
-        "label.print": A, "lot.receive": A, "lot.adjust": A, "quality.block": A, "correction.approve": A,
+        "label.print": A, "lot.receive": A, "quality.block": A, "correction.approve": A,
         "customer.document.view": A}),
     "depo": ("Depo personeli", True, {
         **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A, "shipment.approve": A,
-        "label.print": A, "lot.receive": A, "lot.adjust": A, "quality.block": A, "customer.document.view": A}),
+        "label.print": A, "lot.receive": A, "quality.block": A, "customer.document.view": A}),
 }

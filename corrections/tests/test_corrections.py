@@ -73,7 +73,7 @@ class CorrectionFlowTests(TestCase):
     def test_changed_target_is_rejected_at_approval(self):
         pallet = self.w.stock_pallet(boxes=40)
         cr = cs.request_correction(self.manager, CorrectionKind.COUNT, pallet, D("38"), "Sayımda 38 çıktı")
-        wh.adjust_count(self.w.depot, pallet, 39, "Depo sayımı")
+        wh.separate_damaged(self.w.depot, pallet, 1, "Ezik kutu ayrıldı")  # talep sonrası palet değişti
         cs.approve(self.store_mgr, cr)
         cr.refresh_from_db()
         pallet.refresh_from_db()

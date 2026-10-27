@@ -18,7 +18,7 @@ from core.viewutils import run_form_action
 from orders.models import SalesOrder
 
 from . import services
-from .forms import (CountForm, DamageForm, LocationForm, PackageLabelForm, PalletFilterForm, QualityForm,
+from .forms import (DamageForm, LocationForm, PackageLabelForm, PalletFilterForm, QualityForm,
                     ReduceReservationForm, ReserveForm, ReturnForm, ScanForm, ShipmentCreateForm, ShipmentLineForm,
                     StockLevelForm, TransferForm, WeighingForm)
 from .models import (SHIPPED_STATES, LabelKind, LabelPrint, Pallet, PalletStatus, Reservation, Shipment, ShipmentLine,
@@ -94,8 +94,7 @@ def pallet_detail(request, pk):
         if pallet.status == PalletStatus.AWAITING_ACCEPTANCE:
             ctx["accept_form"] = WeighingForm(with_location=True)
         elif pallet.status == PalletStatus.IN_STOCK:
-            ctx.update(weigh_form=WeighingForm(), transfer_form=TransferForm(), count_form=CountForm(),
-                       damage_form=DamageForm())
+            ctx.update(weigh_form=WeighingForm(), transfer_form=TransferForm(), damage_form=DamageForm())
     if pallet.status != PalletStatus.EMPTY:
         # Blokelemek, karar vermek ve blokajı kaldırmak ayrı yetkiler (quality.block / decide / release).
         allowed = set()
@@ -162,9 +161,16 @@ def pallet_transfer(request, pk):
 
 
 def pallet_count(request, pk):
-    return _pallet_action(request, pk, perm="warehouse.operate", form_cls=CountForm, action="pallet.count",
-                          fn=lambda p, d: services.adjust_count(request.user, p, d["counted"], d["reason"]),
-                          success="Sayım düzeltmesi kaydedildi.")
+    """Eski doğrudan sayım adresi: stok değiştirmez; düzeltme talebine (yetkisi yoksa bildirime) yönlendirir."""
+    from django.contrib import messages
+    pallet = get_scoped_or_404(Pallet.objects.all(), request.user, "stock.view", pk=pk)
+    if can(request.user, "correction.request", pallet):
+        if request.method == "POST":
+            messages.warning(request, "Sayım farkı doğrudan kaydedilmez; düzeltme talebi açın.")
+        return redirect(reverse("corrections:correction_create", args=["sayim", pallet.pk]) + f"?geri={_pallet_url(pallet)}")
+    messages.warning(request, "Palet miktarını siz değiştiremezsiniz. Sayım farkını üretim veya ambar yetkilisine "
+                              "bildirin; yetkili düzeltme talebi açar, başka bir yetkili onaylar.")
+    return redirect(_pallet_url(pallet))
 
 
 def pallet_damage(request, pk):

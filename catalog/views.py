@@ -9,7 +9,7 @@ from core.services import history_for
 from core.viewutils import run_form_action
 
 from . import services
-from .forms import (ActiveToggleForm, LotAdjustForm, LotReceiveForm, MachineForm, MaterialForm,
+from .forms import (ActiveToggleForm, LotReceiveForm, MachineForm, MaterialForm,
                     ProductForm, RevisionForm)
 from .models import Customer, Machine, Material, MaterialLot, Product, Recipe
 
@@ -194,16 +194,13 @@ def lot_receive(request):
 def lot_detail(request, pk):
     check(request.user, "material.view")
     lot = get_object_or_404(MaterialLot.objects.select_related("material"), pk=pk)
-    form = LotAdjustForm(request.POST or None) if can(request.user, "lot.adjust") else None
-    if request.method == "POST" and form is not None:
-        resp = run_form_action(
-            request, form, action="lot.adjust",
-            fn=lambda d: services.adjust_lot_to(request.user, lot, d["counted"], d["reason"]),
-            success_message="Sayım düzeltmesi kaydedildi.",
-            url_for=lambda mv: reverse("catalog:lot_detail", args=[lot.pk]),
-        )
-        if resp:
-            return resp
+    if request.method == "POST":
+        # Eski doğrudan sayım formu kaldırıldı: miktar yalnız onaylı düzeltme talebiyle değişir.
+        from django.contrib import messages
+        messages.warning(request, "Lot miktarı bu ekrandan değiştirilemez. Sayım farkı için düzeltme talebi açın "
+                                  "veya talep yetkiniz yoksa üretim/ambar yetkilisine bildirin.")
+        return redirect("catalog:lot_detail", pk=lot.pk)
     return render(request, "catalog/lot_detail.html", {
-        "lot": lot, "movements": lot.movements.select_related("user", "work_order"), "form": form,
+        "lot": lot, "movements": lot.movements.select_related("user", "work_order"),
+        "can_request": can(request.user, "correction.request", lot),
     })

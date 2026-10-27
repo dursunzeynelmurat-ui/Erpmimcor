@@ -8,10 +8,11 @@
   <dt>Mevcut miktar</dt><dd><strong>{{ lot.quantity|qty }} {{ lot.material.unit }}</strong></dd>
 </dl>
 <p class="muted">Miktar doğrudan değiştirilemez; giriş, üretime çıkış, iade ve gerekçeli sayım hareketleriyle değişir.</p>
-{% if form %}
-<form method="post" class="card form" novalidate>{% csrf_token %}<h2>Sayım düzeltmesi</h2>
-  {% include "partials/form_fields.html" %}<button type="submit" class="btn btn-primary">Düzeltmeyi kaydet</button></form>
-{% endif %}
+<section class="card no-print"><h2>Sayım farkı</h2>
+{% if can_request %}<p class="muted">Lot miktarı doğrudan değiştirilemez; fark onaylı düzeltme talebiyle (talep edenden farklı bir yetkilinin onayıyla) kaydedilir.</p>
+<a class="btn" href="{% url 'corrections:correction_create' 'lot_sayim' lot.pk %}?geri={{ request.path|urlencode }}">Sayım düzeltme talebi</a>
+{% else %}<p class="msg msg-warning">Sayım farkı gördüyseniz miktarı siz değiştiremezsiniz; üretim veya ambar yetkilisine bildirin. Yetkili düzeltme talebi açar, başka bir yetkili onaylar.</p>{% endif %}
+</section>
 <section class="card"><h2>Hareketler</h2>
 <div class="table-wrap"><table class="table compact"><thead><tr><th>Zaman</th><th>Tür</th><th>Miktar</th><th>Bakiye</th><th>İş emri</th><th>Kullanıcı</th><th>Gerekçe</th></tr></thead>
 <tbody>{% for m in movements %}<tr><td>{{ m.at|date:"d.m.Y H:i" }}</td><td>{{ m.get_kind_display }}</td><td>{{ m.quantity|qty }}</td><td>{{ m.balance_after|qty }}</td>

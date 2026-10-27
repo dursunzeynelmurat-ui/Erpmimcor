@@ -62,11 +62,6 @@ class TransferForm(IdemForm):
             raise forms.ValidationError("Bu numarada palet yok.")
 
 
-class CountForm(IdemForm):
-    counted = forms.IntegerField(label="Sayılan kutu adedi", min_value=0, widget=INT)
-    reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))
-
-
 class DamageForm(IdemForm):
     quantity = forms.IntegerField(label="Hasarlı kutu", min_value=1, widget=INT)
     reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))

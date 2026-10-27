@@ -397,24 +397,7 @@ def transfer_boxes(actor, source, quantity, reason, target=None):
     return target
 
 
-@transaction.atomic
-def adjust_count(actor, pallet, counted, reason):
-    check(actor, "warehouse.operate")
-    if not reason:
-        raise BusinessRuleError("Sayım düzeltmesi için gerekçe zorunludur.", field="reason")
-    if counted is None or counted < 0:
-        raise BusinessRuleError("Sayılan adet negatif olamaz.", field="counted")
-    (pallet,) = _lock(pallet)
-    _require_in_stock(pallet)
-    delta = counted - pallet.box_count
-    if delta == 0:
-        raise BusinessRuleError("Sayılan adet mevcut adetle aynı.", field="counted")
-    if counted < _reserved(pallet):
-        raise BusinessRuleError(f"Sayılan adet ({counted}) siparişlere ayrılan miktarın ({_reserved(pallet)}) altında. "
-                                "Önce rezervasyonu düzeltin.", field="counted")
-    return _move(actor, pallet, MovementKind.COUNT_ADJUST, delta, reason=reason)
-
-
+# Palet sayım düzeltmesi doğrudan servis olarak yoktur: yalnız onaylı düzeltme talebi (corrections) uygular.
 @transaction.atomic
 def separate_damaged(actor, pallet, quantity, reason):
     """Hasarlı kutuları blokeli yeni palete ayırır (fiziksel stokta kalır ama sevk edilemez)."""

@@ -77,12 +77,8 @@ class NegativeStockTests(TestCase):
         with self.assertRaises(BusinessRuleError):
             wh.transfer_boxes(self.w.depot, self.pallet, 11, "x")
 
-    def test_count_adjust_requires_reason(self):
-        with self.assertRaises(BusinessRuleError):
-            wh.adjust_count(self.w.depot, self.pallet, 38, "")
-        wh.adjust_count(self.w.depot, self.pallet, 38, "Sayım farkı")
-        self.pallet.refresh_from_db()
-        self.assertEqual(self.pallet.box_count, 38)
+    def test_count_adjust_only_via_correction(self):
+        self.assertFalse(hasattr(wh, "adjust_count"))  # doğrudan servis yok; bkz. corrections/tests/test_no_bypass
 
     def test_damage_separation_creates_blocked_pallet(self):
         damaged = wh.separate_damaged(self.w.depot, self.pallet, 3, "Forklift hasarı")
@@ -253,7 +249,7 @@ class WeighingTests(TestCase):
     def test_content_change_keeps_old_weighing_and_marks_reweigh(self):
         wh.accept_pallet(self.w.depot, self.pallet, {"gross_kg": D("135"), "pallet_tare_kg": D("20")})
         first = self.pallet.current_weighing
-        wh.adjust_count(self.w.depot, self.pallet, 39, "Eksik kutu")
+        wh.separate_damaged(self.w.depot, self.pallet, 1, "Ezik kutu")  # içerik değişti (aktarım/hasar ayırma)
         self.pallet.refresh_from_db()
         self.assertEqual(self.pallet.weight_status, WeightStatus.REWEIGH)
         self.assertIsNone(self.pallet.current_weighing)
