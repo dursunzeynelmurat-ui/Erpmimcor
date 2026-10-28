@@ -1,0 +1,59 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Reçete taslağı {{ draft.product.code }}{% endblock %}
+{% block content %}
+<h1>Reçete taslağı: {{ draft.product.code }} <span class="status status-kontrol_bekliyor">Taslak</span></h1>
+<p>{{ draft.product.name }} · {{ draft.product.customer.name }}{% if draft.based_on %} · Temel: Rev.{{ draft.based_on.rev_no }}{% else %} · İlk reçete{% endif %}</p>
+<p class="muted">Taslağı istediğiniz zaman kaydedebilirsiniz (eksik olabilir). <strong>Onayla</strong> yeni, değiştirilemez
+  bir revizyon oluşturur; mevcut revizyonlar, onlarla onaylanmış sipariş kalemleri ve başlamış iş emirleri değişmez.</p>
+<form method="post" class="card form recipe-editor" novalidate data-warn-unsaved data-batch="{{ draft.batch_kg }}">{% csrf_token %}
+  {{ form.idem_key }}
+  <input type="hidden" name="satir_sayisi" value="{{ form.rows }}" data-row-count>
+  {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları düzeltin; girdiğiniz bilgiler korunur.</strong>{{ form.non_field_errors }}</div>{% endif %}
+
+  <h2>Karışım (nihai karışımın yüzdesi)</h2>
+  <p class="muted">Her satır bir malzeme kartıdır. Oranlar karışımın tamamına göredir (toplam %100); "100 kg ana
+    malzemeye ilave" yöntemi kullanılmaz.{% if can_manage_material %} Listede olmayan malzeme için
+    <a href="{% url 'catalog:definition_create' 'malzemeler' %}" target="_blank" rel="noopener">yeni malzeme kartı açın</a>
+    (yeni sekmede), sonra bu sayfayı kaydedip yenileyin.{% endif %}</p>
+  <div class="recipe-rows" data-rows>
+    {% for m, p, n in form.line_rows %}
+    <div class="recipe-row" data-row>
+      {% include "partials/field.html" with field=m %}
+      {% include "partials/field.html" with field=p %}
+      <div class="field"><span class="label-like">Bu partide</span><output class="kg-out" data-kg aria-live="polite">—</output></div>
+      {% include "partials/field.html" with field=n %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="actions"><button type="submit" name="git" value="satir" class="btn" data-add-row>+ Malzeme ekle</button></div>
+  <p class="total-line" data-total aria-live="polite"><strong>{{ total_message }}</strong></p>
+
+  <h2>Parti hesabı</h2>
+  {% include "partials/field.html" with field=form.batch_kg %}
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Malzeme</th><th>Tür</th><th>Oran</th><th>{{ table.batch_kg|qty }} kg partide</th><th>100 kg'de</th></tr></thead>
+    <tbody>{% for ln, kg in table.rows %}<tr><td data-label="Malzeme">{{ ln.material.code }}</td><td data-label="Tür">{{ ln.material.get_kind_display }}</td>
+      <td data-label="Oran">{% if ln.percentage is not None %}%{{ ln.percentage|qty }}{% else %}<span class="unspecified">oran yok</span>{% endif %}</td>
+      <td data-label="Partide">{% if kg is not None %}{{ kg|qty }} kg{% else %}—{% endif %}</td>
+      <td data-label="100 kg'de">{% if ln.percentage is not None %}{{ ln.percentage|qty }} kg{% else %}—{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="muted">Henüz kaydedilmiş satır yok.</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><th colspan="2">Toplam</th><th>%{{ table.total_pct|qty }}</th><th>{{ table.total_kg|qty }} kg</th><th></th></tr></tfoot></table></div>
+  <p class="muted">Kaydedilmiş satırlara göre hesaplanır. kg karşılıkları 0,001 kg'ye yuvarlanır.{% if table.rounding_diff %}
+    <strong>Yuvarlama farkı: {{ table.rounding_diff|qty }} kg</strong> (yuvarlanmış kg'lerin toplamı ile parti büyüklüğü arasındaki fark; tartımda dikkate alın).{% endif %}</p>
+
+  <h2>Teknik özellikler</h2>
+  <p class="muted">Siparişteki istenen renk burada (Görünüm); renklendirici malzeme ve dozajı yukarıdaki karışım satırlarındadır.</p>
+  {% include "partials/spec_fieldsets.html" %}
+  {% include "partials/field.html" with field=form.change_reason %}
+
+  <div class="actions">
+    <button type="submit" name="git" value="kaydet" class="btn">Taslağı kaydet</button>
+    <button type="submit" name="git" value="onayla" class="btn btn-primary">Onayla ve revizyon oluştur</button>
+    <a class="btn" href="{% url 'catalog:recipe_detail' draft.product.pk %}">Reçeteye dön</a>
+  </div>
+  <p class="muted">Onay yalnız karışım toplamı %100 ve zorunlu teknik bilgiler tamamsa verilir; aksi hâlde taslak kaydedilir ve eksik yazılır.</p>
+</form>
+<details class="card"><summary>Taslaktan vazgeç</summary>
+  <form method="post" action="{% url 'catalog:recipe_draft_discard' draft.pk %}" class="form">{% csrf_token %}{{ discard_form.idem_key }}
+    {% include "partials/field.html" with field=discard_form.reason %}
+    <p class="muted">Etkisi: bu taslak kapanır; mevcut revizyonlar ve siparişler değişmez.</p>
+    <button type="submit" class="btn btn-danger">Taslaktan vazgeç</button></form></details>
+{% endblock %}

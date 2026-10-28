@@ -3,15 +3,17 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from django.http import Http404
+from django.views.decorators.http import require_POST
 
 from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
+from core.forms import ConfirmForm, ReasonForm
 from core.services import history_for
 from core.viewutils import run_form_action
 
-from . import spec, services
+from . import recipe_drafts, services
 from .forms import (ActiveToggleForm, LotReceiveForm, MachineForm, MaterialForm,
-                    ProductForm, RevisionForm)
-from .models import Customer, Machine, Material, MaterialLot, Product, Recipe
+                    ProductForm, RecipeDraftForm)
+from .models import Customer, DraftStatus, Machine, Material, MaterialLot, Product, Recipe, RecipeDraft
 
 # Basit tanımlar için ortak liste / ekle / düzenle / pasife al ekranları.
 DEFINITIONS = {
@@ -140,29 +142,81 @@ def recipe_detail(request, product_pk):
     revisions = recipe.revisions.prefetch_related("components__material").select_related("created_by") if recipe else []
     return render(request, "catalog/recipe_detail.html", {
         "product": product, "recipe": recipe, "revisions": revisions,
+        "open_draft": RecipeDraft.objects.filter(product=product, status=DraftStatus.OPEN).first(),
     })
 
 
 @require_perm("recipe.change")
 def revision_create(request, product_pk):
+    """Yeni revizyon her zaman taslak üzerinden: açık taslak varsa ona gider, yoksa güncel revizyondan açar."""
+    from django.contrib import messages as msgs
     product = get_object_or_404(Product, pk=product_pk)
-    current = product.current_revision
-    initial, comps = {}, []
-    if current:
-        initial = {f: getattr(current, f) for f in spec.FIELD_NAMES}
-        comps = [(c.material, c.percentage) for c in current.components.all()]
-    form = RevisionForm(request.POST or None, initial=initial, initial_components=comps)
+    draft = RecipeDraft.objects.filter(product=product, status=DraftStatus.OPEN).first()
+    if draft:
+        return redirect("catalog:recipe_draft", pk=draft.pk)
     if request.method == "POST":
-        resp = run_form_action(
-            request, form, action="recipe.revision_create",
-            fn=lambda d: services.create_revision(request.user, product, form.spec(), d["components"],
-                                                  d.get("change_reason", "")),
-            success_message=lambda r: f"Reçete revizyonu oluşturuldu: Rev.{r.rev_no}",
-            url_for=lambda r: reverse("catalog:recipe_detail", args=[product.pk]),
-        )
+        resp = run_form_action(request, ConfirmForm(request.POST), action="recipe.draft_open",
+                               fn=lambda d: recipe_drafts.open_draft(request.user, product),
+                               success_message="Reçete taslağı açıldı. Değişiklikleri yapıp kaydedin.",
+                               url_for=lambda dr: reverse("catalog:recipe_draft", args=[dr.pk]))
         if resp:
             return resp
-    return render(request, "catalog/revision_form.html", {"form": form, "product": product, "current": current})
+        msgs.error(request, "Taslak açılamadı.")
+    return render(request, "core/form_page.html", {
+        "form": ConfirmForm(), "title": f"{product.code}: reçete taslağı aç", "submit": "Taslak aç",
+        "intro": "Değişiklikler önce taslağa kaydedilir; onaylanınca yeni revizyon oluşur. Kullanılmış revizyonlar ve "
+                 "başlamış iş emirleri değişmez.", "back": reverse("catalog:recipe_detail", args=[product.pk])})
+
+
+@require_perm("recipe.change")
+def recipe_draft(request, pk):
+    from django.contrib import messages as msgs
+    from core.exceptions import BusinessRuleError
+    draft = get_object_or_404(RecipeDraft.objects.select_related("product__customer", "based_on"), pk=pk)
+    if draft.status != DraftStatus.OPEN:
+        msgs.info(request, "Bu taslak kapanmış.")
+        return redirect("catalog:recipe_detail", product_pk=draft.product_id)
+    lines = list(draft.lines.select_related("material"))
+    extra = 1 if request.GET.get("ek") or not lines else 0
+    initial = {**recipe_drafts.spec_from_json(draft.spec_values), "batch_kg": draft.batch_kg,
+               "change_reason": draft.change_reason}
+    form = RecipeDraftForm(request.POST or None, initial=initial, rows=len(lines) + extra,
+                           initial_lines=[(ln.material, ln.percentage, ln.note) for ln in lines])
+    if request.method == "POST":
+        action = request.POST.get("git", "kaydet")
+        resp = run_form_action(
+            request, form, action="recipe.draft_save",
+            fn=lambda d: recipe_drafts.save_draft(request.user, draft, spec_values=d["spec"], lines=d["lines"],
+                                                  change_reason=d["change_reason"], batch_kg=d["batch_kg"]),
+            success_message="Taslak kaydedildi." if action != "onayla" else "Taslak kaydedildi; onay kontrol ediliyor.",
+            url_for=lambda dr: reverse("catalog:recipe_draft", args=[dr.pk]) + ("?ek=1" if action == "satir" else ""))
+        if resp and action == "onayla":
+            try:
+                rev = recipe_drafts.approve_draft(request.user, draft)
+            except BusinessRuleError as exc:
+                msgs.error(request, f"Onaylanmadı (taslak kaydedildi): {exc.message}")
+                return resp
+            msgs.success(request, f"Reçete onaylandı: {draft.product.code} Rev.{rev.rev_no}. Sıradaki adım: planlama "
+                                  "bekleyen sipariş kalemlerini bu revizyonla onaylayabilir.")
+            return redirect("catalog:recipe_detail", product_pk=draft.product_id)
+        if resp:
+            return resp
+    table = recipe_drafts.batch_table(lines, draft.batch_kg)
+    return render(request, "catalog/recipe_draft.html", {
+        "draft": draft, "form": form, "table": table, "total_message": recipe_drafts.total_message(table["total_pct"]),
+        "discard_form": ReasonForm(), "can_manage_material": can(request.user, "material.manage"),
+    })
+
+
+@require_POST
+@require_perm("recipe.change")
+def recipe_draft_discard(request, pk):
+    draft = get_object_or_404(RecipeDraft, pk=pk)
+    url = reverse("catalog:recipe_detail", args=[draft.product_id])
+    resp = run_form_action(request, ReasonForm(request.POST), action="recipe.draft_discard",
+                           fn=lambda d: recipe_drafts.discard_draft(request.user, draft, d["reason"]),
+                           success_message="Taslaktan vazgeçildi; mevcut revizyonlar değişmedi.", url_for=lambda _: url)
+    return resp or redirect("catalog:recipe_draft", pk=pk)
 
 
 # --- Lotlar -------------------------------------------------------------------------

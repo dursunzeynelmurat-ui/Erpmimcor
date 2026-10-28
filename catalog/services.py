@@ -122,7 +122,7 @@ def validate_spec(spec, components):
 # --- Reçete revizyonları -------------------------------------------------------------
 
 @transaction.atomic
-def create_revision(actor, product, spec, components, reason=""):
+def create_revision(actor, product, spec, components, reason="", notes=None):
     """Reçeteyi değiştirmenin tek yolu: yeni revizyon. Önceki revizyonlar aynen korunur.
 
     components: [(Material, Decimal yüzde), ...] toplamı 100 olmalı.
@@ -155,7 +155,8 @@ def create_revision(actor, product, spec, components, reason=""):
     revision = RecipeRevision.objects.create(recipe=recipe, rev_no=last + 1, created_by=actor,
                                              change_reason=reason, **spec)
     for material, pct in components:
-        RecipeComponent.objects.create(revision=revision, material=material, percentage=pct)
+        RecipeComponent.objects.create(revision=revision, material=material, percentage=pct,
+                                       application_note=(notes or {}).get(material.pk, ""))
     audit(actor, "recipe.revision_create", product,
           {"revizyon": (last or None, revision.rev_no),
            "bileşenler": (None, {m.code: str(p) for m, p in components}),

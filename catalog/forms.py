@@ -233,3 +233,52 @@ class RevisionForm(SpecFieldsMixin, IdemForm):
 
     def spec(self):
         return self.cleaned_data["spec"]
+
+
+class RecipeDraftForm(SpecFieldsMixin, IdemForm):
+    """Satır eklenebilen reçete düzenleyici. Boş satırlar yok sayılır; malzemesiz oran kabul edilmez."""
+
+    def __init__(self, *args, rows=1, initial_lines=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.add_spec_fields()
+        self.fields["batch_kg"] = TRDecimalField(
+            label="Hesap için karışım miktarı (kg)", max_digits=10, decimal_places=3, required=False,
+            help_text="Oranlar bu miktara göre kg'ye çevrilir. Örnek: 100 veya 250. Reçeteyi değiştirmez.")
+        self.fields["change_reason"] = forms.CharField(
+            label="Değişiklik gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
+            help_text="İlk revizyonda boş bırakılabilir; sonraki revizyonlarda onay için zorunludur.")
+        if self.is_bound:
+            raw = self.data.get("satir_sayisi", "")
+            rows = int(raw) if raw.isdigit() else rows
+        self.rows = max(1, min(rows, 30))
+        materials = Material.objects.active().filter(unit="kg").order_by("code")
+        initial_lines = list(initial_lines)
+        for i in range(self.rows):
+            m, p, n = initial_lines[i] if i < len(initial_lines) else (None, None, "")
+            self.fields[f"material_{i}"] = forms.ModelChoiceField(
+                label="Malzeme", queryset=materials, required=False, initial=m,
+                help_text="Yalnız kg birimli aktif malzeme kartları listelenir.")
+            self.fields[f"material_{i}"].label_from_instance = lambda x: f"{x.code} – {x.name} ({x.get_kind_display()})"
+            self.fields[f"pct_{i}"] = TRDecimalField(label="Oran (%)", max_digits=6, decimal_places=3, required=False,
+                                                     initial=p, help_text="Nihai karışımın yüzdesi.")
+            self.fields[f"note_{i}"] = forms.CharField(label="Uygulama notu", required=False, max_length=200, initial=n)
+
+    def line_rows(self):
+        return [(self[f"material_{i}"], self[f"pct_{i}"], self[f"note_{i}"]) for i in range(self.rows)]
+
+    def clean(self):
+        data = super().clean()
+        lines = []
+        for i in range(self.rows):
+            m, p, n = data.get(f"material_{i}"), data.get(f"pct_{i}"), (data.get(f"note_{i}") or "").strip()
+            if not m and p is None and not n:
+                continue
+            if not m:
+                self.add_error(f"material_{i}", "Malzeme seçin veya satırı boşaltın.")
+                continue
+            if p is not None and p < 0:
+                self.add_error(f"pct_{i}", "Oran negatif olamaz.")
+            lines.append((m, p, n))
+        data["lines"] = lines
+        data["spec"] = self.clean_spec_values()
+        return data

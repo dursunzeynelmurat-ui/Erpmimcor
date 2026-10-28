@@ -196,3 +196,64 @@ if (document.querySelector('[data-autoprint]')) { window.addEventListener('load'
     });
   });
 })();
+
+// Reçete düzenleyici: "Malzeme ekle" yeni satır açar (JS yoksa sunucu yeni boş satırla döner), toplam ve kg canlı
+// hesaplanır. Kesin hesap ve doğrulama sunucudadır (Decimal, 0,001 kg).
+(function () {
+  const form = document.querySelector('form.recipe-editor');
+  if (!form) return;
+  const rows = form.querySelector('[data-rows]');
+  const count = form.querySelector('[data-row-count]');
+  const totalOut = form.querySelector('[data-total]');
+  const batchInput = form.elements['batch_kg'];
+  function num(v) {
+    v = (v || '').trim().replace(/\s/g, '');
+    if (!v || (v.indexOf(',') !== -1 && v.indexOf('.') !== -1)) return null;
+    const n = Number(v.replace(',', '.'));
+    return isNaN(n) ? null : n;
+  }
+  function fmt(n, d) { return n.toFixed(d).replace(/\.?0+$/, '').replace('.', ','); }
+  function recalc() {
+    let total = 0;
+    const batch = num(batchInput && batchInput.value) || Number(form.dataset.batch || 100);
+    rows.querySelectorAll('[data-row]').forEach(function (row) {
+      const pct = num((row.querySelector('input[name^="pct_"]') || {}).value);
+      const out = row.querySelector('[data-kg]');
+      if (pct !== null) total += pct;
+      if (out) out.textContent = pct === null ? '—' : fmt(batch * pct / 100, 3) + ' kg';
+    });
+    total = Math.round(total * 1000) / 1000;
+    if (totalOut) {
+      totalOut.innerHTML = '';
+      const strong = document.createElement('strong');
+      strong.textContent = total === 100 ? 'Karışım toplamı %100. Onaylanabilir.'
+        : 'Karışım toplamı %' + fmt(total, 3) + '. Onaylamak için %100 olmalı.';
+      totalOut.append(strong);
+    }
+  }
+  form.addEventListener('input', recalc);
+  form.addEventListener('change', recalc);
+  const add = form.querySelector('[data-add-row]');
+  if (add) add.addEventListener('click', function (event) {
+    event.preventDefault();
+    const last = rows.querySelector('[data-row]:last-of-type');
+    const n = Number(count.value);
+    const row = last.cloneNode(true);
+    row.querySelectorAll('[name]').forEach(function (el) {
+      el.name = el.name.replace(/_\d+$/, '_' + n);
+      if (el.id) el.id = el.id.replace(/_\d+$/, '_' + n);
+      if (el.tagName === 'SELECT') el.selectedIndex = 0; else el.value = '';
+      el.removeAttribute('aria-invalid');
+      el.removeAttribute('aria-describedby');
+    });
+    row.querySelectorAll('label[for]').forEach(function (l) { l.htmlFor = l.htmlFor.replace(/_\d+$/, '_' + n); });
+    row.querySelectorAll('.error, .help').forEach(function (e) { e.remove(); });
+    row.querySelectorAll('.has-error').forEach(function (e) { e.classList.remove('has-error'); });
+    rows.append(row);
+    count.value = String(n + 1);
+    recalc();
+    const sel = row.querySelector('select');
+    if (sel) sel.focus();
+  });
+  recalc();
+})();

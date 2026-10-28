@@ -3,16 +3,17 @@
 {% block content %}
 <h1>Reçete: {{ product.code }}</h1>
 <p>{{ product.name }} · Müşteri: {{ product.customer.name }}</p>
-{% if can.recipe_change and product.is_active %}<a class="btn btn-primary" href="{% url 'catalog:revision_create' product.pk %}">{% if recipe %}Değiştir (yeni revizyon){% else %}Reçete oluştur{% endif %}</a>{% endif %}
+{% if can.recipe_change and product.is_active %}<a class="btn btn-primary" href="{% url 'catalog:revision_create' product.pk %}">{% if open_draft %}Açık taslağa git{% elif recipe %}Değiştir (yeni revizyon taslağı){% else %}Reçete oluştur{% endif %}</a>{% endif %}
 <p class="muted">Reçete değişikliği her zaman yeni revizyon oluşturur. Onaylanmış iş emirleri kendi revizyonunu korur.</p>
 {% for rev in revisions %}
 <section class="card">
   <h2>Rev.{{ rev.rev_no }} {% if forloop.first %}<span class="status status-uygun">Güncel</span>{% endif %}</h2>
   <p class="meta">{{ rev.created_at|date:"d.m.Y H:i" }} · {{ rev.created_by.full_name }}{% if rev.change_reason %} · Gerekçe: {{ rev.change_reason }}{% endif %}</p>
   {% spec_card rev product title="Teknik özellikler" %}
-  <table class="table compact"><thead><tr><th>Malzeme</th><th>Tür</th><th>Oran</th></tr></thead><tbody>
-    {% for c in rev.components.all %}<tr><td>{{ c.material.code }} – {{ c.material.name }}</td><td>{{ c.material.get_kind_display }}</td><td>%{{ c.percentage|qty }}</td></tr>{% endfor %}
-  </tbody></table>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Malzeme</th><th>Tür</th><th>Oran</th><th>100 kg'de</th><th>Uygulama notu</th></tr></thead><tbody>
+    {% for c in rev.components.all %}<tr><td data-label="Malzeme">{{ c.material.code }} – {{ c.material.name }}</td><td data-label="Tür">{{ c.material.get_kind_display }}</td><td data-label="Oran">%{{ c.percentage|qty }}</td><td data-label="100 kg'de">{{ c.percentage|qty }} kg</td><td data-label="Not">{{ c.application_note|default:"—" }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <p class="muted">Planlanan oranlardır; gerçek üretim tüketimi iş emrindeki malzeme çıkışlarında ayrıca görülür.</p>
 </section>
 {% empty %}<p class="muted">Bu ürün için reçete tanımlanmamış.</p>{% endfor %}
 {% endblock %}

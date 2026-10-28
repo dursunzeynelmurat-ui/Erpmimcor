@@ -247,3 +247,14 @@ fieldset.spec-group legend { font-weight: 600; padding: 0 4px; }
 .steps li.done::before { content: "✓ "; }
 .summary-section { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
 .summary-section header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+
+/* Reçete düzenleyici: masaüstünde satır, mobilde kart */
+.recipe-row { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 8px 12px; align-items: start; border-bottom: 1px solid var(--border); padding: 6px 0; }
+.recipe-row .field { margin-bottom: 4px; }
+.label-like { display: block; font-weight: 600; margin-bottom: 4px; }
+.kg-out { display: block; padding: 10px 0; font-variant-numeric: tabular-nums; }
+.total-line { font-size: 1.05rem; }
+@media (max-width: 720px) {
+  .recipe-row { grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
+  .recipe-row .field:first-child, .recipe-row .field:last-child { grid-column: 1 / -1; }
+}

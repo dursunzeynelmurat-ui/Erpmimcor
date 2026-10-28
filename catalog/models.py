@@ -457,3 +457,47 @@ class RecipeComponent(ImmutableModel):
     class Meta:
         ordering = ["-percentage"]
         constraints = [models.UniqueConstraint(fields=["revision", "material"], name="uniq_component_material")]
+
+
+class DraftStatus(models.TextChoices):
+    OPEN = "taslak", "Taslak"
+    APPROVED = "onaylandi", "Onaylandı (revizyon oluştu)"
+    DISCARDED = "vazgecildi", "Vazgeçildi"
+
+
+class RecipeDraft(models.Model):
+    """Değişebilir reçete taslağı. Doğruluk kaynağı değildir: onaylanınca değişmez RecipeRevision oluşturulur.
+    Eksik tarif (toplam %100 değil, ölçü eksik) taslak olarak kaydedilebilir; üretim onayı verilemez."""
+
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="recipe_drafts")
+    based_on = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    spec_values = models.JSONField("Teknik özellikler", default=dict, blank=True)
+    change_reason = models.TextField("Değişiklik gerekçesi", blank=True)
+    batch_kg = models.DecimalField("Hesap için parti büyüklüğü (kg)", max_digits=10, decimal_places=3,
+                                   default=Decimal("100"))
+    status = models.CharField(max_length=12, choices=DraftStatus.choices, default=DraftStatus.OPEN)
+    result_revision = models.OneToOneField(RecipeRevision, on_delete=models.PROTECT, null=True, blank=True,
+                                           related_name="from_draft")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        constraints = [models.UniqueConstraint(fields=["product"], condition=Q(status="taslak"),
+                                               name="one_open_recipe_draft_per_product")]
+
+    def __str__(self):
+        return f"{self.product.code} reçete taslağı"
+
+
+class RecipeDraftLine(models.Model):
+    draft = models.ForeignKey(RecipeDraft, on_delete=models.CASCADE, related_name="lines")
+    position = models.PositiveSmallIntegerField()
+    material = models.ForeignKey(Material, on_delete=models.PROTECT)
+    percentage = models.DecimalField("Oran (%)", max_digits=6, decimal_places=3, null=True, blank=True)
+    note = models.CharField("Uygulama notu", max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["position"]
