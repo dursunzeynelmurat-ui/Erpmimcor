@@ -59,6 +59,10 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | `product.change` Ürün kodunu değiştirme / pasife alma | T | · | M | T | · | · | · | · | · | · |
 | `recipe.view` Reçete arşivi ve revizyonlarını görme | T | · | · | T | · | · | · | · | · | · |
 | `recipe.change` Reçete revizyonu oluşturma | T | · | · | T | · | · | · | · | · | · |
+| `artwork.view` Baskı görsellerini ve onay durumunu görme / indirme | T | · | M | T | T | · | · | · | · | · |
+| `artwork.manage` Baskı görseli taslak sürümü yükleme / kullanımdan kaldırma | T | · | M | T | · | · | · | · | · | · |
+| `artwork.approve` Baskı görseline iç teknik onay verme (üretime uygun) | T | · | · | T | · | · | · | · | · | · |
+| `artwork.customer_approval` Baskı görseli için müşteri onayını kaydetme | T | · | M | T | · | · | · | · | · | · |
 | `machine.view` Makineleri görme | T | · | T | T | T | T | T | T | T | T |
 | `machine.manage` Makine ekleme/değiştirme | T | · | · | T | · | · | · | · | · | · |
 | `material.view` Hammadde/katkı ve lotları görme | T | · | · | T | T | T | · | · | T | T |
@@ -96,6 +100,12 @@ Kaynak branch'e merge, force push veya canlı yayın yapılmadı. Aşama commit'
 | `stocklevel.manage` Hedef/alt stok seviyesi tanımlama | T | · | · | T | · | · | · | · | · | · |
 | `correction.request` Düzeltme talebi açma | T | · | M | T | T | · | · | · | · | · |
 | `correction.approve` Düzeltme talebini onaylama/reddetme | T | · | · | · | T | · | · | · | T | · |
+| `sample.view` Numuneleri görme (satış: yalnız paylaşılabilir durum ve geri bildirim) | T | · | M | T | T | A | · | T | T | T |
+| `sample.manage` Numune kaydı, konum, gönderim, geri dönüş, imha, ek dosya | T | · | · | T | T | A | · | T | T | T |
+| `sample.stock` Numune için paletten kutu ayırma (stok düşer) | T | · | · | · | · | · | · | · | T | T |
+| `sample.decide` Numune ölçümü ve iç kalite kararı (blokaj kaldırma değildir) | T | · | · | · | T | · | · | T | · | · |
+| `sample.feedback` Müşteri geri bildirimini kaydetme | T | · | M | T | · | · | · | T | · | · |
+| `sample.criteria` Numune kontrol kriterlerini tanımlama | T | · | · | · | · | · | · | T | · | · |
 
 İK atayabilir: Satış, Planlama, Üretim yetkilisi, Ustabaşı, Usta / operatör, Kalite sorumlusu, Ambar yetkilisi, Depo personeli
 

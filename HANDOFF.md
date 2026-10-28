@@ -1,3 +1,25 @@
+# Teknik sipariş, reçete, baskı, numune ve repete — 28 Ekim 2026
+
+Branch: `feature/mimcor-teknik-numune-repete` (taban `63a5105`; merge/PR/canlı yayın yok). Ayrıntı, iş kuralları, yetki
+matrisi, veri taşıma, test sonuçları, ekran görüntüleri, karar bekleyenler ve kısa kabul adımları:
+**[docs/teknik-numune-repete.md](docs/teknik-numune-repete.md)**.
+
+| Aşama | Özet |
+|---|---|
+| 1 Teknik özellikler | Teknik revizyonda (tek kaynak) ölçüler/körük/en tanımı/toleranslar/görünüm/perfore/baskı alanları; boş = Belirtilmemiş, "Yok" ayrı; 3 adımlı sipariş girişi; Türkçe ondalık; amaç/yöntem/ücret ayrı |
+| 2 Reçete | Satır eklenebilen taslak; %100 olmadan onay yok; parti kg hesabı ve yuvarlama farkı; renklendirici; yeni revizyon, eski işler değişmez |
+| 3 Baskı | Görsel sürümleri, iç teknik ve müşteri onayı ayrı, baskı imzasına bağlı; iş emri serbest bırakılırken sürüme sabitlenir; güvenli indirme |
+| 4 Repete | Kalem seçmeli tekrar sipariş; operasyon kaydı kopyalanmaz; revizyonlu repetede planlama yan yana karar verir |
+| 5 Numune | Fiziksel durum / iç karar / müşteri geri bildirimi ayrı; tek stok hareketi; karar paletleri serbest bırakmaz; QR |
+| 6 Kullanılabilirlik | Alan yanı Türkçe hatalar, açıklama + birim, ayrılma uyarısı; çift gönderim ve aynı sayfadaki form anahtarı hataları düzeltildi |
+
+**Karar bekleyen:** "klişe kazan aralığı" teriminin karşılığı, körüklüde en ölçüm yöntemi, baskıda müşteri onayının
+üretim şartı olup olmadığı (varsayılan: gerekir), geri dönen numunenin stoğa alınması (desteklenmiyor), numune kabul
+aralıkları. Önceki turun dört karar konusu değiştirilmedi. **Gerçek kullanıcı gözlemi ve gerçek telefon testi
+yapılmadı; testlerin geçmesi işletme onayı değildir.**
+
+---
+
 # Kabul denetimi — 28 Ekim 2026
 
 Branch: `fix/mimcor-kabul-denetimi` (kaynak `fix/mimcor-yetki-veri-tutarliligi` @ `ff01e32`; merge/PR/canlı yayın yok).
