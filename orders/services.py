@@ -188,6 +188,14 @@ def change_line(actor, line, *, quantity, due_date, reason, confirm_impacts=Fals
                                                                                           LineStatus.SHIPPED):
         raise BusinessRuleError("Kapanmış/iptal kalem değiştirilemez.")
     validate_quantity(quantity, line.unit)
+    if line.replacement_for_id and quantity > line.quantity:
+        from warehouse.models import ReturnReceipt
+        from warehouse.services import replaced_quantity
+        receipt = ReturnReceipt.objects.select_for_update(of=("self",)).get(pk=line.replacement_for_id)
+        left = receipt.quantity - replaced_quantity(receipt) + line.quantity
+        if quantity > left:
+            raise BusinessRuleError(f"Yerine gönderim kalemi {receipt.code} iadesine bağlı; en fazla {left} kutu "
+                                    "olabilir.", field="quantity")
     if line.unit == Unit.BOX:
         from warehouse.models import ReservationStatus
         committed = shipped_quantity(line) + sum(r.open_quantity for r in line.reservations.filter(
@@ -222,7 +230,8 @@ def copy_order(actor, order):
     teknik onay yeniden gerekir. Eski revizyon körlemesine taşınmaz."""
     check(actor, "order.create", order)
     src = SalesOrder.objects.select_related("customer").get(pk=order.pk)
-    lines = [ln for ln in src.lines.select_related("product") if ln.product.is_active and ln.status != LineStatus.CANCELLED]
+    lines = [ln for ln in src.lines.select_related("product") if ln.product.is_active and ln.status != LineStatus.CANCELLED
+             and not ln.replacement_for_id]  # yerine gönderim iadeye bağlıdır, yeni satış olarak kopyalanmaz
     if not lines:
         raise BusinessRuleError("Kopyalanacak aktif ürünlü kalem yok.")
     new = create_order(actor, customer=src.customer, order_date=timezone.localdate(), customer_ref="",

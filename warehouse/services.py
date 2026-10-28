@@ -762,6 +762,9 @@ def undo_shipment(actor, shipment, reason):
         raise BusinessRuleError("Araç çıkışı yapılmış sevkiyat geri alınamaz; müşteri iadesi olarak kaydedin.")
     if shipment.status != ShipmentStatus.SHIPPED:
         raise BusinessRuleError("Yalnız sevk onaylı sevkiyat geri alınabilir.")
+    if ReturnReceipt.objects.filter(shipment_line__shipment=shipment).exists():
+        raise BusinessRuleError("Bu sevkiyata bağlı iade kaydı var; geri alma aynı kutuları ikinci kez stoğa sokar. "
+                                "İade kaydını yönetici ile inceleyin.")
     lines = list(shipment.lines.select_related("order_line").order_by("pallet_id"))
     pallets = {p.pk: p for p in _lock(*[ln.pallet for ln in lines])}
     reservations = {r.pk: r for r in Reservation.objects.select_for_update(of=("self",))
@@ -806,8 +809,9 @@ def receive_return(actor, shipment_line, quantity, reason, location=""):
         raise BusinessRuleError("İade nedeni zorunludur.", field="reason")
     line = ShipmentLine.objects.select_for_update(of=("self",)).select_related("shipment", "pallet", "order_line").get(
         pk=shipment_line.pk)
-    if line.shipment.status not in SHIPPED_STATES:
-        raise BusinessRuleError("Yalnız sevk edilmiş satır için iade alınır.")
+    if line.shipment.status != ShipmentStatus.EXITED:
+        raise BusinessRuleError("İade yalnız araç çıkışı yapılmış (müşteriye teslim edilmiş) sevkiyat için alınır; "
+                                "çıkış öncesi düzeltme için sevki geri alın.")
     if quantity > returnable_quantity(line):
         raise BusinessRuleError(f"Bu satırdan en fazla {returnable_quantity(line)} kutu iade alınabilir.",
                                 field="quantity")
@@ -990,6 +994,15 @@ def create_replacement_line(actor, receipt, quantity, reason):
     return line
 
 
+def _net_delivered(line):
+    """Kalemin müşteride kalan neti: sevk − bu kalemin sevkinden iade + yerine gönderim kalemlerinin neti (iade
+    edilen yerine gönderim de düşülür)."""
+    from orders.services import shipped_quantity
+    receipts = ReturnReceipt.objects.filter(shipment_line__order_line=line).prefetch_related("replacement_lines")
+    returned = sum(r.quantity for r in receipts)
+    return shipped_quantity(line) - returned + sum(_net_delivered(ln) for r in receipts for ln in r.replacement_lines.all())
+
+
 def line_fulfilment(line):
     """Asıl kalem için ilk sevk, iade, yerine gönderim (sevk edilen) ve müşteride kalan net (kutu)."""
     from orders.services import shipped_quantity
@@ -1000,5 +1013,5 @@ def line_fulfilment(line):
     replaced_planned = sum(ln.quantity for ln in repl_lines if ln.status != "iptal")
     replaced_shipped = sum(shipped_quantity(ln) for ln in repl_lines)
     return {"shipped": shipped, "returned": returned, "replacement_planned": replaced_planned,
-            "replacement_shipped": replaced_shipped, "net": shipped - returned + replaced_shipped,
+            "replacement_shipped": replaced_shipped, "net": _net_delivered(line),
             "receipts": list(receipts.select_related("shipment_line__shipment", "pallet"))}

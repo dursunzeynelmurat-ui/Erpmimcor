@@ -21,7 +21,7 @@ from . import services
 from .forms import (DamageForm, LocationForm, PackageLabelForm, PalletFilterForm, QualityForm,
                     ReduceReservationForm, ReserveForm, ReturnForm, ScanForm, ShipmentCreateForm, ShipmentLineForm,
                     StockLevelForm, TransferForm, WeighingForm)
-from .models import (SHIPPED_STATES, LabelKind, LabelPrint, Pallet, PalletStatus, Reservation, Shipment, ShipmentLine,
+from .models import (LabelKind, LabelPrint, Pallet, PalletStatus, Reservation, Shipment, ShipmentLine,
                      ShipmentStatus, StockLevel)
 
 
@@ -289,7 +289,7 @@ def shipment_detail(request, pk):
     lines = list(shipment.lines.select_related("pallet", "order_line__product", "reservation")
                  .prefetch_related("returns__pallet"))
     for ln in lines:
-        ln.returnable = services.returnable_quantity(ln) if shipment.status in SHIPPED_STATES else 0
+        ln.returnable = services.returnable_quantity(ln) if shipment.status == ShipmentStatus.EXITED else 0
     return render(request, "warehouse/shipment_detail.html", {
         "shipment": shipment, "lines": lines, "form": form, "history": history_for(shipment),
         "check": services.load_check(shipment) if shipment.status == ShipmentStatus.PREPARED else None,
