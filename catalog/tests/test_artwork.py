@@ -147,7 +147,7 @@ class ArtworkPermissionMigrationTests(TransactionTestCase):
         apps = executor.loader.project_state(before).apps
         R, RP = apps.get_model("accounts", "AccessRole"), apps.get_model("accounts", "RolePermission")
         for code in ("satis", "planlama"):
-            role = R.objects.get(code=code)
+            role, _ = R.objects.get_or_create(code=code, defaults={"name": code, "status": "aktif", "is_template": True})
             RP.objects.filter(role=role).delete()
             old = dict(mig.CHANGES[code][0])
             if code == "planlama":
