@@ -98,13 +98,22 @@ SPEC_POSITIVE = (("width_mm", "En"), ("thickness_micron", "Kalınlık"), ("lengt
 
 
 def validate_spec(spec, components):
-    """Reçete/teknik bilgi doğrulaması: ölçüler pozitif, her oran 0–100 arası, toplam %100."""
+    """Reçete/teknik bilgi doğrulaması: zorunlu ölçüler, pozitif ölçüler, körüklüde en tanımı, oranlar 0–100."""
+    from . import spec as specdef
     for field, label in SPEC_POSITIVE:
         value = spec.get(field)
         if value is None and field != "length_m":
             raise BusinessRuleError(f"{label} zorunludur.", field=field)
         if value is not None and value <= 0:
             raise BusinessRuleError(f"{label} sıfırdan büyük olmalı.", field=field)
+    for f in specdef.FIELDS:
+        value = spec.get(f.name)
+        if f.kind in ("decimal", "int") and value is not None and value <= 0:
+            raise BusinessRuleError(f"{f.label} sıfırdan büyük olmalı.", field=f.name)
+        if f.kind == "choice" and value and value not in f.choices.values:
+            raise BusinessRuleError(f"{f.label} için geçersiz seçim.", field=f.name)
+    for name, message in specdef.approval_problems(spec):
+        raise BusinessRuleError(message, field=name)
     for material, pct in components:
         if pct is None or Decimal(pct) <= 0 or Decimal(pct) > 100:
             raise BusinessRuleError(f"{material.code} oranı 0 ile 100 arasında olmalı.")
@@ -124,6 +133,12 @@ def create_revision(actor, product, spec, components, reason=""):
         raise BusinessRuleError("Pasif ürüne reçete revizyonu açılamaz.")
     if not components:
         raise BusinessRuleError("En az bir reçete bileşeni girilmelidir.")
+    from . import spec as specdef
+    unknown = set(spec) - set(specdef.FIELD_NAMES)
+    if unknown:
+        raise BusinessRuleError("Tanımsız teknik alan: " + ", ".join(sorted(unknown)))
+    spec = specdef.clean_hidden({n: spec.get(n) for n in specdef.FIELD_NAMES})
+    spec = {n: ("" if v is None and specdef.BY_NAME[n].kind not in ("decimal", "int") else v) for n, v in spec.items()}
     validate_spec(spec, components)
     materials = [m for m, _ in components]
     if len(set(m.pk for m in materials)) != len(materials):
@@ -144,7 +159,7 @@ def create_revision(actor, product, spec, components, reason=""):
     audit(actor, "recipe.revision_create", product,
           {"revizyon": (last or None, revision.rev_no),
            "bileşenler": (None, {m.code: str(p) for m, p in components}),
-           **{k: (None, v) for k, v in spec.items()}},
+           **{k: (None, v) for k, v in spec.items() if v not in (None, "")}},
           reason=reason, code=product.code)
     return revision
 

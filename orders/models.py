@@ -13,6 +13,23 @@ class OrderStatus(models.TextChoices):
     CANCELLED = "iptal", "İptal"
 
 
+class OrderPurpose(models.TextChoices):
+    COMMERCIAL = "ticari", "Ticari"
+    SAMPLE = "numune", "Numune"
+    TRIAL = "deneme", "Deneme"
+
+
+class CreationMethod(models.TextChoices):
+    NEW = "yeni", "Yeni"
+    REPEAT = "repete", "Repete (aynı özellik)"
+    REVISED_REPEAT = "revizyonlu_repete", "Revizyonlu repete (değişiklikli)"
+
+
+class Charge(models.TextChoices):
+    PAID = "ucretli", "Ücretli"
+    FREE = "ucretsiz", "Ücretsiz"
+
+
 class SalesOrder(models.Model):
     code = models.CharField("Sipariş no", max_length=30, unique=True, editable=False)
     customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="orders", verbose_name="Müşteri")
@@ -29,6 +46,10 @@ class SalesOrder(models.Model):
     delivery_terms = models.CharField("Teslim şekli", max_length=20, blank=True)
     delivery_place = models.CharField("Teslim yeri", max_length=200, blank=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.DRAFT)
+    # Amaç, oluşturma yöntemi ve ücret ayrı bilgilerdir; eski siparişlerde boş = belirtilmemiş.
+    purpose = models.CharField("Sipariş amacı", max_length=10, choices=OrderPurpose.choices, blank=True)
+    creation_method = models.CharField("Oluşturma yöntemi", max_length=20, choices=CreationMethod.choices, blank=True)
+    charge = models.CharField("Ücret", max_length=10, choices=Charge.choices, blank=True)
     approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     approved_at = models.DateTimeField(null=True, blank=True)
     copied_from = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="copies")

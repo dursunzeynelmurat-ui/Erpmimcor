@@ -26,9 +26,16 @@ def _validate_product(order, product):
 
 
 @transaction.atomic
-def create_order(actor, *, customer, order_date, due_date=None, customer_ref="", notes="", lines=()):
-    """Sipariş kodu ilk kayıtta üretilir. lines: [{product, quantity, unit, due_date}]"""
+def create_order(actor, *, customer, order_date, due_date=None, customer_ref="", notes="", lines=(), purpose="",
+                 charge="", creation_method="", copied_from=None):
+    """Sipariş kodu ilk kayıtta üretilir. lines: [{product, quantity, unit, due_date, source_line}]
+    Amaç (ticari/numune/deneme), ücret ve oluşturma yöntemi ayrı bilgilerdir; boş = belirtilmemiş."""
+    from .models import Charge, CreationMethod, OrderPurpose
     check(actor, "order.create")
+    for value, choices, field in ((purpose, OrderPurpose, "purpose"), (charge, Charge, "charge"),
+                                  (creation_method, CreationMethod, "creation_method")):
+        if value and value not in choices.values:
+            raise BusinessRuleError("Geçersiz seçim.", field=field)
     customer = Customer.objects.get(pk=customer.pk)  # anlık kopya güncel karttan alınır
     if not customer.is_active:
         raise BusinessRuleError("Pasif müşteriye sipariş açılamaz.", field="customer")
@@ -38,8 +45,12 @@ def create_order(actor, *, customer, order_date, due_date=None, customer_ref="",
         raise BusinessRuleError("Bu müşteri için müşteri PO/referans numarası zorunludur.", field="customer_ref")
     order = SalesOrder.objects.create(code=next_code("SIP"), customer=customer, order_date=order_date,
                                       due_date=due_date, customer_ref=customer_ref, notes=notes, created_by=actor,
-                                      **order_snapshot(customer))
-    audit(actor, "order.create", order, {"customer": (None, customer), "order_date": (None, order_date)})
+                                      purpose=purpose, charge=charge, creation_method=creation_method,
+                                      copied_from=copied_from, **order_snapshot(customer))
+    audit(actor, "order.create", order, {"customer": (None, customer), "order_date": (None, order_date),
+                                         **({"purpose": (None, purpose)} if purpose else {}),
+                                         **({"creation_method": (None, creation_method)} if creation_method else {}),
+                                         **({"charge": (None, charge)} if charge else {})})
     for line in lines:
         add_line(actor, order, **line)
     return order
@@ -333,8 +344,15 @@ def archive_order(actor, order):
 
 # --- Aşama 3: teknik uyumluluk ve miktar sınırı (bulgu 1, 2) ------------------------------
 
-SIGNATURE_FIELDS = (("width_mm", "en"), ("thickness_micron", "kalınlık"), ("length_m", "rulo boyu"),
-                    ("color", "renk"), ("print_spec", "baskı"), ("perforation_spec", "perfore"))
+def _signature_fields():
+    """Teknik uyumluluk alanları: catalog/spec.py'deki bütün teknik özellikler (yalnız proses/ambalaj notları ve ekran
+    önizleme rengi hariç). Eski revizyonlarda yeni alanlar boş olduğundan eski karşılaştırmalar değişmez."""
+    from catalog import spec
+    skip = {"process_notes", "packing_notes", "color_preview"}
+    return tuple((f.name, f.label.lower()) for f in spec.FIELDS if f.name not in skip)
+
+
+SIGNATURE_FIELDS = _signature_fields()
 
 
 def mix_signature(revision):

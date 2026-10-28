@@ -1,8 +1,12 @@
+import re
 from decimal import Decimal
 
 from django import forms
+from django.db import models
 
-from core.forms import IdemForm, IdemModelForm
+from core.forms import IdemForm, IdemModelForm, TRDecimalField
+
+from . import spec
 
 from .models import (Customer, CustomerAddress, CustomerContact, DocumentKind, DocumentVisibility, Machine, Material,
                      MaterialLot, Product, RecipeRevision)
@@ -128,31 +132,89 @@ class LotReceiveForm(IdemForm):
     supplier_lot = forms.CharField(label="Tedarikçi parti / irsaliye no", help_text="Zorunlu. Mal kabulü her zaman yeni lot açar; sayım farkı için kullanılmaz.")
 
 
-class RevisionForm(IdemModelForm):
-    COMPONENT_ROWS = 5
+HEX_COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
-    class Meta:
-        model = RecipeRevision
-        fields = ["width_mm", "thickness_micron", "length_m", "color", "print_spec", "perforation_spec",
-                  "process_notes", "change_reason"]
+
+def spec_form_field(f, required=False):
+    """catalog/spec.py tanımından form alanı. Etiket birimi içerir; açıklama alan dolduğunda da görünür."""
+    model_field = RecipeRevision._meta.get_field(f.name)
+    label = f"{f.label} ({f.unit})" if f.unit else f.label
+    if f.kind == "decimal":
+        return TRDecimalField(label=label, max_digits=model_field.max_digits, decimal_places=model_field.decimal_places,
+                              required=required, help_text=f.help)
+    if f.kind == "int":
+        return forms.IntegerField(label=label, min_value=1, max_value=32, required=required, help_text=f.help)
+    if f.kind == "choice":
+        return forms.ChoiceField(label=label, choices=[("", spec.UNSPECIFIED)] + list(f.choices.choices),
+                                 required=required, help_text=f.help)
+    if f.kind == "color":
+        return forms.CharField(label=label, required=False, max_length=7, help_text=f.help + " Biçim: #RRGGBB.",
+                               widget=forms.TextInput(attrs={"data-color-preview": "1"}))
+    widget = forms.Textarea(attrs={"rows": 2}) if isinstance(model_field, models.TextField) else forms.TextInput()
+    return forms.CharField(label=label, required=False, max_length=getattr(model_field, "max_length", None),
+                           widget=widget, help_text=f.help)
+
+
+class SpecFieldsMixin:
+    """Teknik özellik alanlarını forma ekler; koşullu alanlar (baskı/körük/perfore) için data-show-if verir.
+    Gizli alanların eski değerleri sunucuda spec.clean_hidden ile temizlenir."""
+
+    spec_required = ("width_mm", "thickness_micron")
+
+    def add_spec_fields(self, initial=None, required_now=False, names=None):
+        for f in spec.FIELDS:
+            if names is not None and f.name not in names:
+                continue
+            field = spec_form_field(f, required=required_now and f.name in self.spec_required)
+            if f.show_if:
+                field.widget.attrs["data-show-if"] = f"{f.show_if[0]}:{','.join(f.show_if[1])}"
+            if initial and f.name in initial:
+                field.initial = initial[f.name]
+            self.fields[f.name] = field
+
+    def spec_sections(self):
+        return [(title, [self[f.name] for f in spec.FIELDS if f.section == key and f.name in self.fields])
+                for key, title in spec.SECTIONS]
+
+    def clean_spec_values(self, names=None):
+        names = names or spec.FIELD_NAMES
+        values = {n: self.cleaned_data.get(n) for n in names}
+        if values.get("color_preview") and not HEX_COLOR.match(values["color_preview"]):
+            self.add_error("color_preview", "Renk kodunu #RRGGBB biçiminde yazın (ör. #1E5AA8) veya boş bırakın.")
+        for n in names:
+            f = spec.BY_NAME[n]
+            if f.kind == "decimal" and values.get(n) is not None and values[n] <= 0:
+                self.add_error(n, f"{f.label} sıfırdan büyük olmalı; bilinmiyorsa boş bırakın.")
+        values = spec.clean_hidden(values) if names == spec.FIELD_NAMES else values
+        for n in names:
+            if values.get(n) is None and spec.BY_NAME[n].kind not in ("decimal", "int"):
+                values[n] = ""
+        return values
+
+
+class RevisionForm(SpecFieldsMixin, IdemForm):
+    COMPONENT_ROWS = 5
 
     def __init__(self, *args, initial_components=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.add_spec_fields(required_now=True)
+        self.fields["change_reason"] = forms.CharField(label="Değişiklik gerekçesi", required=False,
+                                                       widget=forms.Textarea(attrs={"rows": 2}))
         materials = Material.objects.active()
         initial_components = initial_components or []
         for i in range(self.COMPONENT_ROWS):
             m, p = initial_components[i] if i < len(initial_components) else (None, None)
             self.fields[f"material_{i}"] = forms.ModelChoiceField(
                 label=f"Bileşen {i + 1}", queryset=materials, required=False, initial=m)
-            self.fields[f"pct_{i}"] = forms.DecimalField(
+            self.fields[f"pct_{i}"] = TRDecimalField(
                 label=f"Oran {i + 1} (%)", max_digits=6, decimal_places=3, required=False, initial=p,
-                min_value=Decimal("0.001"), **DEC)
+                min_value=Decimal("0.001"))
 
     def component_rows(self):
         return [(self[f"material_{i}"], self[f"pct_{i}"]) for i in range(self.COMPONENT_ROWS)]
 
     def spec_fields(self):
-        return [self[n] for n in self.Meta.fields]
+        return [self[n] for n in spec.FIELD_NAMES] + [self["change_reason"]]
 
     def clean(self):
         data = super().clean()
@@ -164,7 +226,10 @@ class RevisionForm(IdemModelForm):
             elif m or p:
                 self.add_error(f"pct_{i}", "Malzeme ve oran birlikte girilmelidir.")
         data["components"] = comps
+        data["spec"] = self.clean_spec_values()
+        for name, message in spec.approval_problems(data["spec"]):
+            self.add_error(name, message)
         return data
 
     def spec(self):
-        return {n: self.cleaned_data[n] for n in self.Meta.fields if n != "change_reason"}
+        return self.cleaned_data["spec"]

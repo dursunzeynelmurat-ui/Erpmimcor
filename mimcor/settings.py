@@ -112,6 +112,7 @@ WORK_ORDER_BALANCE_TOLERANCE_PCT = env("WORK_ORDER_BALANCE_TOLERANCE_PCT", "3")
 CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 LANGUAGE_CODE = "tr"
+LANGUAGES = [("tr", "Türkçe")]  # Arayüz yalnız Türkçe; tarayıcı dili ne olursa olsun hata mesajları Türkçe
 TIME_ZONE = "Europe/Istanbul"
 USE_I18N = True
 USE_TZ = True

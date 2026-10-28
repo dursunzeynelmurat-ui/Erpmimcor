@@ -9,8 +9,8 @@
   <dt>Termin</dt><dd>{{ line.due_date|date:"d.m.Y"|default:"—" }}</dd>
 </dl>
 {% if revision %}
-<section class="card"><h2>Güncel reçete: Rev.{{ revision.rev_no }}</h2>
-  <p>{{ revision.width_mm|qty }} mm · {{ revision.thickness_micron|qty }} µ · {{ revision.color|default:"renk —" }} · Baskı: {{ revision.print_spec|default:"—" }} · Perfore: {{ revision.perforation_spec|default:"—" }}</p>
+{% spec_card revision line.product title="Güncel teknik özellikler" %}
+<section class="card"><h2>Güncel karışım: Rev.{{ revision.rev_no }}</h2>
   <p>{% for c in revision.components.all %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
   <a href="{% url 'catalog:recipe_detail' line.product.pk %}">Tüm revizyonlar</a>
 </section>

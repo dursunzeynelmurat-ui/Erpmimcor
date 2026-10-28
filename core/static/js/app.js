@@ -69,6 +69,14 @@
     }
     delete form.dataset.reviewed;
     form.dataset.submitting = '1';
+    // Devre dışı bırakılan düğmenin adı/değeri gönderime girmez; seçilen eylemi (ör. İleri/Geri/Düzenle) korumak
+    // için aynı ad ve değerle gizli alan eklenir.
+    const submitter = event.submitter;
+    if (submitter && submitter.name) {
+      const keep = document.createElement('input');
+      keep.type = 'hidden'; keep.name = submitter.name; keep.value = submitter.value; keep.dataset.submitter = '1';
+      form.append(keep);
+    }
     form.querySelectorAll('button[type=submit], button:not([type])').forEach(function (button) {
       button.disabled = true;
       button.dataset.label = button.textContent;
@@ -144,6 +152,7 @@
   window.addEventListener('pageshow', function () {
     document.querySelectorAll('form[data-submitting="1"]').forEach(function (form) {
       delete form.dataset.submitting;
+      form.querySelectorAll('input[data-submitter]').forEach(function (el) { el.remove(); });
       delete form.dataset.reviewed;
       form.querySelectorAll('button[data-label]').forEach(function (button) {
         button.disabled = false; button.textContent = button.dataset.label;
@@ -155,3 +164,35 @@
 // Talimat çıktısı: yazdır düğmesi ve basım talebinden sonra otomatik yazdırma penceresi
 document.querySelectorAll('[data-print]').forEach(function (b) { b.addEventListener('click', function () { window.print(); }); });
 if (document.querySelector('[data-autoprint]')) { window.addEventListener('load', function () { window.print(); }); }
+
+// Koşullu alanlar: "Baskı yok", "Körük yok" vb. seçildiğinde ilgisiz alanlar gizlenir. Sunucu gizli alanların
+// değerlerini ayrıca temizler; bu yalnız ekran kolaylığıdır.
+(function () {
+  document.querySelectorAll('[data-show-if]').forEach(function (input) {
+    const form = input.form;
+    const parts = input.dataset.showIf.split(':');
+    const controller = form && form.elements[parts[0]];
+    const allowed = (parts[1] || '').split(',');
+    const wrap = input.closest('.field') || input;
+    if (!controller) return;
+    function sync() {
+      const on = allowed.indexOf(controller.value) !== -1;
+      wrap.hidden = !on;
+      input.disabled = !on;
+    }
+    controller.addEventListener('change', sync);
+    sync();
+  });
+  // Değişmiş formdan ayrılmada tarayıcı uyarısı (kaydetme sırasında gösterilmez).
+  document.querySelectorAll('form[data-warn-unsaved]').forEach(function (form) {
+    let dirty = false;
+    form.addEventListener('input', function () { dirty = true; });
+    form.addEventListener('change', function () { dirty = true; });
+    form.addEventListener('submit', function () { dirty = false; });
+    window.addEventListener('beforeunload', function (event) {
+      if (!dirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+  });
+})();

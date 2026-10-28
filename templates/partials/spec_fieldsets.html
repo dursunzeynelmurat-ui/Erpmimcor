@@ -1,0 +1,5 @@
+{% for title, fields in form.spec_sections %}{% if fields %}
+<fieldset class="spec-group"><legend>{{ title }}</legend>
+  {% for field in fields %}{% include "partials/field.html" %}{% endfor %}
+</fieldset>
+{% endif %}{% endfor %}

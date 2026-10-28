@@ -164,3 +164,11 @@ def history_value(value, key, object_type=""):
     if key.endswith("_kg") or key in ("quantity", "target_quantity", "width_mm", "thickness_micron", "length_m"):
         return qty(value)
     return value
+
+
+@register.inclusion_tag("partials/spec_card.html")
+def spec_card(revision, product=None, title="Teknik özellikler", show_customer_notes=True):
+    """Teknik özet kartı (karışım içermez; reçete bileşimi yalnız reçete ekranında, yetkiliye)."""
+    from catalog import spec
+    return {"revision": revision, "sections": spec.card(revision) if revision else [], "product": product,
+            "title": title, "customer": product.customer if (product and show_customer_notes) else None}

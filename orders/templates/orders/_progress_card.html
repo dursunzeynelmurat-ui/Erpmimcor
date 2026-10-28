@@ -16,6 +16,11 @@
     <dt>Son güncelleme</dt><dd>{{ p.last_update|date:"d.m.Y H:i" }}</dd>
     {% if p.line.approved_revision %}<dt>Onaylı reçete</dt><dd>Rev.{{ p.line.approved_revision.rev_no }}</dd>{% endif %}
   </dl>
+  <details class="spec-details"><summary>Teknik özellikleri göster{% if not p.line.approved_revision %} (planlama onayı bekliyor){% endif %}</summary>
+    {% if p.line.approved_revision %}{% spec_card p.line.approved_revision p.line.product title="Bu kalemin onaylı teknik özellikleri" %}
+    {% else %}<p class="muted">Kalem henüz teknik olarak onaylanmadı. Aşağıdaki bilgiler ürünün güncel revizyonudur; planlama onayıyla kaleme sabitlenir.</p>
+    {% spec_card p.line.product.current_revision p.line.product title="Ürünün güncel teknik özellikleri" %}{% endif %}
+  </details>
   {% if p.waiting_reason %}<p class="msg msg-warning">{{ p.waiting_reason }}</p>{% endif %}
   {% if p.line.planning_note %}<p><strong>Planlama notu:</strong> {{ p.line.planning_note }}</p>{% endif %}
   {% if not p.shipping_supported %}<p class="msg msg-warning">Rezervasyon ve sevkiyat bu demoda yalnız kutu biriminde kullanılabilir.</p>{% endif %}

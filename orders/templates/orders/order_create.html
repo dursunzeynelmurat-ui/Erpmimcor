@@ -1,0 +1,54 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Yeni satış siparişi{% endblock %}
+{% block content %}
+<h1>Yeni satış siparişi</h1>
+<ol class="steps" aria-label="Sipariş adımları">
+  {% for k, title in steps %}<li{% if k == step %} aria-current="step"{% elif k < step %} class="done"{% endif %}>{{ k }}. {{ title }}</li>{% endfor %}
+</ol>
+<form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
+  <input type="hidden" name="adim" value="{{ step }}">
+  {% if show_errors and form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Devam edilemedi. İşaretli alanları düzeltin; girdiğiniz bilgiler korunur.</strong>{{ form.non_field_errors }}</div>{% endif %}
+  {{ form.idem_key }}
+  {% for field in form.visible_fields %}{% if field.name not in visible %}{{ field.as_hidden }}{% endif %}{% endfor %}
+
+  {% if step == 1 %}
+    <h2>1. Müşteri ve ürün</h2>
+    <p class="muted">Önce müşteriyi seçin; yalnız o müşteriye ait ürün kodları listelenir.</p>
+    {% for field in form.visible_fields %}{% if field.name in visible %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endif %}{% endfor %}
+    <div class="actions"><button type="submit" name="git" value="ileri" class="btn btn-primary">İleri: özellikler ve miktar →</button>
+      <a class="btn" href="{% url 'orders:order_list' %}">Vazgeç</a></div>
+
+  {% elif step == 2 %}
+    <h2>2. Özellikler ve miktar</h2>
+    <p><strong>{{ customer.name }}</strong> · {{ product }}</p>
+    {% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}
+    <p class="muted">Teknik özellikler ürünün onaylı revizyonundan gelir ve burada değiştirilemez. Farklı özellik
+      gerekiyorsa siparişi kaydettikten sonra planlamaya değişiklik isteği iletin.</p>
+    {% for field in form.visible_fields %}{% if field.name in visible %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endif %}{% endfor %}
+    <div class="actions"><button type="submit" name="git" value="ileri" class="btn btn-primary">İleri: teslimat ve kontrol →</button>
+      <button type="submit" name="git" value="geri" class="btn" formnovalidate>← Geri</button></div>
+
+  {% else %}
+    <h2>3. Teslimat ve kontrol</h2>
+    <p class="muted">Bilgileri kontrol edin. Değiştirmek için ilgili bölümdeki "Düzenle" düğmesine basın.</p>
+    <section class="summary-section"><header><h3>Müşteri ve ürün</h3><button type="submit" name="git" value="1" class="btn" formnovalidate>Düzenle</button></header>
+      <dl class="kv"><dt>Müşteri</dt><dd>{{ customer.name|default:"—" }}</dd><dt>Ürün</dt><dd>{{ product|default:"—" }}</dd></dl></section>
+    <section class="summary-section"><header><h3>Özellikler ve miktar</h3><button type="submit" name="git" value="2" class="btn" formnovalidate>Düzenle</button></header>
+      <dl class="kv">
+        <dt>Miktar</dt><dd>{{ form.cleaned_data.quantity|qty }} {% for v, l in form.fields.unit.choices %}{% if v == form.unit.value %}{{ l }}{% endif %}{% endfor %}</dd>
+        <dt>Termin</dt><dd>{{ form.cleaned_data.due_date|date:"d.m.Y"|default:"Belirtilmedi" }}</dd>
+        <dt>Amaç</dt><dd>{% for v, l in form.fields.purpose.choices %}{% if v == form.purpose.value %}{{ l }}{% endif %}{% endfor %}</dd>
+        <dt>Ücret</dt><dd>{% for v, l in form.fields.charge.choices %}{% if v == form.charge.value %}{{ l }}{% endif %}{% endfor %}</dd>
+        <dt>Müşteri ref.</dt><dd>{{ form.customer_ref.value|default:"—" }}</dd>
+        {% if form.notes.value %}<dt>Not</dt><dd>{{ form.notes.value }}</dd>{% endif %}
+      </dl>
+      <details><summary>Teknik özellikler</summary>{% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}</details></section>
+    <section class="summary-section"><header><h3>Teslimat</h3></header>
+      <dl class="kv"><dt>Teslimat adresi</dt><dd>{{ snapshot.shipping_address|default:"Müşteri kartında varsayılan teslimat adresi yok" }}</dd>
+        <dt>Teslim şekli / yeri</dt><dd>{{ snapshot.delivery_terms|default:"—" }} · {{ snapshot.delivery_place|default:"—" }}</dd></dl>
+      {% if show_errors %}{% include "partials/field.html" with field=form.delivery_confirmed %}{% else %}{% include "partials/field_noerror.html" with field=form.delivery_confirmed %}{% endif %}</section>
+    <div class="actions"><button type="submit" name="git" value="kaydet" class="btn btn-primary">Siparişi kaydet</button>
+      <button type="submit" name="git" value="geri" class="btn" formnovalidate>← Geri</button></div>
+  {% endif %}
+</form>
+{% endblock %}

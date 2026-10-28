@@ -8,7 +8,7 @@ from accounts.permissions import can, check, get_scoped_or_404, require_perm, sc
 from core.services import history_for
 from core.viewutils import run_form_action
 
-from . import services
+from . import spec, services
 from .forms import (ActiveToggleForm, LotReceiveForm, MachineForm, MaterialForm,
                     ProductForm, RevisionForm)
 from .models import Customer, Machine, Material, MaterialLot, Product, Recipe
@@ -149,7 +149,7 @@ def revision_create(request, product_pk):
     current = product.current_revision
     initial, comps = {}, []
     if current:
-        initial = {f: getattr(current, f) for f in RevisionForm.Meta.fields if f != "change_reason"}
+        initial = {f: getattr(current, f) for f in spec.FIELD_NAMES}
         comps = [(c.material, c.percentage) for c in current.components.all()]
     form = RevisionForm(request.POST or None, initial=initial, initial_components=comps)
     if request.method == "POST":

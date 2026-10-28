@@ -131,12 +131,17 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(self.option_values(page), [b_prod])
         self.assertEqual(customer.input_value(), b_cust)
 
-        # 7) Doğrulama hatasında müşteri ve ürün seçimi korunur
+        # 7) Doğrulama hatasında müşteri ve ürün seçimi korunur (3 adımlı giriş: hata 2. adımda, geri dönünce seçili)
         product.select_option(b_prod)
+        page.get_by_role("button", name="İleri: özellikler ve miktar →").click()
         page.locator("[name=quantity]").fill("0")
-        page.get_by_role("button", name="Siparişi kaydet").click()
+        page.locator("[name=purpose]").select_option("ticari")
+        page.get_by_role("button", name="İleri: teslimat ve kontrol →").click()
         page.wait_for_load_state("networkidle")
-        expect(page.locator(".msg-error")).to_contain_text("Kaydedilmedi")
+        expect(page.locator(".form-errors")).to_contain_text("Devam edilemedi")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+        page.get_by_role("button", name="← Geri").click()
+        page.wait_for_load_state("networkidle")
         self.assertEqual(customer.input_value(), b_cust)
         self.assertEqual(product.input_value(), b_prod)
         expect(product).to_be_enabled()
@@ -145,7 +150,10 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
 
         # 8) Geçerli kayıt
         before = SalesOrder.objects.count()
+        page.get_by_role("button", name="İleri: özellikler ve miktar →").click()
         page.locator("[name=quantity]").fill("5")
+        page.get_by_role("button", name="İleri: teslimat ve kontrol →").click()
+        page.locator("[name=delivery_confirmed]").check()
         page.get_by_role("button", name="Siparişi kaydet").click()
         expect(page.locator(".msg-success")).to_contain_text("Sipariş oluşturuldu")
         self.assertEqual(SalesOrder.objects.count(), before + 1)

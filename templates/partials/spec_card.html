@@ -1,0 +1,21 @@
+{% load mimcor %}<section class="card spec-card" aria-label="{{ title }}">
+  <h2>{{ title }}{% if revision %} <small class="muted">· Teknik revizyon Rev.{{ revision.rev_no }}</small>{% endif %}</h2>
+  {% if not revision %}<p class="muted">Bu ürün için onaylı teknik revizyon yok. Planlama teknik bilgileri tanımlamalı.</p>{% else %}
+  <div class="spec-sections">
+  {% for title, rows in sections %}{% if rows %}
+    <div class="spec-section"><h3>{{ title }}</h3>
+      <dl class="kv">{% for r in rows %}
+        <dt>{{ r.label }}</dt>
+        <dd>{% if r.unspecified %}<span class="unspecified">Belirtilmemiş</span>{% else %}{{ r.value }}{% if r.name == "color_preview" %} <span class="swatch" style="background:{{ r.raw }}" aria-hidden="true"></span> <small class="muted">ekran önizlemesi; fiziksel renk onayı değildir</small>{% endif %}{% endif %}</dd>
+      {% endfor %}</dl>
+    </div>
+  {% endif %}{% endfor %}
+  {% if product %}<div class="spec-section"><h3>Paketleme</h3><dl class="kv">
+    <dt>Paket tipi</dt><dd>{{ product.get_package_type_display }}</dd>
+    <dt>Paket içi adet / rulo</dt><dd>{% if product.units_per_box %}{{ product.units_per_box }}{% else %}<span class="unspecified">Belirtilmemiş</span>{% endif %}</dd>
+    {% if customer %}<dt>Müşteri paketleme talimatı</dt><dd>{{ customer.packing_instructions|default:"—" }}</dd>
+    <dt>Müşteri etiket talimatı</dt><dd>{{ customer.labeling_instructions|default:"—" }}</dd>{% endif %}
+  </dl></div>{% endif %}
+  </div>
+  {% endif %}
+</section>

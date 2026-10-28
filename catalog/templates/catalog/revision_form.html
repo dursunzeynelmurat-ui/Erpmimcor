@@ -2,11 +2,11 @@
 {% block title %}Yeni revizyon {{ product.code }}{% endblock %}
 {% block content %}
 <h1>{{ product.code }} – {% if current %}Rev.{{ current.rev_no|add:1 }} oluştur{% else %}İlk reçete (Rev.1){% endif %}</h1>
-<form method="post" class="card form" novalidate>{% csrf_token %}
+<form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
   {% for hidden in form.hidden_fields %}{{ hidden }}{{ hidden.errors }}{% endfor %}
   {% if form.non_field_errors %}<div class="form-errors">{{ form.non_field_errors }}</div>{% endif %}
-  <h2>Teknik bilgiler</h2>
-  {% for field in form.spec_fields %}{% include "partials/field.html" %}{% endfor %}
+  {% include "partials/spec_fieldsets.html" %}
+  {% with field=form.change_reason %}{% include "partials/field.html" %}{% endwith %}
   <h2>Bileşenler (toplam %100)</h2>
   {% for m, p in form.component_rows %}
   <div class="row-2">{% with field=m %}{% include "partials/field.html" %}{% endwith %}{% with field=p %}{% include "partials/field.html" %}{% endwith %}</div>

@@ -48,7 +48,7 @@ class OrderViewTests(TestCase):
     def post_order(self, key):
         return self.client.post(reverse("orders:order_create"), {
             "idem_key": key, "customer": self.w.cust_a.pk, "order_date": timezone.localdate().isoformat(),
-            "product": self.w.prod_a.pk, "quantity": "40", "unit": "kutu"})
+            "product": self.w.prod_a.pk, "quantity": "40", "unit": "kutu", "purpose": "ticari", "delivery_confirmed": "on"})
 
     def test_double_submit_creates_single_order(self):
         r1 = self.post_order("same-key")
@@ -60,7 +60,7 @@ class OrderViewTests(TestCase):
     def test_failed_submit_does_not_claim_success(self):
         resp = self.client.post(reverse("orders:order_create"), {
             "idem_key": "k-fail", "customer": self.w.cust_a.pk, "order_date": timezone.localdate().isoformat(),
-            "product": self.w.prod_b.pk, "quantity": "40", "unit": "kutu"}, follow=True)
+            "product": self.w.prod_b.pk, "quantity": "40", "unit": "kutu", "purpose": "ticari", "delivery_confirmed": "on"}, follow=True)
         self.assertContains(resp, "Kaydedilmedi")
         self.assertFalse(SalesOrder.objects.exists())
         self.assertFalse(IdempotencyKey.objects.exists())  # anahtar da geri alındı; düzeltip tekrar gönderilebilir

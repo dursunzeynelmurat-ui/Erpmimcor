@@ -13,7 +13,7 @@ from core.viewutils import run_form_action
 from . import services
 from .forms import (ApproveLineForm, CompatibilityForm, LineAddForm, LineChangeForm, OrderCreateForm, OverDeliveryForm,
                     products_for)
-from .models import LineStatus, OrderLine, OrderStatus, SalesOrder
+from .models import CreationMethod, LineStatus, OrderLine, OrderStatus, SalesOrder
 from .selectors import line_progress
 
 
@@ -39,20 +39,49 @@ def order_list(request):
 
 @require_perm("order.create")
 def order_create(request):
+    """Kısa adımlı sipariş girişi. 'git': ileri / geri / 1-2 (Düzenle) / kaydet. Adım bilgisi olmadan gelen tam
+    gönderim (eski form) kaydet olarak işlenir; her durumda aynı sunucu doğrulaması uygulanır."""
     form = OrderCreateForm(request.POST or None, user=request.user)
+    step, stuck = 1, False
     if request.method == "POST":
-        def create(d):
-            return services.create_order(
-                request.user, customer=d["customer"], order_date=d["order_date"], due_date=d["due_date"],
-                customer_ref=d["customer_ref"], notes=d["notes"],
-                lines=[{"product": d["product"], "quantity": d["quantity"], "unit": d["unit"]}])
-        resp = run_form_action(request, form, action="order.create", fn=create,
-                               success_message=lambda o: f"Sipariş oluşturuldu: {o.code} (taslak). Kalemleri kontrol edip onaylayın.",
-                               url_for=lambda o: reverse("orders:order_detail", args=[o.pk]))
-        if resp:
-            return resp
-    return render(request, "core/form_page.html", {"form": form, "title": "Yeni satış siparişi", "submit": "Siparişi kaydet",
-                                                   "back": reverse("orders:order_list")})
+        current = int(request.POST.get("adim", "3")) if request.POST.get("adim", "3").isdigit() else 1
+        current = min(max(current, 1), 3)
+        action = request.POST.get("git", "kaydet")
+        if action == "ileri":
+            stuck = bool(form.step_errors(current))
+            step = current if stuck else min(current + 1, 3)
+        elif action == "geri":
+            step = max(current - 1, 1)
+        elif action in ("1", "2"):
+            step = int(action)
+        else:
+            def create(d):
+                return services.create_order(
+                    request.user, customer=d["customer"], order_date=d["order_date"], due_date=d["due_date"],
+                    customer_ref=d["customer_ref"], notes=d["notes"], purpose=d["purpose"], charge=d["charge"],
+                    creation_method=CreationMethod.NEW,
+                    lines=[{"product": d["product"], "quantity": d["quantity"], "unit": d["unit"]}])
+            resp = run_form_action(
+                request, form, action="order.create", fn=create,
+                success_message=lambda o: f"Sipariş oluşturuldu: {o.code} (taslak). Sıradaki adım: kalemleri kontrol "
+                                          "edin, gerekiyorsa kalem ekleyin ve 'Siparişi onayla' düğmesine basın.",
+                url_for=lambda o: reverse("orders:order_detail", args=[o.pk]))
+            if resp:
+                return resp
+            step = form.first_error_step()
+    # Hata yalnız kullanıcı o adımı göndermiş ve geçememişse gösterilir (yeni açılan adımda boş alan uyarısı yok).
+    show_errors = request.method == "POST" and (request.POST.get("git", "kaydet") == "kaydet"
+                                                or (request.POST.get("git") == "ileri" and stuck))
+    if form.is_bound and not show_errors:
+        form.errors.clear()  # temizlenmiş değerler korunur; yeni açılan adımda hata/aria-invalid gösterilmez
+    product = form.selected_product() if form.is_bound else None
+    customer = form._selected_customer() if form.is_bound else None
+    return render(request, "orders/order_create.html", {
+        "form": form, "step": step, "steps": [(k, t) for k, (t, _) in form.STEPS.items()],
+        "visible": form.STEPS[step][1], "show_errors": show_errors, "product": product, "customer": customer,
+        "snapshot": services.order_snapshot(customer) if customer else None,
+        "revision": product.current_revision if product else None,
+    })
 
 
 @require_GET

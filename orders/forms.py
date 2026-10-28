@@ -5,7 +5,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from catalog.models import Customer, Product, RecipeRevision, Unit
-from core.forms import IdemForm
+
+from .models import Charge, OrderPurpose
+from core.forms import IdemForm, TRDecimalField
 from core.templatetags.mimcor import qty
 
 DEC = forms.NumberInput(attrs={"step": "any", "inputmode": "decimal"})
@@ -21,14 +23,35 @@ def products_for(customer):
 
 
 class OrderCreateForm(IdemForm):
-    customer = forms.ModelChoiceField(label="Müşteri", queryset=Customer.objects.active())
-    customer_ref = forms.CharField(label="Müşteri sipariş ref.", required=False)
+    """3 adımlı sipariş girişi: 1) müşteri ve ürün, 2) özellikler ve miktar, 3) teslimat ve kontrol.
+    Önceki adımların değerleri gizli alanlarda taşınır ve her adımda sunucuda yeniden doğrulanır."""
+
+    STEPS = {1: ("Müşteri ve ürün", ["customer", "product"]),
+             2: ("Özellikler ve miktar", ["quantity", "unit", "due_date", "purpose", "charge", "customer_ref",
+                                          "order_date", "notes"]),
+             3: ("Teslimat ve kontrol", ["delivery_confirmed"])}
+
+    customer = forms.ModelChoiceField(label="Müşteri", queryset=Customer.objects.active(),
+                                      help_text="Yalnız erişiminiz olan müşteriler listelenir.")
+    customer_ref = forms.CharField(label="Müşteri sipariş ref.", required=False,
+                                   help_text="Müşterinin sipariş/PO numarası. Bazı müşterilerde zorunludur.")
     order_date = forms.DateField(label="Sipariş tarihi", widget=DATE, initial=timezone.localdate)
-    due_date = forms.DateField(label="Termin", widget=DATE, required=False)
+    due_date = forms.DateField(label="Termin (teslim tarihi)", widget=DATE, required=False,
+                               help_text="Müşterinin istediği teslim tarihi. Bilinmiyorsa boş bırakın.")
     notes = forms.CharField(label="Not", widget=forms.Textarea(attrs={"rows": 2}), required=False)
     product = forms.ModelChoiceField(label="Ürün (ilk kalem)", queryset=Product.objects.none())
-    quantity = forms.DecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
-    unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX)
+    quantity = TRDecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"),
+                              help_text="Ondalık için virgül kullanın (ör. 12,5). Kutu biriminde tam sayı girin.")
+    unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX,
+                             help_text="Rezervasyon ve sevkiyat yalnız kutu biriminde yapılabilir.")
+    purpose = forms.ChoiceField(label="Sipariş amacı", choices=[("", "Seçin")] + list(OrderPurpose.choices),
+                                help_text="Numune ve deneme de gerçek üretim ve teslimdir; stok ve izlenebilirlik "
+                                          "kuralları aynen uygulanır.")
+    charge = forms.ChoiceField(label="Ücret", required=False, choices=[("", "Belirtilmemiş")] + list(Charge.choices),
+                               help_text="Amaçtan ayrı bilgidir (ör. ücretli numune). Fatura oluşturmaz.")
+    delivery_confirmed = forms.BooleanField(
+        label="Teslimat adresi ve koşullarını kontrol ettim", required=False,
+        help_text="Bilgiler müşteri kartından alınır. Farklıysa önce müşteri kartını güncelleyin.")
 
     def __init__(self, *args, user=None, **kwargs):
         from accounts.permissions import scoped
@@ -72,7 +95,30 @@ class OrderCreateForm(IdemForm):
         customer, product = data.get("customer"), data.get("product")
         if customer and product and (product.customer_id != customer.pk or not product.is_active):
             self.add_error("product", "Bu ürün seçilen müşteriye ait aktif bir ürün değil.")
+        if self.final and not data.get("delivery_confirmed"):
+            self.add_error("delivery_confirmed", "Kaydetmeden önce teslimat bilgilerini kontrol edip işaretleyin.")
         return data
+
+    @property
+    def final(self):
+        return self.is_bound and self.data.get("git", "kaydet") == "kaydet"
+
+    def step_errors(self, upto):
+        names = [n for k, (_, fields) in self.STEPS.items() if k <= upto for n in fields]
+        return {n: self.errors[n] for n in names if n in self.errors}
+
+    def first_error_step(self):
+        for k, (_, fields) in self.STEPS.items():
+            if any(n in self.errors for n in fields):
+                return k
+        return 3
+
+    def selected_product(self):
+        customer = self._selected_customer()
+        value = self.data.get(self.add_prefix("product")) if self.is_bound else None
+        if not customer or not value:
+            return None
+        return products_for(customer).filter(pk=value).first() if str(value).isdigit() else None
 
 
 class LineAddForm(IdemForm):

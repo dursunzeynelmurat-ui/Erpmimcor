@@ -9,15 +9,7 @@
 <section class="card">
   <h2>Rev.{{ rev.rev_no }} {% if forloop.first %}<span class="status status-uygun">Güncel</span>{% endif %}</h2>
   <p class="meta">{{ rev.created_at|date:"d.m.Y H:i" }} · {{ rev.created_by.full_name }}{% if rev.change_reason %} · Gerekçe: {{ rev.change_reason }}{% endif %}</p>
-  <dl class="kv">
-    <dt>En</dt><dd>{{ rev.width_mm|qty }} mm</dd>
-    <dt>Kalınlık</dt><dd>{{ rev.thickness_micron|qty }} µ</dd>
-    <dt>Rulo boyu</dt><dd>{{ rev.length_m|qty }} m</dd>
-    <dt>Renk</dt><dd>{{ rev.color|default:"—" }}</dd>
-    <dt>Baskı</dt><dd>{{ rev.print_spec|default:"—" }}</dd>
-    <dt>Perfore</dt><dd>{{ rev.perforation_spec|default:"—" }}</dd>
-    <dt>Proses</dt><dd>{{ rev.process_notes|default:"—" }}</dd>
-  </dl>
+  {% spec_card rev product title="Teknik özellikler" %}
   <table class="table compact"><thead><tr><th>Malzeme</th><th>Tür</th><th>Oran</th></tr></thead><tbody>
     {% for c in rev.components.all %}<tr><td>{{ c.material.code }} – {{ c.material.name }}</td><td>{{ c.material.get_kind_display }}</td><td>%{{ c.percentage|qty }}</td></tr>{% endfor %}
   </tbody></table>

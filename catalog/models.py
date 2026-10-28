@@ -5,6 +5,8 @@ from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
 
+from . import spec
+
 QTY = {"max_digits": 14, "decimal_places": 3}
 KG = {"max_digits": 12, "decimal_places": 3}
 
@@ -298,8 +300,9 @@ class Machine(models.Model):
 
 
 class MaterialKind(models.TextChoices):
-    RAW = "hammadde", "Hammadde"
+    RAW = "hammadde", "Ana hammadde"
     ADDITIVE = "katki", "Katkı"
+    COLORANT = "renklendirici", "Renklendirici"
 
 
 class MaterialUnit(models.TextChoices):
@@ -397,9 +400,37 @@ class RecipeRevision(ImmutableModel):
     thickness_micron = models.DecimalField("Kalınlık (mikron)", max_digits=8, decimal_places=2)
     length_m = models.DecimalField("Rulo boyu (m)", max_digits=10, decimal_places=2, null=True, blank=True)
     color = models.CharField("Renk", max_length=60, blank=True)
-    print_spec = models.CharField("Baskı bilgisi", max_length=200, blank=True)
-    perforation_spec = models.CharField("Perfore bilgisi", max_length=200, blank=True)
+    print_spec = models.CharField("Baskı notu", max_length=200, blank=True)
+    perforation_spec = models.CharField("Perfore notu", max_length=200, blank=True)
     process_notes = models.TextField("Proses notları", blank=True)
+    # Ayrıntılı teknik özellikler (catalog/spec.py). Boş = belirtilmemiş; eski revizyonlarda boş kalır.
+    product_length_mm = models.DecimalField("Ürün / torba boyu (mm)", max_digits=10, decimal_places=2, null=True, blank=True)
+    gusset_type = models.CharField("Körük", max_length=10, choices=spec.Gusset.choices, blank=True)
+    gusset_depth_mm = models.DecimalField("Körük derinliği (mm)", max_digits=8, decimal_places=2, null=True, blank=True)
+    width_basis = models.CharField("En ölçüm tanımı", max_length=10, choices=spec.WidthBasis.choices, blank=True)
+    width_tol_mm = models.DecimalField("En toleransı ± (mm)", max_digits=8, decimal_places=2, null=True, blank=True)
+    thickness_tol_micron = models.DecimalField("Kalınlık toleransı ± (µm)", max_digits=8, decimal_places=2, null=True,
+                                               blank=True)
+    length_tol_mm = models.DecimalField("Boy toleransı ± (mm)", max_digits=8, decimal_places=2, null=True, blank=True)
+    appearance = models.CharField("Görünüm", max_length=10, choices=spec.Appearance.choices, blank=True)
+    color_system = models.CharField("Renk referans sistemi", max_length=10, choices=spec.ColorSystem.choices, blank=True)
+    color_code = models.CharField("Renk kodu", max_length=40, blank=True)
+    color_preview = models.CharField("Ekran önizleme rengi", max_length=7, blank=True)
+    perforation = models.CharField("Perfore", max_length=5, choices=spec.YesNo.choices, blank=True)
+    perforation_pitch_mm = models.DecimalField("Perfore aralığı (mm)", max_digits=8, decimal_places=2, null=True,
+                                               blank=True)
+    print_status = models.CharField("Baskı", max_length=5, choices=spec.YesNo.choices, blank=True)
+    plate_status = models.CharField("Klişe", max_length=10, choices=spec.Plate.choices, blank=True)
+    plate_code = models.CharField("Klişe kodu", max_length=60, blank=True)
+    cylinder_circumference_mm = models.DecimalField("Kazan çevresi (mm)", max_digits=8, decimal_places=2, null=True,
+                                                    blank=True)
+    print_repeat_mm = models.DecimalField("Baskı tekrar boyu (mm)", max_digits=8, decimal_places=2, null=True, blank=True)
+    print_gap_mm = models.DecimalField("İki baskı arası boşluk (mm)", max_digits=8, decimal_places=2, null=True, blank=True)
+    print_color_count = models.PositiveSmallIntegerField("Baskı renk sayısı", null=True, blank=True)
+    print_colors = models.CharField("Baskı renk referansları", max_length=200, blank=True)
+    print_sides = models.CharField("Baskı yüzü", max_length=5, choices=spec.PrintSides.choices, blank=True)
+    print_direction = models.CharField("Baskı yönü", max_length=120, blank=True)
+    packing_notes = models.TextField("Ambalaj / etiket notu", blank=True)
     change_reason = models.TextField("Değişiklik gerekçesi", blank=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -421,6 +452,7 @@ class RecipeComponent(ImmutableModel):
     material = models.ForeignKey(Material, on_delete=models.PROTECT)
     percentage = models.DecimalField("Oran (%)", max_digits=6, decimal_places=3,
                                      validators=[MinValueValidator(Decimal("0.001"))])
+    application_note = models.CharField("Uygulama notu", max_length=200, blank=True)
 
     class Meta:
         ordering = ["-percentage"]

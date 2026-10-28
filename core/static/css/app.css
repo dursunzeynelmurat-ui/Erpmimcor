@@ -233,3 +233,17 @@ legend { font-weight:600; margin-bottom:8px; }
 .package-label svg { width:84px; height:84px; }
 .package-label .no { font-family:monospace; font-weight:700; }
 @media print { .package-labels { gap:0; } .package-label { border-style:solid; } }
+
+/* Teknik özet kartı ve koşullu form bölümleri */
+.spec-sections { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.spec-section h3 { font-size: 1rem; margin: 0 0 6px; }
+.unspecified { color: var(--muted); font-style: italic; }
+.swatch { display: inline-block; width: 1.2em; height: 1.2em; border: 1px solid var(--border); border-radius: 4px; vertical-align: middle; }
+fieldset.spec-group { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; margin: 0 0 var(--gap); }
+fieldset.spec-group legend { font-weight: 600; padding: 0 4px; }
+.steps { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 var(--gap); counter-reset: step; }
+.steps li { padding: 6px 12px; border: 1px solid var(--border); border-radius: 999px; }
+.steps li[aria-current="step"] { font-weight: 700; border-color: var(--fg); }
+.steps li.done::before { content: "✓ "; }
+.summary-section { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 8px; }
+.summary-section header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }

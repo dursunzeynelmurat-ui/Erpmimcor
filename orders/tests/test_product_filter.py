@@ -29,7 +29,7 @@ class ProductFilterTests(TestCase):
 
     def post(self, key, **over):
         data = {"idem_key": key, "customer": self.w.cust_a.pk, "order_date": timezone.localdate().isoformat(),
-                "product": self.w.prod_a.pk, "quantity": "10", "unit": "kutu", **over}
+                "product": self.w.prod_a.pk, "quantity": "10", "unit": "kutu", "purpose": "ticari", "delivery_confirmed": "on", **over}
         return self.client.post(self.url, data)
 
     # --- Uç nokta -----------------------------------------------------------------------
@@ -99,8 +99,15 @@ class ProductFilterTests(TestCase):
         form = resp.context["form"]
         self.assertTrue(form.errors.get("quantity"))
         html = resp.content.decode()
+        self.assertEqual(resp.context["step"], 2)  # hata miktar adımında gösterilir
+        # Müşteri ve ürün kaybolmaz: gizli alanlarda taşınır, "Düzenle" ile seçili döner
+        self.assertIn(f'name="customer" value="{self.w.cust_a.pk}"', html)
+        self.assertIn(f'name="product" value="{self.prod_a2.pk}"', html)
+        back = self.client.post(self.url, {**{k: v for k, v in resp.wsgi_request.POST.items()}, "git": "1"})
+        html = back.content.decode()
         self.assertIn(f'<option value="{self.w.cust_a.pk}" selected>', html)
         self.assertIn(f'<option value="{self.prod_a2.pk}" selected>', html)
+        form = back.context["form"]
         self.assertEqual(set(form.fields["product"].queryset), {self.w.prod_a, self.prod_a2})
         self.assertNotIn(self.w.prod_b.code, str(form["product"]))
 
