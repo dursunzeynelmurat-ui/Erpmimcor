@@ -1,8 +1,8 @@
 """Kapalı iş emrinde düzeltme sonrası güncel denge.
 
-Sayısal örnek: verilen 100 kg, sağlam 95 kg, fire 5 kg → kapanış farkı 0. Sonra çıkış 100 → 110 kg olarak
-düzeltilir ve onaylanır: ilk kapanış kaydı 100/0 kalır; güncel verilen 110, güncel fark 10 kg. Tolerans %3
-(110 × 0,03 = 3,3 kg) aşıldığı için kapanış "yeniden değerlendirme bekliyor" olur; yetkili değerlendirince kapanır.
+Sayısal örnek: verilen 100 kg, sağlam 95 kg, fire 5 kg → kapanış farkı 0. Sonra lottan iş emrine verilen
+malzeme (lot çıkışı = iş emri girdisi) 100 → 110 kg olarak düzeltilir ve onaylanır: ilk kapanış kaydı 100/0 kalır;
+güncel net verilen 110, güncel fark 10 kg. Tolerans tabanı net verilen malzemedir: %3 × 110 = 3,3 kg aşıldığı için kapanış "yeniden değerlendirme bekliyor" olur; yetkili değerlendirince kapanır.
 """
 import threading
 import uuid

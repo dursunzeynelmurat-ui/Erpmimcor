@@ -1,3 +1,24 @@
+# Kabul denetimi — 28 Ekim 2026
+
+Branch: `fix/mimcor-kabul-denetimi` (kaynak `fix/mimcor-yetki-veri-tutarliligi` @ `ff01e32`; merge/PR/canlı yayın yok).
+Yeni özellik yok. Ayrıntı, test kanıtı, gerçek ortamda yöneticinin elle yapacakları, karar bekleyenler ve 20–30
+dakikalık manuel kabul senaryosu: **[docs/kabul-denetimi.md](docs/kabul-denetimi.md)**.
+
+| # | Bulunan ve düzeltilen | Düzeltme |
+|---|---|---|
+| A | Araç çıkışı yapılmamış sevkiyata iade + sonra sevk geri alma → stok iki kez artıyordu | İade yalnız çıkış yapılmış sevkiyata; iadesi olan sevkiyat geri alınamaz |
+| B | Yerine gönderim kalemi kalem değişikliğiyle iade hakkını aşabiliyordu | Değişiklik hak sınırında (iade kaydı kilitlenir) |
+| C | Sipariş kopyası yerine gönderimi yeni satış yapıyordu | Kopyada yerine gönderim kalemleri atlanır |
+| D, E | Devirden sonra eski operatör üretim kaydı formlarını (reçete bileşimini dolaylı gösteren lot listesi) ve iş emri başlığında ölçüleri görebiliyordu | Formlar GET'te de nesne kapsamlı yetki ister; ölçüler yalnız aktif teknik erişimle |
+| F | Yerine gönderilen ürünün iadesi müşteride kalan neti düşürmüyordu | Net hesabı düzeltildi |
+
+Tolerans hesabı doğru çıktı (taban net verilen malzeme; 3,3 kg = düzeltilmiş 110 kg × %3); sınır testleri eklendi.
+Yeni salt okunur komut: `python manage.py yetki_denetimi` (kim neye hangi rol/müşteri erişimiyle erişiyor, iş kuralını
+aşan durumlar). Migration yok. Orijinal demo/UAT veritabanları değiştirilmedi; yükseltme ve tarayıcıyla yönetici
+kontrolü kopyalarda yapıldı. **Testlerin geçmesi işletme onayı değildir; gerçek telefon testi yapılmadı.**
+
+---
+
 # Kabul öncesi yetki ve veri tutarlılığı düzeltmeleri — 27 Ekim 2026 (güncel)
 
 Branch: `fix/mimcor-yetki-veri-tutarliligi` (kaynak `feature/mimcor-operasyon-genisletme` @ `9902c1e`; merge/PR/canlı
