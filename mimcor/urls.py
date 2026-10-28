@@ -11,5 +11,6 @@ urlpatterns = [
     path("", include("production.urls")),
     path("", include("warehouse.urls")),
     path("", include("corrections.urls")),
+    path("", include("samples.urls")),
     path("", include("core.urls")),
 ]

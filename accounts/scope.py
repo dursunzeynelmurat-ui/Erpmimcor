@@ -12,6 +12,7 @@ CUSTOMER_PATHS = {
     "catalog.customeraddress": "customer",
     "catalog.customerdocument": "customer",
     "catalog.printartwork": "product__customer",
+    "samples.sample": "customer",
     "catalog.customeraccess": "customer",
     "orders.salesorder": "customer",
     "orders.orderline": "order__customer",
@@ -29,6 +30,7 @@ CUSTOMER_PATHS = {
 # Model → iş emrine giden yol ("" = modelin kendisi iş emri)
 WORK_ORDER_PATHS = {
     "production.workorder": "",
+    "samples.sample": "work_order",
     "production.workorderoperation": "work_order",
     "production.coil": "work_order",
     "warehouse.pallet": "work_order",

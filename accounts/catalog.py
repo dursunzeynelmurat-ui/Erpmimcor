@@ -115,6 +115,15 @@ ACTIONS = [
     # Düzeltme
     Action("correction.request", "Düzeltme talebi açma", "Düzeltme", Kind.CORRECTION_REQUEST, (A, C, AS, M, SH, MS)),
     Action("correction.approve", "Düzeltme talebini onaylama/reddetme", "Düzeltme", Kind.CORRECTION_APPROVE),
+    # Numune
+    Action("sample.view", "Numuneleri görme (satış: yalnız paylaşılabilir durum ve geri bildirim)", "Numune", Kind.VIEW,
+           (A, C, AS)),
+    Action("sample.manage", "Numune kaydı, konum, gönderim, geri dönüş, imha, ek dosya", "Numune", Kind.CHANGE,
+           (A, C, AS)),
+    Action("sample.stock", "Numune için paletten kutu ayırma (stok düşer)", "Numune", Kind.CHANGE),
+    Action("sample.decide", "Numune ölçümü ve iç kalite kararı (blokaj kaldırma değildir)", "Numune", Kind.APPROVE),
+    Action("sample.feedback", "Müşteri geri bildirimini kaydetme", "Numune", Kind.CHANGE, CUST),
+    Action("sample.criteria", "Numune kontrol kriterlerini tanımlama", "Numune", Kind.ADMIN),
 ]
 BY_CODE = {a.code: a for a in ACTIONS}
 
@@ -141,23 +150,26 @@ TEMPLATES = {
         "order.view": C, "order.create": C, "order.change": C, "order.approve": C, "order.cancel": C,
         "workorder.view": C, "stock.view": C, "shipment.view": C, "reservation.manage": C,
         "correction.request": C, "machine.view": A,
-        "artwork.view": C, "artwork.manage": C, "artwork.customer_approval": C}),
+        "artwork.view": C, "artwork.manage": C, "artwork.customer_approval": C,
+        "sample.view": C, "sample.feedback": C}),
     "planlama": ("Planlama", True, {
         **OPS_VIEW, "product.create": A, "product.change": A, "recipe.view": A, "recipe.change": A,
         "machine.manage": A, "material.manage": A, "planning.approve": A, "exception.approve": A,
         "workorder.create": A, "workorder.release": A, "workorder.cancel": A, "workorder.schedule": A,
         "instruction.view": A, "instruction.print": A, "quality.release": A, "correction.request": A,
         "customer.document.view": A, "shift.manage": A, "stocklevel.manage": A, "material.deviation": A,
-        "artwork.view": A, "artwork.manage": A, "artwork.approve": A, "artwork.customer_approval": A}),
+        "artwork.view": A, "artwork.manage": A, "artwork.approve": A, "artwork.customer_approval": A,
+        "sample.view": A, "sample.manage": A, "sample.feedback": A}),
     "uretim_yetkilisi": ("Üretim yetkilisi", True, {
         **OPS_VIEW, "workorder.schedule": A, "production.execute": A, "production.hold": A,
         "instruction.view": A, "instruction.print": A, "quality.decide": A, "quality.block": A,
         "correction.request": A, "correction.approve": A, "material.deviation": A, "customer.document.view": A,
-        "artwork.view": A}),
+        "artwork.view": A,
+        "sample.view": A, "sample.manage": A, "sample.decide": A}),
     "ustabasi": ("Ustabaşı", True, {
         "workorder.view": AS, "workorder.schedule": AS, "production.execute": AS, "production.hold": AS,
         "instruction.view": AS, "instruction.print": AS, "quality.decide": AS, "quality.block": AS,
-        "quality.release": AS, "machine.view": A, "material.view": A, "stock.view": A}),
+        "quality.release": AS, "machine.view": A, "material.view": A, "stock.view": A, "sample.view": AS, "sample.manage": AS}),
     "operator": ("Usta / operatör", True, {
         # Geçmiş kayıt: atandığı makinelerdeki işler. Aktif teknik bilgi ve üretim kaydı: atandığı makine VE
         # operasyonun sorumlu vardiyası kendi vardiyası (vardiya devri teslim alınınca sorumluluk yeni vardiyaya geçer).
@@ -165,13 +177,16 @@ TEMPLATES = {
         "quality.block": MS, "machine.view": A}),
     "kalite": ("Kalite sorumlusu", True, {
         "workorder.view": A, "stock.view": A, "quality.decide": A, "quality.block": A, "quality.release": A,
-        "product.view": A, "machine.view": A}),
+        "product.view": A, "machine.view": A,
+        "sample.view": A, "sample.manage": A, "sample.decide": A, "sample.feedback": A, "sample.criteria": A}),
     "ambar_yetkilisi": ("Ambar yetkilisi", True, {
         **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A, "shipment.approve": A,
         "shipment.undo": A, "shipment.exit": A,
         "label.print": A, "lot.receive": A, "quality.block": A, "correction.approve": A,
-        "customer.document.view": A}),
+        "customer.document.view": A,
+        "sample.view": A, "sample.manage": A, "sample.stock": A}),
     "depo": ("Depo personeli", True, {
         **OPS_VIEW, "warehouse.operate": A, "reservation.manage": A, "shipment.manage": A,
-        "label.print": A, "lot.receive": A, "quality.block": A, "customer.document.view": A}),
+        "label.print": A, "lot.receive": A, "quality.block": A, "customer.document.view": A,
+        "sample.view": A, "sample.manage": A, "sample.stock": A}),
 }

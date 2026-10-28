@@ -1,0 +1,66 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}{{ s.code }}{% endblock %}
+{% block content %}
+<h1>Numune {{ s.code }}</h1>
+<p>{{ s.get_kind_display }} · {{ s.customer.name }}{% if s.product %} · {{ s.product }}{% endif %}{% if s.revision %} · Teknik revizyon Rev.{{ s.revision.rev_no }}{% endif %}</p>
+<section class="card"><h2>Durum</h2>
+  <p class="muted">Bu üç bilgi ayrıdır: numune müşterideyken de iç kalite kararı ayrıca korunur.</p>
+  <dl class="kv">
+    <dt>Fiziksel durum</dt><dd><strong>{{ s.get_physical_status_display }}</strong></dd>
+    {% if internal %}<dt>İç kalite kararı</dt><dd><strong>{{ s.get_quality_decision_display }}</strong>{% if s.decided_at %} · {{ s.decided_by.full_name }} · {{ s.decided_at|date:"d.m.Y H:i" }}<br>{{ s.decision_reason }}{% endif %}</dd>{% endif %}
+    <dt>Müşteri geri bildirimi</dt><dd><strong>{{ s.get_customer_feedback_display }}</strong>{% if s.feedback_at %} · {{ s.feedback_by.full_name }} · {{ s.feedback_at|date:"d.m.Y H:i" }}{% if s.feedback_note %}<br>{{ s.feedback_note }}{% endif %}{% if s.feedback_reference %} ({{ s.feedback_reference }}){% endif %}{% endif %}</dd>
+  </dl>
+  {% if internal and s.decision_pallets.exists or internal and s.decision_coils.exists %}<p>Kararın kapsadığı: {% for p in s.decision_pallets.all %}{{ p.code }} {% endfor %}{% for c in s.decision_coils.all %}{{ c.code }} {% endfor %} <small class="muted">(kalite durumları bu kararla değişmez)</small></p>{% endif %}
+</section>
+<section class="card"><h2>Bilgiler</h2><dl class="kv">
+  <dt>Miktar</dt><dd>{{ s.quantity|qty }} {{ s.get_unit_display }}</dd>
+  <dt>Tarih / saat</dt><dd>{{ s.occurred_at|date:"d.m.Y H:i" }}</dd>
+  {% if s.counterpart %}<dt>Teslim eden / alan</dt><dd>{{ s.counterpart }}</dd>{% endif %}
+  {% if s.order_line %}<dt>Sipariş kalemi</dt><dd>{{ s.order_line.code }}</dd>{% endif %}
+  {% if internal %}
+  {% if s.work_order %}<dt>İş emri</dt><dd>{{ s.work_order.code }}</dd>{% endif %}
+  {% if s.coil %}<dt>Bobin</dt><dd>{{ s.coil.code }}</dd>{% endif %}
+  {% if s.pallet %}<dt>Palet</dt><dd>{{ s.pallet.code }}</dd>{% endif %}
+  <dt>Konum</dt><dd>{{ s.location }}</dd>
+  <dt>Saklama</dt><dd>{{ s.retention_until|date:"d.m.Y"|default:"Son tarih yok" }}{% if s.retention_conditions %} · {{ s.retention_conditions }}{% endif %}</dd>
+  <dt>Stok etkisi</dt><dd>{% if s.stock_movement %}{{ s.stock_pallet.code }} paletinden {{ s.stock_boxes }} kutu ayrıldı (tek hareket){% elif s.kind == "musteri_referans" %}Yok — müşterinin numunesi firma stoğu değildir{% else %}Stoktan ayrılmadı{% endif %}</dd>
+  {% if s.notes %}<dt>İç açıklama</dt><dd>{{ s.notes }}</dd>{% endif %}
+  {% endif %}
+  {% if s.shared_note %}<dt>Paylaşılabilir not</dt><dd>{{ s.shared_note }}</dd>{% endif %}
+</dl>
+{% if internal %}<a class="btn" href="{% url 'samples:sample_label' s.pk %}">QR etiketi</a>{% endif %}</section>
+
+{% if can_feedback %}<details class="card"><summary>Müşteri geri bildirimini kaydet</summary>
+  <form method="post" action="{% url 'samples:sample_action' s.pk 'geri_bildirim' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=feedback_form %}
+  <button type="submit" class="btn btn-primary">Kaydet</button></form></details>{% endif %}
+
+{% if internal %}
+{% if can_manage and s.physical_status != "imha" %}
+<section class="card"><h2>İşlemler</h2>
+  <details><summary class="btn">Konum değiştir</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'konum' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=move_form %}<button type="submit" class="btn btn-primary">Konumu kaydet</button></form></details>
+  {% if can_stock and not s.stock_movement and s.kind != "musteri_referans" and s.physical_status == "saklamada" %}
+  <details><summary class="btn">Stoktan ayır</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'stok' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=allocate_form %}
+    <p class="muted">Etkisi: paletin serbest kutularından {{ s.quantity|qty }} kutu düşer; bu kutular sevk edilemez. Gönderim, iade ve imha tekrar stok düşmez. Kısmi kutu (adet/rulo/kg) numunesi stoktan düşülmez.</p>
+    <button type="submit" class="btn btn-primary">Kutuları stoktan ayır</button></form></details>{% endif %}
+  {% if s.physical_status == "saklamada" %}<details><summary class="btn">Müşteriye gönder</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'gonder' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=send_form %}<p class="muted">Etkisi: yalnız fiziksel durum değişir; stok hareketi oluşmaz.</p><button type="submit" class="btn btn-primary">Gönderimi kaydet</button></form></details>{% endif %}
+  {% if s.physical_status == "gonderildi" %}<details><summary class="btn">Geri döndü / iade alındı</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'geri' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=return_form %}<p class="muted">Etkisi: numune firmaya döner; satılabilir stoğa eklenmez.</p><button type="submit" class="btn btn-primary">Geri dönüşü kaydet</button></form></details>{% endif %}
+  {% if s.physical_status != "gonderildi" %}{% url 'samples:sample_action' s.pk 'imha' as u %}{% include "partials/reason_button.html" with action=u label="İmha edildi olarak kaydet" btn_class="btn-danger" hint="Etkisi: numune kullanılamaz olarak kapanır; stok hareketi oluşmaz." %}{% endif %}
+  <details><summary class="btn">Ek dosya yükle</summary><form method="post" enctype="multipart/form-data" action="{% url 'samples:sample_action' s.pk 'ek' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=attachment_form %}<button type="submit" class="btn btn-primary">Yükle</button></form></details>
+</section>{% endif %}
+
+<section class="card"><h2>Kontrol ve kalite kararı</h2>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th>Kriter</th><th>Kabul aralığı (ölçüm anındaki)</th><th>Değer</th><th>Sonuç</th><th>Ölçen</th></tr></thead>
+  <tbody>{% for m in measurements %}<tr><td data-label="Kriter">{{ m.criterion_name }}</td><td data-label="Aralık">{% if m.min_value is not None or m.max_value is not None %}{{ m.min_value|qty }} – {{ m.max_value|qty }} {{ m.unit }}{% else %}tanımsız{% endif %}</td>
+    <td data-label="Değer">{% if m.value is not None %}{{ m.value|qty }} {{ m.unit }}{% else %}{{ m.text_value }}{% endif %}</td><td data-label="Sonuç">{{ m.get_result_display }}</td><td data-label="Ölçen">{{ m.measured_by.full_name }} · {{ m.measured_at|date:"d.m.Y H:i" }}</td></tr>
+  {% empty %}<tr><td colspan="5" class="muted">Ölçüm yok.</td></tr>{% endfor %}</tbody></table></div>
+  {% if can_decide %}
+  <details><summary class="btn">Ölçüm ekle</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'olcum' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=measure_form %}<button type="submit" class="btn btn-primary">Ölçümü kaydet</button></form></details>
+  <details><summary class="btn">Kalite kararı ver</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'karar' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=decision_form %}
+    <p class="muted">Etkisi: yalnız numune kararı kaydedilir. İş emrinin tamamı veya paletler kendiliğinden serbest bırakılmaz; blokaj kaldırma ayrı yetkili işlemdir.</p>
+    <button type="submit" class="btn btn-primary">Kararı kaydet</button></form></details>{% endif %}
+</section>
+{% if attachments %}<section class="card"><h2>Ek dosyalar</h2><ul class="list">{% for a in attachments %}<li><a href="{% url 'samples:attachment_file' a.pk %}">{{ a.title }}</a> · {{ a.original_name }} · {{ a.uploaded_at|date:"d.m.Y" }}</li>{% endfor %}</ul></section>{% endif %}
+<section class="card"><h2>Hareket geçmişi</h2><ul class="list">{% for e in events %}<li><strong>{{ e.get_kind_display }}</strong> · {{ e.at|date:"d.m.Y H:i" }} · {{ e.user.full_name }}{% if e.counterpart %} · {{ e.counterpart }}{% endif %}{% if e.note %}<br>{{ e.note }}{% endif %}{% if e.location and e.location != "—" %}<br><small class="muted">Konum: {{ e.location }}</small>{% endif %}</li>{% endfor %}</ul></section>
+{% include "partials/history.html" %}
+{% endif %}
+{% endblock %}

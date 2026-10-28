@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     "production",
     "warehouse",
     "corrections",
+    "samples",
 ]
 
 MIDDLEWARE = [

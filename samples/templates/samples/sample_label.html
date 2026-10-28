@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Etiket {{ s.code }}{% endblock %}
+{% block content %}
+<div class="no-print"><h1>Numune etiketi {{ s.code }}</h1>
+{% if base_url_missing %}<p class="msg msg-warning">QR taban adresi (APP_BASE_URL) ayarlı değil; QR bu ekranı açtığınız adresi içerir. Telefonların erişebildiği uygulama adresini ayarlatın.</p>{% endif %}
+<p class="muted">QR okutmak yalnız numune sayfasını açar (giriş ve yetki gerekir); stok veya durum değiştirmez.</p>
+<button type="button" class="btn btn-primary" data-print>Yazdır</button> <a class="btn" href="{% url 'samples:sample_detail' s.pk %}">Geri</a></div>
+<div class="label card"><div class="label-qr">{{ qr_svg }}</div>
+  <div><strong>{{ s.code }}</strong><br>{{ s.get_kind_display }}<br>{{ s.customer.short_name|default:s.customer.name }}{% if s.product %}<br>{{ s.product.code }}{% endif %}{% if s.revision %} · Rev.{{ s.revision.rev_no }}{% endif %}
+  <br>{{ s.quantity|qty }} {{ s.get_unit_display }} · {{ s.occurred_at|date:"d.m.Y" }}{% if s.retention_until %}<br>Saklama: {{ s.retention_until|date:"d.m.Y" }}{% endif %}</div></div>
+{% endblock %}

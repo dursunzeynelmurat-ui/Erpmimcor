@@ -88,6 +88,7 @@ class MovementKind(models.TextChoices):
     CORRECTION = "duzeltme", "Onaylı üretim kaydı düzeltmesi"
     SHIPMENT_UNDO = "sevk_geri_alma", "Sevk geri alma (çıkış öncesi)"
     RETURN_IN = "iade_girisi", "Müşteri iadesi (giriş)"
+    SAMPLE_OUT = "numune_ayirma", "Numune için ayırma (çıkış)"
 
 
 class PalletMovement(models.Model):

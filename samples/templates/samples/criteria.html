@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Kontrol kriterleri{% endblock %}
+{% block content %}
+<h1>Numune kontrol kriterleri</h1>
+<p class="muted">Kriterler ve kabul aralıkları yetkili kişilerce tanımlanır; sabit fabrika standardı değildir. Bir kriteri
+  değiştirmek yeni kayıt açar; eski ölçümler ölçüm anındaki kriter kopyasıyla kalır ve yeniden yorumlanmaz.</p>
+<form method="post" class="card form" novalidate>{% csrf_token %}
+  <h2>{% if old %}{{ old.name }} kriterini değiştir{% else %}Yeni kriter{% endif %}</h2>
+  {% if old %}<input type="hidden" name="degistir" value="{{ old.pk }}">{% endif %}
+  {% include "partials/form_fields.html" %}
+  <button type="submit" class="btn btn-primary">Kaydet</button>
+</form>
+<div class="table-wrap"><table class="table"><thead><tr><th>Kriter</th><th>Birim</th><th>Aralık</th><th>Durum</th><th></th></tr></thead>
+<tbody>{% for c in criteria %}<tr><td data-label="Kriter">{{ c.name }}{% if c.description %}<br><small class="muted">{{ c.description }}</small>{% endif %}</td><td data-label="Birim">{{ c.get_unit_display }}</td>
+<td data-label="Aralık">{% if c.min_value is not None or c.max_value is not None %}{{ c.min_value|qty }} – {{ c.max_value|qty }}{% else %}tanımsız{% endif %}</td>
+<td data-label="Durum">{% if c.is_active %}Kullanımda{% else %}Değiştirildi{% endif %}</td>
+<td>{% if c.is_active %}<a href="?degistir={{ c.pk }}">Değiştir</a>{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="muted">Kriter yok.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
