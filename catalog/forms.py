@@ -282,3 +282,17 @@ class RecipeDraftForm(SpecFieldsMixin, IdemForm):
         data["lines"] = lines
         data["spec"] = self.clean_spec_values()
         return data
+
+
+class ArtworkUploadForm(IdemForm):
+    file = forms.FileField(label="Baskı görseli / dosyası", help_text="PDF, PNG veya JPG; en fazla 10 MB. Yeni dosya "
+                                                                      "yeni sürüm olur; eski sürümler ve onları kullanan "
+                                                                      "iş emirleri değişmez.")
+    note = forms.CharField(label="Açıklama", required=False, max_length=200,
+                           help_text="Örnek: Müşterinin 12.11 tarihli son tasarımı.")
+
+
+class CustomerApprovalForm(IdemForm):
+    customer_contact = forms.CharField(label="Müşteride onaylayan kişi", required=False, max_length=120)
+    evidence = forms.CharField(label="Kanıt / referans", max_length=200,
+                               help_text="Onayın nereden geldiği: e-posta tarihi, imzalı prova numarası vb.")

@@ -166,9 +166,18 @@ def history_value(value, key, object_type=""):
     return value
 
 
-@register.inclusion_tag("partials/spec_card.html")
-def spec_card(revision, product=None, title="Teknik özellikler", show_customer_notes=True):
-    """Teknik özet kartı (karışım içermez; reçete bileşimi yalnız reçete ekranında, yetkiliye)."""
+@register.inclusion_tag("partials/spec_card.html", takes_context=True)
+def spec_card(context, revision, product=None, title="Teknik özellikler", show_customer_notes=True):
+    """Teknik özet kartı (karışım içermez; reçete bileşimi yalnız reçete ekranında, yetkiliye). Baskılı üründe
+    görüntüleme yetkisi olana geçerli baskı görseli sürümü ve bağlantısı gösterilir."""
     from catalog import spec
+    from accounts.permissions import can
+    artwork = None
+    request = context.get("request")
+    if revision and product and revision.print_status == spec.YesNo.YES and request and \
+            can(request.user, "artwork.view", product):
+        from catalog import artwork as art
+        artwork = {"valid": art.valid_artwork(product, revision), "product": product}
     return {"revision": revision, "sections": spec.card(revision) if revision else [], "product": product,
-            "title": title, "customer": product.customer if (product and show_customer_notes) else None}
+            "title": title, "customer": product.customer if (product and show_customer_notes) else None,
+            "artwork": artwork}

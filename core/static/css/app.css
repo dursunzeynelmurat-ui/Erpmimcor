@@ -258,3 +258,5 @@ fieldset.spec-group legend { font-weight: 600; padding: 0 4px; }
   .recipe-row { grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-bottom: 10px; }
   .recipe-row .field:first-child, .recipe-row .field:last-child { grid-column: 1 / -1; }
 }
+.artwork-thumb { display: block; max-width: 220px; max-height: 160px; border: 1px solid var(--border); margin-top: 6px; }
+.artwork-list .artwork { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }

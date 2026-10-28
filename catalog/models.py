@@ -501,3 +501,64 @@ class RecipeDraftLine(models.Model):
 
     class Meta:
         ordering = ["position"]
+
+
+def artwork_path(instance, filename):
+    import uuid
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"baski-gorselleri/{instance.product_id}/{uuid.uuid4().hex}.{ext}"
+
+
+class PrintArtwork(models.Model):
+    """Baskı görseli / dosyası sürümü. Dosya herkese açık MEDIA adresinden sunulmaz; yalnız yetkili indirme
+    görünümüyle. Yeni sürüm yüklemek eski sürümü ve ona bağlı iş emrini değiştirmez."""
+
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="artworks")
+    version_no = models.PositiveIntegerField("Görsel sürümü")
+    file = models.FileField(upload_to=artwork_path)
+    original_name = models.CharField(max_length=200)
+    content_type = models.CharField(max_length=60)
+    size = models.PositiveIntegerField()
+    note = models.CharField("Açıklama", max_length=200, blank=True)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField("Kullanımda", default=True)
+
+    class Meta:
+        ordering = ["product", "-version_no"]
+        constraints = [models.UniqueConstraint(fields=["product", "version_no"], name="uniq_artwork_version")]
+
+    def __str__(self):
+        return f"{self.product.code} görsel s.{self.version_no}"
+
+    @property
+    def is_image(self):
+        return self.content_type in ("image/png", "image/jpeg")
+
+
+class ArtworkApprovalKind(models.TextChoices):
+    TECHNICAL = "ic_teknik", "İç teknik onay (üretime uygun)"
+    CUSTOMER = "musteri", "Müşteri onayı"
+
+
+class ArtworkApproval(models.Model):
+    """Onay belirli bir görsel sürümü + o andaki baskı özellikleri (imza) içindir. Baskı özellikleri değişen
+    revizyonda onay geçersiz sayılır ve yeniden gerekir. İç teknik onay ile müşteri onayı ayrı kayıttır; satışın
+    müşteri onayını kaydetmesi teknik üretim onayı vermez."""
+
+    artwork = models.ForeignKey(PrintArtwork, on_delete=models.PROTECT, related_name="approvals")
+    kind = models.CharField(max_length=10, choices=ArtworkApprovalKind.choices)
+    revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, related_name="+")
+    print_signature = models.JSONField()
+    evidence = models.CharField("Kanıt / referans", max_length=200, blank=True,
+                                help_text="Örnek: 12.11.2026 tarihli e-posta, imzalı prova no.")
+    customer_contact = models.CharField("Müşteride onaylayan", max_length=120, blank=True)
+    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    approved_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name="+")
+    revoke_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-approved_at"]

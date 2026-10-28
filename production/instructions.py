@@ -26,26 +26,52 @@ def _q(value):
 
 
 def technical_info(op):
-    """Operasyon türüne göre gereken teknik alt küme (sabitlenmiş revizyondan)."""
+    """Operasyon türüne göre gereken teknik alt küme (sabitlenmiş revizyondan). Matbaa yalnız baskı bilgisini ve
+    iş emrine sabitlenmiş görsel sürümünü alır; karışım yalnız extruder talimatındadır."""
+    from catalog import spec
     rev = op.work_order.recipe_revision
     info = {"revizyon": f"Rev.{rev.rev_no}"}
+
+    def put(*names):
+        for n in names:
+            value = getattr(rev, n)
+            if value not in (None, ""):
+                info[n] = spec.display(spec.BY_NAME[n], value)
+
     if op.machine_type == MachineType.EXTRUDER:
         info.update({"en_mm": _q(rev.width_mm), "kalinlik_mikron": _q(rev.thickness_micron), "renk": rev.color,
                      "karisim": [{"malzeme": c.material.code, "ad": c.material.name, "oran": _q(c.percentage)}
                                  for c in rev.components.select_related("material")]})
+        put("width_basis", "gusset_type", "gusset_depth_mm", "width_tol_mm", "thickness_tol_micron", "appearance",
+            "color_system", "color_code")
     elif op.machine_type == MachineType.PRINT:
         info.update({"renk": rev.color, "baski": rev.print_spec or "—", "en_mm": _q(rev.width_mm)})
+        put("product_length_mm", "plate_status", "plate_code", "cylinder_circumference_mm", "print_repeat_mm",
+            "print_gap_mm", "print_color_count", "print_colors", "print_sides", "print_direction")
+        art = op.work_order.artwork
+        if art:
+            info["gorsel"] = {"surum": art.version_no, "id": art.pk, "dosya": art.original_name,
+                              "resim": art.is_image}
     elif op.machine_type == MachineType.PERFORATION:
         info.update({"perfore": rev.perforation_spec or "—", "en_mm": _q(rev.width_mm)})
+        put("perforation", "perforation_pitch_mm", "product_length_mm")
     elif op.machine_type == MachineType.SLITTING:
         info.update({"en_mm": _q(rev.width_mm), "rulo_boyu_m": _q(rev.length_m)})
+        put("width_tol_mm")
     info["proses"] = rev.process_notes or ""
     return info
 
 
-TECH_LABELS = {"revizyon": "Teknik revizyon", "en_mm": "En (mm)", "kalinlik_mikron": "Kalınlık (µ)", "renk": "Renk",
-               "baski": "Baskı talimatı", "perfore": "Perfore talimatı", "rulo_boyu_m": "Rulo boyu (m)",
-               "proses": "Proses notu"}
+def _tech_labels():
+    from catalog import spec
+    labels = {"revizyon": "Teknik revizyon", "en_mm": "En (mm)", "kalinlik_mikron": "Kalınlık (µ)", "renk": "Renk",
+              "baski": "Baskı notu", "perfore": "Perfore notu", "rulo_boyu_m": "Rulo boyu (m)",
+              "proses": "Proses notu", "gorsel": "Baskı görseli"}
+    labels.update({f.name: f.label for f in spec.FIELDS})
+    return labels
+
+
+TECH_LABELS = _tech_labels()
 
 
 def can_view_technical(user, op):

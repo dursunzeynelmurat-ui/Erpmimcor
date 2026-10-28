@@ -14,6 +14,12 @@ def sync_template_role(apps, code, old_perms, new_perms, reason):
     if role is None:
         return "yok"
     current = dict(RolePermission.objects.filter(role=role).values_list("action", "scope"))
+    # Rol, sonraki bir sürümün şablonuyla oluşturulmuşsa (temiz kurulumda ilk migration güncel şablonu kullanır),
+    # bu değişiklikten sonra eklenen yetkiler karşılaştırmada yok sayılır ve korunur.
+    from accounts.catalog import TEMPLATES
+    live = dict(TEMPLATES[code][2]) if code in TEMPLATES else {}
+    later = {a: s for a, s in current.items() if a not in old_perms and a not in new_perms and live.get(a) == s}
+    current = {a: s for a, s in current.items() if a not in later}
     if current == dict(new_perms):
         return "guncel"  # rol zaten yeni şablonla oluşturulmuş (ör. eski veritabanında rolleri bu sürüm yarattı)
     if current != dict(old_perms):
@@ -23,7 +29,8 @@ def sync_template_role(apps, code, old_perms, new_perms, reason):
                                 reason=f"Rol özelleştirilmiş; şablon değişikliği otomatik uygulanmadı. {reason}")
         return "ozel"
     RolePermission.objects.filter(role=role).delete()
-    RolePermission.objects.bulk_create([RolePermission(role=role, action=a, scope=s) for a, s in new_perms.items()])
+    RolePermission.objects.bulk_create([RolePermission(role=role, action=a, scope=s)
+                                        for a, s in {**new_perms, **later}.items()])
     removed = {a: s for a, s in old_perms.items() if new_perms.get(a) != s}
     added = {a: s for a, s in new_perms.items() if old_perms.get(a) != s}
     AuditLog.objects.create(user=None, action="role.update", object_type="accounts.accessrole", object_id=str(role.pk),

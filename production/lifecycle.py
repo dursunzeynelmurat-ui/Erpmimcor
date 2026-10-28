@@ -64,10 +64,34 @@ def release(actor, wo):
     conflict = revision_conflict(wo)
     if conflict:
         raise BusinessRuleError(conflict)
+    changes = {"status": (WorkOrderStatus.DRAFT, WorkOrderStatus.PLANNED)}
+    pin = _pin_artwork(wo)
+    if pin:
+        changes["baski_gorseli"] = pin
     wo.status, wo.released_at, wo.released_by = WorkOrderStatus.PLANNED, timezone.now(), actor
     wo.save()
-    audit(actor, "workorder.release", wo, {"status": (WorkOrderStatus.DRAFT, wo.status)})
+    audit(actor, "workorder.release", wo, changes)
     return wo
+
+
+def _pin_artwork(wo):
+    """Baskılı revizyonda geçerli (iç teknik + gerekiyorsa müşteri onaylı) görsel şarttır; iş emri o sürüme sabitlenir.
+    Önceden sabitlenmiş ve hâlâ geçerli sürüm korunur (yeni yükleme eski iş emrini değiştirmez)."""
+    from catalog import artwork as art
+    from catalog.spec import YesNo
+    rev = wo.recipe_revision
+    if rev.print_status != YesNo.YES:
+        return None
+    if wo.artwork_id and art.approval_state(wo.artwork, rev)["valid"]:
+        return None
+    chosen = art.valid_artwork(wo.product, rev)
+    if chosen is None:
+        need = "iç teknik onaylı ve müşteri onaylı" if art.requires_customer_approval() else "iç teknik onaylı"
+        raise BusinessRuleError(f"Bu ürün baskılı (Rev.{rev.rev_no}); serbest bırakmak için bu baskı özellikleriyle "
+                                f"{need} bir baskı görseli gerekir. Ürünün 'Baskı görselleri' sayfasından onaylayın.")
+    old = wo.artwork.version_no if wo.artwork_id else None
+    wo.artwork = chosen
+    return (old, f"s.{chosen.version_no}")
 
 
 @transaction.atomic

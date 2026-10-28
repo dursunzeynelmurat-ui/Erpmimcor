@@ -10,7 +10,7 @@
   <dt>Ürün</dt><dd>{{ s.urun }}</dd><dt>Makine</dt><dd>{{ s.makine }}</dd>
   <dt>Planlanan tarih / vardiya</dt><dd>{{ s.planlanan_tarih|default:"—" }} · {{ s.vardiya|default:"—" }}{% if s.calisma_sirasi %} · sıra {{ s.calisma_sirasi }}{% endif %}</dd>
   <dt>Hedef</dt><dd>{{ s.hedef }}</dd>
-  {% for k, v in s.teknik.items %}{% if k == "karisim" %}<dt>Karışım</dt><dd>{% for m in v %}{{ m.malzeme }} {{ m.ad }} %{{ m.oran }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>{% elif v %}<dt>{{ tech_labels|get_item:k|default:k }}</dt><dd>{{ v }}</dd>{% endif %}{% endfor %}
+  {% for k, v in s.teknik.items %}{% if k == "karisim" %}<dt>Karışım</dt><dd>{% for m in v %}{{ m.malzeme }} {{ m.ad }} %{{ m.oran }}{% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>{% elif k == "gorsel" %}<dt>Baskı görseli</dt><dd>Sürüm {{ v.surum }} · {{ v.dosya }}{% if v.resim %}<br><img class="artwork-thumb" src="{% url 'catalog:artwork_file' v.id %}?onizleme=1" alt="Baskı görseli sürüm {{ v.surum }} önizlemesi">{% else %} <small class="muted">(PDF; önizleme yok, dosyayı açın)</small>{% endif %} <a href="{% url 'catalog:artwork_file' v.id %}" class="no-print">Dosyayı aç</a></dd>{% elif v %}<dt>{{ tech_labels|get_item:k|default:k }}</dt><dd>{{ v }}</dd>{% endif %}{% endfor %}
   {% if s.paketleme %}<dt>Paketleme</dt><dd>{{ s.paketleme }}</dd>{% endif %}
   {% if s.etiketleme %}<dt>Etiketleme</dt><dd>{{ s.etiketleme }}</dd>{% endif %}
   {% if s.belgeler %}<dt>Belge referansları</dt><dd>{% for d in s.belgeler %}{{ d.baslik }} (sürüm {{ d.surum|default:"—" }}{% if d.tarih %}, {{ d.tarih }}{% endif %}){% if not forloop.last %}<br>{% endif %}{% endfor %}</dd>{% endif %}

@@ -11,6 +11,7 @@ CUSTOMER_PATHS = {
     "catalog.customercontact": "customer",
     "catalog.customeraddress": "customer",
     "catalog.customerdocument": "customer",
+    "catalog.printartwork": "product__customer",
     "catalog.customeraccess": "customer",
     "orders.salesorder": "customer",
     "orders.orderline": "order__customer",

@@ -137,7 +137,15 @@ def create_revision(actor, product, spec, components, reason="", notes=None):
     unknown = set(spec) - set(specdef.FIELD_NAMES)
     if unknown:
         raise BusinessRuleError("Tanımsız teknik alan: " + ", ".join(sorted(unknown)))
-    spec = specdef.clean_hidden({n: spec.get(n) for n in specdef.FIELD_NAMES})
+    spec = {n: spec.get(n) for n in specdef.FIELD_NAMES}
+    for f in specdef.FIELDS:  # servis doğrudan çağrıldığında metin sayılar da güvenle çevrilir
+        v = spec[f.name]
+        if isinstance(v, str) and f.kind in ("decimal", "int"):
+            try:
+                spec[f.name] = (Decimal(v.replace(",", ".")) if f.kind == "decimal" else int(v)) if v.strip() else None
+            except Exception:
+                raise BusinessRuleError(f"{f.label} sayı olmalı.", field=f.name)
+    spec = specdef.clean_hidden(spec)
     spec = {n: ("" if v is None and specdef.BY_NAME[n].kind not in ("decimal", "int") else v) for n, v in spec.items()}
     validate_spec(spec, components)
     materials = [m for m, _ in components]

@@ -28,6 +28,9 @@ class WorkOrder(models.Model):
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="work_orders", verbose_name="Ürün")
     recipe_revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, related_name="work_orders",
                                         verbose_name="Reçete revizyonu")
+    # Baskılı işte serbest bırakılırken geçerli onaylı görsel sürümüne sabitlenir; sonraki yüklemeler değiştirmez.
+    artwork = models.ForeignKey("catalog.PrintArtwork", on_delete=models.PROTECT, null=True, blank=True,
+                                related_name="work_orders", verbose_name="Baskı görseli sürümü")
     target_quantity = models.DecimalField("Hedef miktar", **QTY)
     unit = models.CharField("Birim", max_length=10, choices=Unit.choices, default=Unit.BOX)
     planned_start = models.DateField("Planlanan başlangıç", null=True, blank=True)

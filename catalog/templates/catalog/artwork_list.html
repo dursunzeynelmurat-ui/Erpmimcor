@@ -1,0 +1,57 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Baskı görselleri {{ product.code }}{% endblock %}
+{% block content %}
+<h1>Baskı görselleri: {{ product.code }}</h1>
+<p>{{ product.name }} · {{ product.customer.name }}{% if revision %} · Güncel teknik revizyon Rev.{{ revision.rev_no }}{% endif %}</p>
+{% if not print_on %}<p class="msg msg-warning">Ürünün güncel revizyonunda "Baskı: Var" seçili değil. Görsel yüklenebilir
+  ama onaylanamaz; önce planlama teknik özelliklerde baskıyı tanımlamalı.</p>{% endif %}
+<section class="card"><h2>Nasıl çalışır?</h2>
+  <ol>
+    <li>Yeni dosya <strong>taslak</strong> sürüm olarak yüklenir.</li>
+    <li>Planlama dosyayı baskı özellikleriyle kontrol edip <strong>iç teknik onay</strong> verir.</li>
+    <li>Müşterinin onayı ayrıca kaydedilir (kişi, tarih, kanıt).{% if not requires_customer %} Bu kurulumda iş emri için müşteri onayı şartı kapalı.{% endif %}</li>
+    <li>İş emri serbest bırakılırken geçerli sürüme bağlanır. Sonra yüklenen dosyalar o iş emrini değiştirmez.</li>
+  </ol>
+  <p class="muted">Klişe, kazan çevresi, tekrar boyu, boşluk, renkler, yüz, yön, en veya ürün boyu değişirse eski onaylar geçersiz olur ve yeniden gerekir.</p>
+</section>
+{% if revision and print_on %}{% spec_card revision product title="Baskı için geçerli teknik özellikler" show_customer_notes=False %}{% endif %}
+
+{% if upload_form %}
+<form method="post" action="{% url 'catalog:artwork_upload' product.pk %}" enctype="multipart/form-data" class="card form" novalidate>{% csrf_token %}
+  <h2>Yeni görsel sürümü yükle</h2>
+  {% include "partials/form_fields.html" with form=upload_form %}
+  <button type="submit" class="btn btn-primary">Yükle (taslak sürüm)</button>
+</form>
+{% endif %}
+
+<section class="card artwork-list"><h2>Sürümler</h2>
+{% for r in rows %}
+  <article class="artwork">
+    <h3>Sürüm {{ r.art.version_no }} ·
+      {% if r.state.valid %}<span class="status status-uygun">✓ Geçerli (üretimde kullanılabilir)</span>
+      {% elif r.state.technical %}<span class="status status-kontrol_bekliyor">İç teknik onaylı · müşteri onayı bekliyor</span>
+      {% elif r.state.stale %}<span class="status status-blokeli">Onay geçersiz: baskı özellikleri değişti</span>
+      {% else %}<span class="status">Taslak · onay yok</span>{% endif %}</h3>
+    <p class="meta">{{ r.art.original_name }} · {{ r.art.uploaded_by.full_name }} · {{ r.art.uploaded_at|date:"d.m.Y H:i" }}{% if r.art.note %} · {{ r.art.note }}{% endif %}</p>
+    {% if r.art.is_image %}<img class="artwork-thumb" src="{% url 'catalog:artwork_file' r.art.pk %}?onizleme=1" alt="Sürüm {{ r.art.version_no }} önizlemesi">{% endif %}
+    <p><a href="{% url 'catalog:artwork_file' r.art.pk %}">Dosyayı indir</a>{% if r.work_orders %} · Kullanan iş emirleri: {{ r.work_orders|join:", " }}{% endif %}</p>
+    <dl class="kv">
+      <dt>İç teknik onay</dt><dd>{% if r.state.technical %}{{ r.state.technical.approved_by.full_name }} · {{ r.state.technical.approved_at|date:"d.m.Y H:i" }} (Rev.{{ r.state.technical.revision.rev_no }}){% else %}Yok{% endif %}</dd>
+      <dt>Müşteri onayı</dt><dd>{% if r.state.customer %}Kaydeden {{ r.state.customer.approved_by.full_name }} · {{ r.state.customer.approved_at|date:"d.m.Y H:i" }}{% if r.state.customer.customer_contact %} · Onaylayan: {{ r.state.customer.customer_contact }}{% endif %} · Kanıt: {{ r.state.customer.evidence }}{% else %}Yok{% endif %}</dd>
+    </dl>
+    {% if r.state.stale %}<p class="muted">Geçersizleşmiş onaylar: {% for a in r.state.stale %}{{ a.get_kind_display }} (Rev.{{ a.revision.rev_no }}, {{ a.approved_at|date:"d.m.Y" }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
+    {% if print_on and r.art.is_active %}<div class="actions">
+      {% if can_tech and not r.state.technical %}<form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'ic_teknik' %}" class="inline-form">{% csrf_token %}{{ confirm_form.idem_key }}
+        <button type="submit" class="btn btn-primary">İç teknik onay ver</button></form>{% endif %}
+      {% if can_customer and not r.state.customer %}<details class="inline-reason"><summary class="btn">Müşteri onayını kaydet</summary>
+        <form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'musteri' %}" class="card form">{% csrf_token %}{{ customer_form.idem_key }}
+          {% include "partials/field.html" with field=customer_form.customer_contact %}{% include "partials/field.html" with field=customer_form.evidence %}
+          <p class="muted">Bu kayıt müşterinin görseli onayladığını belgeler; üretim için iç teknik onay ayrıca gerekir.</p>
+          <button type="submit" class="btn btn-primary">Müşteri onayını kaydet</button></form></details>{% endif %}
+      {% if can_tech and r.state.technical %}{% url 'catalog:artwork_revoke' r.state.technical.pk as u %}{% include "partials/reason_button.html" with action=u label="İç teknik onayı geri al" hint="Yeni iş emirleri bu sürümle serbest bırakılamaz; sabitlenmiş iş emirleri değişmez." %}{% endif %}
+      {% if can_customer and r.state.customer %}{% url 'catalog:artwork_revoke' r.state.customer.pk as u %}{% include "partials/reason_button.html" with action=u label="Müşteri onayını geri al" %}{% endif %}
+    </div>{% endif %}
+  </article>
+{% empty %}<p class="muted">Henüz görsel yüklenmemiş.</p>{% endfor %}
+</section>
+{% endblock %}

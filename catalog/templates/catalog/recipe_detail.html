@@ -4,6 +4,7 @@
 <h1>Reçete: {{ product.code }}</h1>
 <p>{{ product.name }} · Müşteri: {{ product.customer.name }}</p>
 {% if can.recipe_change and product.is_active %}<a class="btn btn-primary" href="{% url 'catalog:revision_create' product.pk %}">{% if open_draft %}Açık taslağa git{% elif recipe %}Değiştir (yeni revizyon taslağı){% else %}Reçete oluştur{% endif %}</a>{% endif %}
+<p><a class="btn" href="{% url 'catalog:artwork_list' product.pk %}">Baskı görselleri</a></p>
 <p class="muted">Reçete değişikliği her zaman yeni revizyon oluşturur. Onaylanmış iş emirleri kendi revizyonunu korur.</p>
 {% for rev in revisions %}
 <section class="card">

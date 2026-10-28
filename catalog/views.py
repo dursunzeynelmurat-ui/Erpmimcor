@@ -258,3 +258,97 @@ def lot_detail(request, pk):
         "lot": lot, "movements": lot.movements.select_related("user", "work_order"),
         "can_request": can(request.user, "correction.request", lot),
     })
+
+
+# --- Baskı görselleri -------------------------------------------------------------------
+
+def _artwork_product(request, product_pk):
+    product = get_object_or_404(Product.objects.select_related("customer"), pk=product_pk)
+    if not can(request.user, "artwork.view", product):
+        raise Http404
+    return product
+
+
+def artwork_list(request, product_pk):
+    from . import artwork as art
+    from .forms import ArtworkUploadForm, CustomerApprovalForm
+    product = _artwork_product(request, product_pk)
+    revision = product.current_revision
+    rows = [{"art": a, "state": art.approval_state(a, revision) if revision else None,
+             "work_orders": list(a.work_orders.values_list("code", flat=True)[:10])}
+            for a in product.artworks.select_related("uploaded_by")]
+    user = request.user
+    return render(request, "catalog/artwork_list.html", {
+        "product": product, "revision": revision, "rows": rows,
+        "print_on": bool(revision and revision.print_status == "var"),
+        "requires_customer": art.requires_customer_approval(),
+        "upload_form": ArtworkUploadForm() if can(user, "artwork.manage", product) else None,
+        "can_tech": can(user, "artwork.approve", product), "can_customer": can(user, "artwork.customer_approval", product),
+        "customer_form": CustomerApprovalForm(), "confirm_form": ConfirmForm(), "reason_form": ReasonForm(),
+    })
+
+
+@require_POST
+def artwork_upload(request, product_pk):
+    from . import artwork as art
+    from .forms import ArtworkUploadForm
+    product = _artwork_product(request, product_pk)
+    check(request.user, "artwork.manage", product)
+    url = reverse("catalog:artwork_list", args=[product.pk])
+    form = ArtworkUploadForm(request.POST, request.FILES)
+    resp = run_form_action(request, form, action="artwork.upload",
+                           fn=lambda d: art.upload_artwork(request.user, product, d["file"], d["note"]),
+                           success_message=lambda a: f"Görsel sürüm {a.version_no} yüklendi (taslak). Sıradaki adım: "
+                                                     "planlama iç teknik onay verir, müşteri onayı kaydedilir.",
+                           url_for=lambda _: url)
+    return resp or redirect(url)
+
+
+@require_POST
+def artwork_approve(request, pk, kind):
+    from . import artwork as art
+    from .forms import CustomerApprovalForm
+    from .models import ArtworkApprovalKind, PrintArtwork
+    artwork = get_object_or_404(PrintArtwork.objects.select_related("product"), pk=pk)
+    _artwork_product(request, artwork.product_id)
+    if kind not in ArtworkApprovalKind.values:
+        raise Http404
+    url = reverse("catalog:artwork_list", args=[artwork.product_id])
+    form = CustomerApprovalForm(request.POST) if kind == ArtworkApprovalKind.CUSTOMER else ConfirmForm(request.POST)
+    resp = run_form_action(
+        request, form, action=f"artwork.approve_{kind}",
+        fn=lambda d: art.approve(request.user, artwork, kind, evidence=d.get("evidence", ""),
+                                 customer_contact=d.get("customer_contact", "")),
+        success_message=lambda a: f"{a.get_kind_display()} kaydedildi (sürüm {artwork.version_no}).", url_for=lambda _: url)
+    return resp or redirect(url)
+
+
+@require_POST
+def artwork_revoke(request, pk):
+    from . import artwork as art
+    from .models import ArtworkApproval
+    approval = get_object_or_404(ArtworkApproval.objects.select_related("artwork"), pk=pk)
+    _artwork_product(request, approval.artwork.product_id)
+    url = reverse("catalog:artwork_list", args=[approval.artwork.product_id])
+    resp = run_form_action(request, ReasonForm(request.POST), action="artwork.revoke",
+                           fn=lambda d: art.revoke(request.user, approval, d["reason"]),
+                           success_message="Onay geri alındı. Etkisi: yeni iş emirleri bu sürümle serbest bırakılamaz; "
+                                           "daha önce sabitlenmiş iş emirleri değişmez.", url_for=lambda _: url)
+    return resp or redirect(url)
+
+
+def artwork_file(request, pk):
+    """Yetkili indirme. PNG/JPG ?onizleme=1 ile satır içi gösterilir; PDF her zaman ek olarak iner."""
+    from django.http import FileResponse
+    from . import artwork as art
+    from .models import PrintArtwork
+    artwork = get_object_or_404(PrintArtwork.objects.select_related("product"), pk=pk)
+    if not art.can_view_file(request.user, artwork):
+        raise Http404
+    inline = request.GET.get("onizleme") == "1" and artwork.is_image
+    resp = FileResponse(artwork.file.open("rb"), as_attachment=not inline, filename=artwork.original_name,
+                        content_type=artwork.content_type)
+    resp["X-Content-Type-Options"] = "nosniff"
+    resp["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    resp["Cache-Control"] = "private, no-store"
+    return resp
