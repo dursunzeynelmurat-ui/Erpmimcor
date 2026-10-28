@@ -103,6 +103,9 @@ def workorder_detail(request, pk):
         "final_statuses": [WorkOrderStatus.CLOSED, WorkOrderStatus.CANCELLED],
         "stop_reasons": StopReason.choices, "tech_labels": instructions.TECH_LABELS,
         "remaining": lifecycle.remaining_target(wo),
+        # Üretim sahası (talimat yetkili) kullanıcıları ölçüleri yalnız aktif teknik erişimi varken görür
+        "show_spec": (can(user, "recipe.view") or any(r["tech"] for r in op_rows)
+                      or not can(user, "instruction.view")),
         "components": (wo.recipe_revision.components.select_related("material") if can(user, "recipe.view") else None),
         "handovers": _handovers(wo, user),
         "coils": wo.coils.select_related("operation", "machine").order_by("operation__seq", "created_at"),
@@ -168,6 +171,14 @@ def _get_wo(request, pk):
     return get_scoped_or_404(WorkOrder.objects.select_related("product", "order_line"), request.user, "workorder.view", pk=pk)
 
 
+def _get_wo_for_execute(request, pk):
+    """Üretim kaydı formları (GET dahil) nesne kapsamlı production.execute ister: devri teslim edilmiş eski vardiya
+    formu açamaz; form içeriği (lot listesi, kapanış özeti) reçete bileşimini dolaylı göstermesin."""
+    wo = _get_wo(request, pk)
+    check(request.user, "production.execute", wo)
+    return wo
+
+
 def _wo_page(request, wo, form, title, submit, template="core/form_page.html", extra=None):
     ctx = {"form": form, "title": f"{wo.code}: {title}", "submit": submit, "back": _wo_url(wo), "wo": wo}
     ctx.update(extra or {})
@@ -178,6 +189,7 @@ def _wo_page(request, wo, form, title, submit, template="core/form_page.html", e
 def coil_create(request, op_pk):
     op = get_scoped_or_404(WorkOrderOperation.objects.select_related("work_order", "machine"), request.user,
                            "workorder.view", pk=op_pk)
+    check(request.user, "production.execute", op)
     form = CoilForm(op, request.POST or None)
     if request.method == "POST":
         resp = run_form_action(
@@ -222,7 +234,7 @@ def coil_detail(request, pk):
 
 @require_perm("production.execute")
 def material_issue(request, pk):
-    wo = _get_wo(request, pk)
+    wo = _get_wo_for_execute(request, pk)
     form = MaterialMoveForm(request.POST or None, deviation=can(request.user, "material.deviation", wo),
                             recipe_ids=services.recipe_material_ids(wo))
     if request.method == "POST":
@@ -237,7 +249,7 @@ def material_issue(request, pk):
 
 @require_perm("production.execute")
 def material_return(request, pk):
-    wo = _get_wo(request, pk)
+    wo = _get_wo_for_execute(request, pk)
     lots = MaterialLot.objects.filter(pk__in=[lot.pk for lot in services.issued_by_lot(wo)]).select_related("material")
     form = MaterialMoveForm(request.POST or None, lots=lots)
     if request.method == "POST":
@@ -253,7 +265,7 @@ def material_return(request, pk):
 def pallet_from_production(request, pk):
     from warehouse import services as wh
 
-    wo = _get_wo(request, pk)
+    wo = _get_wo_for_execute(request, pk)
     form = PalletFromProductionForm(wo, request.POST or None)
     if request.method == "POST":
         def run(d):
@@ -270,7 +282,7 @@ def pallet_from_production(request, pk):
 
 @require_perm("production.execute")
 def workorder_close(request, pk):
-    wo = _get_wo(request, pk)
+    wo = _get_wo_for_execute(request, pk)
     form = ClosureForm(request.POST or None)
     if request.method == "POST":
         resp = run_form_action(

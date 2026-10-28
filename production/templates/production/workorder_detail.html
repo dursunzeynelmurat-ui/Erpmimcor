@@ -20,7 +20,7 @@
   <dt>Amaç</dt><dd>{{ wo.get_purpose_display }}{% if wo.order_line %} – <a href="{% url 'orders:order_detail' wo.order_line.order.pk %}">{{ wo.order_line.code }}</a>{% endif %}</dd>
   <dt>Ürün</dt><dd>{{ wo.product }} ({{ wo.product.customer.name }})</dd>
   <dt>Hedef</dt><dd>{{ wo.target_quantity|qty }} {{ wo.get_unit_display }}{% if remaining is not None %} · kalan {{ remaining|qty }} {{ wo.get_unit_display }}{% endif %}</dd>
-  <dt>Teknik revizyon</dt><dd>Rev.{{ wo.recipe_revision.rev_no }} · {{ wo.recipe_revision.width_mm|qty }} mm · {{ wo.recipe_revision.thickness_micron|qty }} µ
+  <dt>Teknik revizyon</dt><dd>Rev.{{ wo.recipe_revision.rev_no }}{% if show_spec %} · {{ wo.recipe_revision.width_mm|qty }} mm · {{ wo.recipe_revision.thickness_micron|qty }} µ{% endif %}
      {% if components is not None %}({% for c in components %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}){% else %}<small class="muted">· karışım bilgisi yalnız ilgili operasyonun talimatında</small>{% endif %}</dd>
   <dt>Sorumlu ustabaşı</dt><dd>{{ wo.assigned_foreman.full_name|default:"— (atanmadı)" }}</dd>
   <dt>Planlanan başlangıç</dt><dd>{{ wo.planned_start|date:"d.m.Y"|default:"—" }}</dd>
