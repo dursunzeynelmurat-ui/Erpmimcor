@@ -159,6 +159,8 @@ def approve_draft(actor, draft):
                                draft.change_reason, notes={ln.material_id: ln.note for ln in lines})
     draft.status, draft.result_revision, draft.updated_by = DraftStatus.APPROVED, revision, actor
     draft.save()
+    from orders.repeat import on_draft_closed
+    on_draft_closed(draft, actor)
     return revision
 
 
@@ -170,6 +172,8 @@ def discard_draft(actor, draft, reason):
     draft = _lock_open(draft)
     draft.status, draft.updated_by = DraftStatus.DISCARDED, actor
     draft.save()
+    from orders.repeat import on_draft_closed
+    on_draft_closed(draft, actor)
     audit(actor, "recipe.draft_discard", draft.product, {"taslak": (draft.pk, None)}, reason=reason,
           code=draft.product.code)
     return draft

@@ -7,7 +7,10 @@
   <dt>Ürün</dt><dd>{{ line.product }}</dd>
   <dt>Miktar</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
   <dt>Termin</dt><dd>{{ line.due_date|date:"d.m.Y"|default:"—" }}</dd>
+  {% if line.source_line %}<dt>Repete kaynağı</dt><dd>{{ line.source_line.code }} · {% if line.source_line.approved_revision %}Rev.{{ line.source_line.approved_revision.rev_no }} ile üretildi{% else %}teknik onaysız{% endif %}</dd>{% endif %}
 </dl>
+{% for w in source_warnings %}<p class="msg msg-warning">{{ w }}</p>{% endfor %}
+{% if pending %}<p class="msg msg-warning">Satışın teknik değişiklik isteği karara bağlanmadan onay verilemez. <a href="{% url 'orders:change_request' pending.pk %}">İsteği aç</a></p>{% endif %}
 {% if revision %}
 {% spec_card revision line.product title="Güncel teknik özellikler" %}
 <section class="card"><h2>Güncel karışım: Rev.{{ revision.rev_no }}</h2>

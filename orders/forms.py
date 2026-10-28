@@ -181,3 +181,91 @@ class OverDeliveryForm(IdemForm):
                                help_text="Kalem miktarının üzerine izin verilen toplam. 0 = izni kaldır. Sevk edilmiş + "
                                          "ayrılmış miktarın altına indirilemez.")
     reason = forms.CharField(label="Gerekçe", widget=forms.Textarea(attrs={"rows": 2}))
+
+
+class RepeatOrderForm(IdemForm):
+    """Repete sihirbazı: 2) kalem seçimi + miktar/termin (+ isteğe bağlı değişiklik), 3) teslimat ve kontrol.
+    Bilinen bilgiler yeniden yazdırılmaz: teknik değerler kaynak revizyondan hazır gelir."""
+
+    STEP_ORDER_FIELDS = ["purpose", "charge", "customer_ref", "due_date", "notes", "delivery_confirmed"]
+
+    purpose = OrderCreateForm.base_fields["purpose"]
+    charge = OrderCreateForm.base_fields["charge"]
+    customer_ref = OrderCreateForm.base_fields["customer_ref"]
+    due_date = forms.DateField(label="Sipariş termini (genel)", widget=DATE, required=False,
+                               help_text="Kalemde ayrı termin yoksa bu kullanılır. Eski siparişin tarihi taşınmaz.")
+    notes = OrderCreateForm.base_fields["notes"]
+    delivery_confirmed = OrderCreateForm.base_fields["delivery_confirmed"]
+
+    def __init__(self, *args, candidates=(), **kwargs):
+        import copy
+        from catalog import spec
+        from catalog.forms import spec_form_field
+        from .repeat import base_values, source_warnings
+        super().__init__(*args, **kwargs)
+        for name in ("purpose", "charge", "customer_ref", "notes", "delivery_confirmed"):
+            self.fields[name] = copy.deepcopy(self.fields[name])
+        self.items = []
+        for ln in candidates:
+            p = ln.pk
+            warnings = source_warnings(ln)
+            blocked = not ln.product.is_active
+            self.fields[f"sel_{p}"] = forms.BooleanField(label="Bu kalemi tekrarla", required=False,
+                                                         disabled=blocked)
+            self.fields[f"qty_{p}"] = TRDecimalField(label=f"Yeni miktar ({ln.get_unit_display()})", max_digits=14,
+                                                     decimal_places=3, required=False, min_value=Decimal("0.001"),
+                                                     help_text=f"Önceki miktar: {qty(ln.quantity)}. Yeni miktarı yazın.")
+            self.fields[f"due_{p}"] = forms.DateField(label="Kalem termini", widget=DATE, required=False)
+            self.fields[f"chg_{p}"] = forms.BooleanField(
+                label="Teknik değişiklik istiyorum (revizyonlu repete)", required=False,
+                help_text="İşaretlemezseniz aynı teknik özellikle tekrar edilir.")
+            self.fields[f"reason_{p}"] = forms.CharField(label="Değişiklik gerekçesi", required=False,
+                                                         widget=forms.Textarea(attrs={"rows": 2}))
+            base = base_values(ln)
+            names = []
+            for f in spec.FIELDS:
+                if f.name not in spec.CHANGEABLE:
+                    continue
+                field = spec_form_field(f)
+                field.initial = base.get(f.name)
+                self.fields[f"s{p}_{f.name}"] = field
+                names.append(f.name)
+            self.items.append({"line": ln, "warnings": warnings, "blocked": blocked, "spec_names": names})
+
+    def item_fields(self, item):
+        p = item["line"].pk
+        return {k: self[f"{k}_{p}"] for k in ("sel", "qty", "due", "chg", "reason")}
+
+    def item_spec(self, item):
+        p = item["line"].pk
+        return [self[f"s{p}_{n}"] for n in item["spec_names"]]
+
+    def clean(self):
+        data = super().clean()
+        chosen = []
+        for item in self.items:
+            p = item["line"].pk
+            if not data.get(f"sel_{p}"):
+                continue
+            if data.get(f"qty_{p}") is None:
+                self.add_error(f"qty_{p}", "Tekrar edilen kalem için yeni miktarı yazın.")
+            changes = {}
+            if data.get(f"chg_{p}"):
+                from .repeat import base_values, diff_values
+                requested = {n: data.get(f"s{p}_{n}") for n in item["spec_names"]}
+                changes = {k: new for k, (_old, new) in diff_values(base_values(item["line"]), requested).items()}
+                if not changes:
+                    self.add_error(f"chg_{p}", "Değişiklik işaretli ama hiçbir teknik değer değişmedi. Değeri "
+                                               "değiştirin veya işareti kaldırın.")
+                if not (data.get(f"reason_{p}") or "").strip():
+                    self.add_error(f"reason_{p}", "Değişikliğin gerekçesini yazın (ör. müşteri boyu 500 mm istedi).")
+            chosen.append({"source_line": item["line"], "quantity": data.get(f"qty_{p}"),
+                           "due_date": data.get(f"due_{p}"), "changes": changes,
+                           "reason": (data.get(f"reason_{p}") or "").strip(), "item": item})
+        if not chosen and self.is_bound:
+            self.add_error(None, "Tekrar edilecek en az bir kalem işaretleyin.")
+        data["chosen"] = chosen
+        return data
+
+    def line_field_names(self):
+        return [n for n in self.fields if n not in self.STEP_ORDER_FIELDS and n != "idem_key"]

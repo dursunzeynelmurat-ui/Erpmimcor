@@ -7,7 +7,7 @@
     {% if can_approve %}{% url 'orders:order_approve' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Siparişi onayla" %}{% endif %}
     {% if can_change %}{% url 'orders:order_delete' order.pk as u %}{% include "partials/reason_button.html" with action=u label="Taslağı sil" btn_class="btn-danger" hint="Yalnız iş emri/rezervasyon/sevkiyatı olmayan taslak silinir; içerik işlem geçmişinde kalır." %}{% endif %}
   {% endif %}
-  {% if can_create %}{% url 'orders:order_copy' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Tekrar sipariş (kopya)" btn_class="btn" %}{% endif %}
+  {% if can_create %}<a class="btn" href="{% url 'orders:repeat_order' %}?musteri={{ order.customer_id }}&amp;kaynak={{ order.pk }}">Tekrar sipariş (repete)</a>{% endif %}
   {% if can_cancel and order.status != "iptal" and order.status != "tamamlandi" %}{% url 'orders:order_cancel' order.pk as u %}{% include "partials/reason_button.html" with action=u label="Siparişi iptal et" btn_class="btn-danger" hint="Sevk edilmemiş kalemler iptal edilir ve rezervasyonları bırakılır. Açık iş emri olan kalem için önce iş emri iptal edilmelidir." %}{% endif %}
   {% if can_change and not order.archived_at %}{% if order.status == "iptal" or order.status == "tamamlandi" %}{% url 'orders:order_archive' order.pk as u %}{% include "partials/confirm_button.html" with action=u label="Arşivle" btn_class="btn" %}{% endif %}{% endif %}
 </div>
@@ -19,6 +19,7 @@
   <dt>Termin</dt><dd>{{ order.due_date|date:"d.m.Y"|default:"—" }}</dd>
   <dt>Oluşturan</dt><dd>{{ order.created_by.full_name }} · {{ order.created_at|date:"d.m.Y H:i" }}</dd>
   {% if order.approved_at %}<dt>Onaylayan</dt><dd>{{ order.approved_by.full_name }} · {{ order.approved_at|date:"d.m.Y H:i" }}</dd>{% endif %}
+  <dt>Amaç / yöntem / ücret</dt><dd>{{ order.get_purpose_display|default:"Belirtilmemiş" }} · {{ order.get_creation_method_display|default:"Belirtilmemiş" }} · {{ order.get_charge_display|default:"Belirtilmemiş" }}</dd>
   {% if order.copied_from %}<dt>Kopya kaynağı</dt><dd><a href="{% url 'orders:order_detail' order.copied_from.pk %}">{{ order.copied_from.code }}</a></dd>{% endif %}
   {% if order.cancel_reason %}<dt>İptal gerekçesi</dt><dd>{{ order.cancel_reason }}</dd>{% endif %}
   {% if order.notes %}<dt>Not</dt><dd>{{ order.notes }}</dd>{% endif %}

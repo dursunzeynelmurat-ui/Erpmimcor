@@ -6,6 +6,7 @@
 <section class="card"><h2>Teknik onay bekleyen kalemler</h2>
 <ul class="list">{% for l in waiting %}
   <li><a href="{% url 'orders:line_approve' l.pk %}"><strong>{{ l.code }}</strong> {{ l.order.customer.name }} · {{ l.product.code }} · {{ l.quantity|qty }} {{ l.get_unit_display }}</a>
+    {% if l.source_line_id %} <span class="status">Repete</span>{% endif %}{% for cr in l.change_requests.all %}{% if cr.status == "bekliyor" or cr.status == "taslakta" %} <a class="status status-kontrol_bekliyor" href="{% url 'orders:change_request' cr.pk %}">Değişiklik isteği: {{ cr.get_status_display }}</a>{% endif %}{% endfor %}
   <span class="muted">Termin {{ l.due_date|date:"d.m.Y"|default:"—" }}</span></li>
 {% empty %}<li class="muted">Bekleyen kalem yok.</li>{% endfor %}</ul></section>
 <section class="card"><h2>Onaylı, iş emri bekleyen kalemler</h2>

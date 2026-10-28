@@ -148,9 +148,12 @@ def line_approve(request, pk):
             url_for=lambda ln: reverse("orders:planning_queue"))
         if resp:
             return resp
+    from .repeat import pending_request, source_warnings
     revision = line.product.current_revision
-    return render(request, "orders/line_approve.html", {"line": line, "form": form, "revision": revision,
-                                                        "history": history_for(line)})
+    return render(request, "orders/line_approve.html", {
+        "line": line, "form": form, "revision": revision, "history": history_for(line),
+        "source_warnings": source_warnings(line.source_line) if line.source_line_id else [],
+        "pending": pending_request(line)})
 
 
 # --- Aşama 2: sipariş yaşam döngüsü ---------------------------------------------------
@@ -275,3 +278,119 @@ def compat_revoke(request, pk):
     return _post(request, order, ReasonForm(request.POST), "order.compatibility_revoke",
                  lambda d: services.revoke_compatibility(request.user, exc, d["reason"]),
                  "Eşdeğerlik onayı geri alındı; ayrılmış/hazırlanan stok sevkte yeniden kontrol edilir.")
+
+
+# --- Repete / revizyonlu repete -------------------------------------------------------------
+
+@require_perm("order.create")
+def repeat_order(request):
+    """Tekrar sipariş sihirbazı: 1) müşteri, 2) kalemler (miktar/termin, isteğe bağlı değişiklik), 3) teslimat ve kontrol."""
+    from catalog.customers import order_snapshot
+    from .forms import RepeatOrderForm
+    from . import repeat
+    customers = scoped(Customer.objects.active(), request.user, "order.create").order_by("name")
+    cid = request.POST.get("musteri") or request.GET.get("musteri")
+    customer = customers.filter(pk=cid).first() if cid and str(cid).isdigit() else None
+    if customer is None:
+        return render(request, "orders/repeat_order.html", {"step": 1, "customers": customers})
+    candidates = list(repeat.candidate_lines(request.user, customer)[:30])
+    initial = {}
+    src = request.GET.get("kaynak")
+    if src and src.isdigit():
+        initial = {f"sel_{ln.pk}": True for ln in candidates if ln.order_id == int(src) and ln.product.is_active}
+    form = RepeatOrderForm(request.POST or None, candidates=candidates, initial=initial)
+    step, show_errors = 2, False
+    if request.method == "POST":
+        action = request.POST.get("git", "kaydet")
+        line_names = form.line_field_names()
+        if action == "ileri":
+            line_errors = {k: v for k, v in form.errors.items() if k in line_names or k == "__all__"}
+            step, show_errors = (2, True) if line_errors else (3, False)
+        elif action == "geri":
+            step = 2
+        else:
+            def create(d):
+                return repeat.create_repeat_order(
+                    request.user, customer=customer, due_date=d["due_date"], customer_ref=d["customer_ref"],
+                    notes=d["notes"], purpose=d["purpose"], charge=d["charge"],
+                    delivery_confirmed=d["delivery_confirmed"],
+                    items=[{k: v for k, v in c.items() if k != "item"} for c in d["chosen"]])
+            resp = run_form_action(
+                request, form, action="order.repeat", fn=create,
+                success_message=lambda o: f"Tekrar sipariş oluşturuldu: {o.code} ({o.get_creation_method_display()}, "
+                                          "taslak). Sıradaki adım: siparişi onaylayın; planlama teknik onayı verecek.",
+                url_for=lambda o: reverse("orders:order_detail", args=[o.pk]))
+            if resp:
+                return resp
+            show_errors = True
+            step = 2 if any(k in form.errors for k in line_names) or "__all__" in form.errors else 3
+    if form.is_bound and not show_errors:
+        form.errors.clear()
+    chosen = form.cleaned_data.get("chosen", []) if form.is_bound and hasattr(form, "cleaned_data") else []
+    for c in chosen:
+        from .repeat import base_values, diff_values
+        c["diff"] = [(spec_label(k), spec_show(k, o), spec_show(k, n))
+                     for k, (o, n) in diff_values(base_values(c["source_line"]), c["changes"]).items()]
+    return render(request, "orders/repeat_order.html", {
+        "step": step, "customer": customer, "form": form, "show_errors": show_errors, "chosen": chosen,
+        "snapshot": order_snapshot(customer), "visible_order": form.STEP_ORDER_FIELDS,
+    })
+
+
+def spec_label(name):
+    from catalog import spec
+    f = spec.BY_NAME[name]
+    return f"{f.label} ({f.unit})" if f.unit else f.label
+
+
+def spec_show(name, value):
+    from catalog import spec
+    return spec.display(spec.BY_NAME[name], value)
+
+
+def change_request(request, pk):
+    """Planlama: revizyonlu repete isteğini eski/yeni yan yana görür ve karar verir."""
+    from .models import LineChangeRequest
+    from . import repeat
+    cr = get_object_or_404(LineChangeRequest.objects.select_related("line__order__customer", "line__product",
+                                                                    "base_revision", "requested_by", "draft"), pk=pk)
+    get_scoped_or_404(OrderLine.objects.all(), request.user, "order.view", pk=cr.line_id)
+    return render(request, "orders/change_request.html", {
+        "cr": cr, "rows": repeat.comparison(cr), "can_decide": repeat.can_decide(request.user),
+        "confirm_form": ConfirmForm(), "reason_form": ReasonForm(),
+    })
+
+
+@require_POST
+@require_perm("planning.approve")
+def change_request_decide(request, pk, action):
+    from .models import LineChangeRequest
+    from . import repeat
+    cr = get_object_or_404(LineChangeRequest, pk=pk)
+    url = reverse("orders:change_request", args=[pk])
+    if action == "revizyon":
+        return _post_action_redirect(request, ConfirmForm(request.POST), "order.change_request_draft",
+                                     lambda d: repeat.start_new_revision(request.user, cr),
+                                     "Yeni revizyon taslağı açıldı; istenen değerler uygulandı, karışım değişmedi. "
+                                     "Kontrol edip onaylayın.",
+                                     lambda dr: reverse("catalog:recipe_draft", args=[dr.pk]), url)
+    if action == "urun":
+        from django import forms as djforms
+
+        class NewProductForm(ConfirmForm):
+            code = djforms.CharField(label="Yeni ürün kodu", max_length=40)
+            name = djforms.CharField(label="Ürün adı", max_length=200, required=False)
+        return _post_action_redirect(request, NewProductForm(request.POST), "order.change_request_product",
+                                     lambda d: repeat.start_new_product(request.user, cr, code=d["code"], name=d["name"]),
+                                     "Yeni ürün kodu açıldı ve kalem bu koda geçti; reçete taslağını kontrol edip onaylayın.",
+                                     lambda dr: reverse("catalog:recipe_draft", args=[dr.pk]), url)
+    if action == "reddet":
+        return _post_action_redirect(request, ReasonForm(request.POST), "order.change_request_reject",
+                                     lambda d: repeat.reject(request.user, cr, d["reason"]),
+                                     "İstek reddedildi; kalem eski teknik özelliklerle onaylanabilir.", lambda _: url, url)
+    raise Http404
+
+
+def _post_action_redirect(request, form, action, fn, message, url_for, fallback):
+    resp = run_form_action(request, form, action=action, fn=fn, success_message=message, url_for=url_for)
+    return resp or redirect(fallback)

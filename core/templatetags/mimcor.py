@@ -181,3 +181,18 @@ def spec_card(context, revision, product=None, title="Teknik özellikler", show_
     return {"revision": revision, "sections": spec.card(revision) if revision else [], "product": product,
             "title": title, "customer": product.customer if (product and show_customer_notes) else None,
             "artwork": artwork}
+
+
+@register.filter
+def get_field(form, name):
+    return form[name]
+
+
+@register.filter
+def item_fields(form, item):
+    return form.item_fields(item)
+
+
+@register.filter
+def item_spec(form, item):
+    return form.item_spec(item)

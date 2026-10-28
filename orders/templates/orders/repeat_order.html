@@ -1,0 +1,64 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Tekrar sipariş{% endblock %}
+{% block content %}
+<h1>Tekrar sipariş (repete)</h1>
+<ol class="steps" aria-label="Tekrar sipariş adımları">
+  <li{% if step == 1 %} aria-current="step"{% else %} class="done"{% endif %}>1. Müşteri</li>
+  <li{% if step == 2 %} aria-current="step"{% elif step > 2 %} class="done"{% endif %}>2. Kalemler</li>
+  <li{% if step == 3 %} aria-current="step"{% endif %}>3. Teslimat ve kontrol</li>
+</ol>
+{% if step == 1 %}
+<form method="get" class="card form">
+  <div class="field"><label for="id_musteri">Müşteri</label>
+    <select name="musteri" id="id_musteri" required><option value="">Seçin</option>{% for c in customers %}<option value="{{ c.pk }}">{{ c.code }} – {{ c.name }}</option>{% endfor %}</select>
+    <small class="help">Yalnız erişiminiz olan müşteriler. Sonraki adımda bu müşterinin eski kalemleri listelenir.</small></div>
+  <div class="actions"><button type="submit" class="btn btn-primary">İleri: kalemler →</button></div>
+</form>
+{% else %}
+<p><strong>{{ customer.code }} – {{ customer.name }}</strong> · <a href="{% url 'orders:repeat_order' %}">Müşteriyi değiştir</a></p>
+<form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
+  <input type="hidden" name="musteri" value="{{ customer.pk }}">
+  {{ form.idem_key }}
+  {% if show_errors and form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Devam edilemedi. İşaretli alanları düzeltin; girdiğiniz bilgiler korunur.</strong>{{ form.non_field_errors }}</div>{% endif %}
+  {% if step == 2 %}
+    {% for name in visible_order %}{% with field=form|get_field:name %}{{ field.as_hidden }}{% endwith %}{% endfor %}
+    <h2>2. Tekrar edilecek kalemler</h2>
+    <p class="muted">Kalemleri işaretleyin ve yeni miktarı yazın. Teknik özellikler eski kalemin revizyonundan gelir;
+      üretim, rezervasyon, sevkiyat, onay ve düzeltme kayıtları kopyalanmaz.</p>
+    {% for item in form.items %}{% with f=form|item_fields:item %}
+    <fieldset class="spec-group{% if item.blocked %} inactive{% endif %}"><legend>{{ item.line.code }} · {{ item.line.product.code }}</legend>
+      <p class="meta">Kaynak sipariş {{ item.line.order.code }} ({{ item.line.order.order_date|date:"d.m.Y" }}) · {{ item.line.quantity|qty }} {{ item.line.get_unit_display }} ·
+        Teknik revizyon {% if item.line.approved_revision %}Rev.{{ item.line.approved_revision.rev_no }}{% else %}onaysız{% endif %}</p>
+      {% for w in item.warnings %}<p class="msg msg-warning">{{ w }}</p>{% endfor %}
+      {% if show_errors %}{% include "partials/field.html" with field=f.sel %}{% include "partials/field.html" with field=f.qty %}{% include "partials/field.html" with field=f.due %}
+      {% else %}{% include "partials/field_noerror.html" with field=f.sel %}{% include "partials/field_noerror.html" with field=f.qty %}{% include "partials/field_noerror.html" with field=f.due %}{% endif %}
+      <details{% if f.chg.value %} open{% endif %}><summary>Teknik değişiklik iste (revizyonlu repete)</summary>
+        <p class="muted">Değiştirmek istediğiniz değeri düzeltin. Karışım (reçete bileşimi) buradan değiştirilemez; planlama yeni revizyon veya yeni ürün kodu kararını verir.</p>
+        {% include "partials/field.html" with field=f.chg %}{% include "partials/field.html" with field=f.reason %}
+        {% for field in form|item_spec:item %}{% include "partials/field_noerror.html" %}{% endfor %}
+      </details>
+    </fieldset>
+    {% endwith %}{% empty %}<p class="muted">Bu müşteride tekrar edilebilecek kalem yok.</p>{% endfor %}
+    <div class="actions"><button type="submit" name="git" value="ileri" class="btn btn-primary">İleri: teslimat ve kontrol →</button></div>
+  {% else %}
+    {% for name in form.line_field_names %}{% with field=form|get_field:name %}{{ field.as_hidden }}{% endwith %}{% endfor %}
+    <h2>3. Teslimat ve kontrol</h2>
+    <section class="summary-section"><header><h3>Kalemler</h3><button type="submit" name="git" value="geri" class="btn" formnovalidate>Düzenle</button></header>
+      {% for c in chosen %}<div class="card"><strong>{{ c.source_line.product.code }}</strong> · yeni miktar {{ c.quantity|qty }} {{ c.source_line.get_unit_display }} · termin {{ c.due_date|date:"d.m.Y"|default:"genel termin" }}
+        <br><small class="muted">Kaynak {{ c.source_line.code }}{% if c.source_line.approved_revision %}, Rev.{{ c.source_line.approved_revision.rev_no }}{% endif %}</small>
+        {% if c.diff %}<p><span class="status status-kontrol_bekliyor">Revizyonlu repete · planlama kararı gerekir</span></p>
+        <table class="table compact"><thead><tr><th>Özellik</th><th>Eski</th><th>Yeni</th></tr></thead><tbody>{% for label, old, new in c.diff %}<tr><td>{{ label }}</td><td>{{ old }}</td><td><strong>{{ new }}</strong></td></tr>{% endfor %}</tbody></table>
+        <p>Gerekçe: {{ c.reason }}</p>{% else %}<p><span class="status">Aynı teknik özellikle repete</span></p>{% endif %}</div>{% endfor %}</section>
+    <section class="summary-section"><h3>Sipariş bilgileri</h3>
+      {% for name in visible_order %}{% with field=form|get_field:name %}{% if name != "delivery_confirmed" %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endif %}{% endwith %}{% endfor %}</section>
+    <section class="summary-section"><h3>Teslimat</h3>
+      <dl class="kv"><dt>Teslimat adresi (müşteri kartından, güncel)</dt><dd>{{ snapshot.shipping_address|default:"Müşteri kartında varsayılan teslimat adresi yok" }}</dd>
+        <dt>Teslim şekli / yeri</dt><dd>{{ snapshot.delivery_terms|default:"—" }} · {{ snapshot.delivery_place|default:"—" }}</dd></dl>
+      <p class="muted">Eski siparişin adresi ve tarihleri kullanılmaz; bilgiler bugünkü müşteri kartındandır. Fiyat bu sistemde tutulmaz.</p>
+      {% with field=form.delivery_confirmed %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endwith %}</section>
+    <div class="actions"><button type="submit" name="git" value="kaydet" class="btn btn-primary">Tekrar siparişi kaydet</button>
+      <button type="submit" name="git" value="geri" class="btn" formnovalidate>← Geri</button></div>
+  {% endif %}
+</form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Değişiklik isteği {{ cr.line.code }}{% endblock %}
+{% block content %}
+<h1>Revizyonlu repete: {{ cr.line.code }} <span class="status status-{% if cr.status == 'bekliyor' or cr.status == 'taslakta' %}kontrol_bekliyor{% else %}uygun{% endif %}">{{ cr.get_status_display }}</span></h1>
+<dl class="kv card">
+  <dt>Müşteri</dt><dd>{{ cr.line.order.customer.name }}</dd>
+  <dt>Sipariş / kalem</dt><dd><a href="{% url 'orders:order_detail' cr.line.order.pk %}">{{ cr.line.order.code }}</a> · {{ cr.line.code }}</dd>
+  <dt>Ürün</dt><dd>{{ cr.line.product }}</dd>
+  <dt>Kaynak kalem</dt><dd>{% if cr.line.source_line %}{{ cr.line.source_line.code }}{% else %}—{% endif %}</dd>
+  <dt>Temel revizyon</dt><dd>{% if cr.base_revision %}{{ cr.base_revision }}{% else %}—{% endif %}</dd>
+  <dt>İsteyen</dt><dd>{{ cr.requested_by.full_name }} · {{ cr.requested_at|date:"d.m.Y H:i" }}</dd>
+  <dt>Gerekçe</dt><dd>{{ cr.reason }}</dd>
+</dl>
+<section class="card"><h2>Eski ve yeni değerler</h2>
+  <div class="table-wrap"><table class="table"><thead><tr><th>Özellik</th><th>Eski (temel revizyon)</th><th>İstenen</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td data-label="Özellik">{{ r.label }}</td><td data-label="Eski">{{ r.old }}</td><td data-label="İstenen"><strong>{{ r.new }}</strong></td></tr>{% endfor %}</tbody></table></div>
+  <p class="muted">Karışım (reçete bileşimi) satış tarafından değiştirilemez; yeni revizyon taslağı temel revizyonun karışımıyla açılır.</p>
+</section>
+{% if cr.draft %}<p><a class="btn" href="{% url 'catalog:recipe_draft' cr.draft.pk %}">Açık reçete taslağına git</a></p>{% endif %}
+{% if cr.decision_note %}<p class="msg">{{ cr.decision_note }}</p>{% endif %}
+{% if can_decide and cr.status == "bekliyor" %}
+<section class="card"><h2>Planlama kararı</h2>
+  <div class="actions">
+    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'revizyon' %}" class="inline-form">{% csrf_token %}{{ confirm_form.idem_key }}
+      <button type="submit" class="btn btn-primary">Aynı ürün koduna yeni teknik revizyon</button></form>
+  </div>
+  <p class="muted">Etkisi: ürünün yeni revizyonu için taslak açılır. Önceki siparişler ve başlamış iş emirleri kendi revizyonunu korur.</p>
+  <details class="inline-reason"><summary class="btn">Yeni ürün kodu aç</summary>
+    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'urun' %}" class="card form">{% csrf_token %}{{ confirm_form.idem_key }}
+      <div class="field"><label for="id_code">Yeni ürün kodu</label><input name="code" id="id_code" maxlength="40" required></div>
+      <div class="field"><label for="id_name">Ürün adı</label><input name="name" id="id_name" maxlength="200" value="{{ cr.line.product.name }}"></div>
+      <p class="muted">Yeni kod da {{ cr.line.order.customer.name }} müşterisine ait olur (ürün kodu müşteriye özeldir). Kalem bu koda geçer.</p>
+      <button type="submit" class="btn btn-primary">Yeni ürün kodunu aç</button></form></details>
+  {% url 'orders:change_request_decide' cr.pk 'reddet' as u %}{% include "partials/reason_button.html" with action=u label="Reddet (eski özellikler geçerli)" %}
+</section>
+{% endif %}
+{% endblock %}

@@ -1,6 +1,8 @@
 {% load mimcor %}
 <article class="card progress-card">
   <header><strong>{{ p.line.code }}</strong> · {{ p.line.product.code }} <span class="status status-{{ p.line.status }}">{{ p.line.get_status_display }}</span>{% if p.line.replacement_for %} <span class="status status-kontrol_bekliyor">Yerine gönderim · {{ p.line.replacement_for.code }}</span>{% endif %}</header>
+  {% if p.line.source_line %}<p class="muted">Repete kaynağı: {{ p.line.source_line.code }}{% if p.line.source_line.approved_revision %} (Rev.{{ p.line.source_line.approved_revision.rev_no }}){% endif %}</p>{% endif %}
+  {% for cr in p.line.change_requests.all %}<p class="msg {% if cr.status == 'bekliyor' or cr.status == 'taslakta' %}msg-warning{% endif %}">Teknik değişiklik isteği: {{ cr.get_status_display }} · <a href="{% url 'orders:change_request' cr.pk %}">Ayrıntı</a></p>{% endfor %}
   {% if p.line.replacement_for %}<p class="muted">Yeni satış değildir: {{ p.line.replacement_for.shipment_line.order_line.code }} kaleminden {{ p.line.replacement_for.code }} ile iade edilen ürünün yerine gönderilir.</p>{% endif %}
   {% if p.fulfilment %}<dl class="kv"><dt>İlk sevk</dt><dd>{{ p.fulfilment.shipped }} kutu</dd><dt>İade</dt><dd>{{ p.fulfilment.returned }} kutu</dd>
     <dt>Yerine gönderim</dt><dd>{{ p.fulfilment.replacement_shipped }} kutu sevk edildi{% if p.fulfilment.replacement_planned != p.fulfilment.replacement_shipped %} ({{ p.fulfilment.replacement_planned }} planlı){% endif %}</dd>

@@ -96,6 +96,9 @@ class OrderLine(models.Model):
                                         related_name="replacement_lines",
                                         verbose_name="Yerine gönderim (iade)",
                                         help_text="Doluysa bu kalem yeni satış değil, iade edilen ürünün yerine gönderimdir.")
+    source_line = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="repeats",
+                                    verbose_name="Repete kaynağı",
+                                    help_text="Bu kalem hangi eski kalemin tekrarı. Üretim/sevk/onay kayıtları kopyalanmaz.")
     cancel_reason = models.TextField("İptal gerekçesi", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -152,3 +155,39 @@ class OverDeliveryAllowance(models.Model):
     superseded_at = models.DateTimeField(null=True, blank=True)
     superseded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
                                       related_name="+")
+
+
+class ChangeStatus(models.TextChoices):
+    PENDING = "bekliyor", "Planlama kararı bekliyor"
+    DRAFTING = "taslakta", "Planlama yeni revizyon/ürün taslağında"
+    NEW_REVISION = "yeni_revizyon", "Yeni teknik revizyon oluşturuldu"
+    NEW_PRODUCT = "yeni_urun", "Yeni ürün kodu açıldı"
+    REJECTED = "reddedildi", "Reddedildi (eski özellikler geçerli)"
+
+
+OPEN_CHANGE_STATES = (ChangeStatus.PENDING, ChangeStatus.DRAFTING)
+
+
+class LineChangeRequest(models.Model):
+    """Revizyonlu repete: satışçının istediği teknik değişiklikler ve gerekçesi. Satışçı karışımı değiştiremez;
+    planlama eski/yeni değerleri yan yana görür ve yeni revizyon veya yeni ürün kodu kararını verir."""
+
+    line = models.ForeignKey(OrderLine, on_delete=models.PROTECT, related_name="change_requests")
+    base_revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, null=True, related_name="+")
+    requested = models.JSONField("İstenen değerler")
+    reason = models.TextField("Gerekçe")
+    status = models.CharField(max_length=15, choices=ChangeStatus.choices, default=ChangeStatus.PENDING)
+    requested_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
+    requested_at = models.DateTimeField(auto_now_add=True)
+    draft = models.ForeignKey("catalog.RecipeDraft", on_delete=models.PROTECT, null=True, blank=True,
+                              related_name="change_requests")
+    new_product = models.ForeignKey(Product, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
+    result_revision = models.ForeignKey(RecipeRevision, on_delete=models.PROTECT, null=True, blank=True,
+                                        related_name="+")
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+                                   related_name="+")
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_note = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-requested_at"]

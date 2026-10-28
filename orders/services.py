@@ -57,7 +57,7 @@ def create_order(actor, *, customer, order_date, due_date=None, customer_ref="",
 
 
 @transaction.atomic
-def add_line(actor, order, *, product, quantity, unit, due_date=None):
+def add_line(actor, order, *, product, quantity, unit, due_date=None, source_line=None):
     check(actor, "order.create", order)
     order = SalesOrder.objects.select_for_update(of=("self",)).select_related("customer").get(pk=order.pk)
     if order.status not in (OrderStatus.DRAFT, OrderStatus.OPEN, OrderStatus.PARTIAL):
@@ -65,10 +65,14 @@ def add_line(actor, order, *, product, quantity, unit, due_date=None):
     _validate_product(order, product)
     validate_quantity(quantity, unit)
     line_no = (order.lines.aggregate(m=Max("line_no"))["m"] or 0) + 1
+    if source_line is not None and (source_line.product_id != product.pk or source_line.replacement_for_id):
+        raise BusinessRuleError("Repete kaynağı aynı ürünün normal (yerine gönderim olmayan) kalemi olmalı.")
     line = OrderLine.objects.create(order=order, line_no=line_no, product=product, quantity=quantity, unit=unit,
-                                    due_date=due_date or order.due_date)
+                                    due_date=due_date or order.due_date, source_line=source_line)
     audit(actor, "order.line_add", line, {"product": (None, product.code), "quantity": (None, quantity),
-                                          "unit": (None, unit)}, code=line.code)
+                                          "unit": (None, unit),
+                                          **({"kaynak": (None, source_line.code)} if source_line else {})},
+          code=line.code)
     return line
 
 
@@ -81,6 +85,10 @@ def approve_line(actor, line, revision, note=""):
         raise BusinessRuleError("Taslak veya iptal edilmiş siparişin kalemi teknik onaya alınamaz.")
     if line.status not in (LineStatus.WAITING_PLANNING, LineStatus.APPROVED):
         raise BusinessRuleError("Bu kalem için üretim başlamış; onay değiştirilemez.")
+    from .repeat import pending_request
+    if pending_request(line):
+        raise BusinessRuleError("Bu kalem için satışın teknik değişiklik isteği karara bağlanmadan teknik onay "
+                                "verilemez (yeni revizyon / yeni ürün kodu / ret).")
     from production.models import WorkOrderStatus
     active = line.work_orders.filter(status__in=[WorkOrderStatus.PLANNED, WorkOrderStatus.STARTED])
     if active.exists() and line.approved_revision_id != revision.pk:
@@ -245,12 +253,14 @@ def copy_order(actor, order):
              and not ln.replacement_for_id]  # yerine gönderim iadeye bağlıdır, yeni satış olarak kopyalanmaz
     if not lines:
         raise BusinessRuleError("Kopyalanacak aktif ürünlü kalem yok.")
+    from .models import CreationMethod
     new = create_order(actor, customer=src.customer, order_date=timezone.localdate(), customer_ref="",
-                       notes=f"{src.code} siparişinden kopyalandı.")
+                       notes=f"{src.code} siparişinden kopyalandı.", creation_method=CreationMethod.REPEAT,
+                       purpose=src.purpose, charge=src.charge)
     new.copied_from = src
     new.save(update_fields=["copied_from"])
     for ln in lines:
-        copy = add_line(actor, new, product=ln.product, quantity=ln.quantity, unit=ln.unit, due_date=None)
+        copy = add_line(actor, new, product=ln.product, quantity=ln.quantity, unit=ln.unit, due_date=None, source_line=ln)
         copy.needs_review = True
         copy.save(update_fields=["needs_review"])
     audit(actor, "order.copy", new, {"kaynak": (None, src.code)})
