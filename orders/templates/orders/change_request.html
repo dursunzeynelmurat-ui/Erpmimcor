@@ -21,12 +21,12 @@
 {% if can_decide and cr.status == "bekliyor" %}
 <section class="card"><h2>Planlama kararı</h2>
   <div class="actions">
-    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'revizyon' %}" class="inline-form">{% csrf_token %}{{ confirm_form.idem_key }}
+    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'revizyon' %}" class="inline-form">{% csrf_token %}{% idem_input %}
       <button type="submit" class="btn btn-primary">Aynı ürün koduna yeni teknik revizyon</button></form>
   </div>
   <p class="muted">Etkisi: ürünün yeni revizyonu için taslak açılır. Önceki siparişler ve başlamış iş emirleri kendi revizyonunu korur.</p>
   <details class="inline-reason"><summary class="btn">Yeni ürün kodu aç</summary>
-    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'urun' %}" class="card form">{% csrf_token %}{{ confirm_form.idem_key }}
+    <form method="post" action="{% url 'orders:change_request_decide' cr.pk 'urun' %}" class="card form">{% csrf_token %}{% idem_input %}
       <div class="field"><label for="id_code">Yeni ürün kodu</label><input name="code" id="id_code" maxlength="40" required></div>
       <div class="field"><label for="id_name">Ürün adı</label><input name="name" id="id_name" maxlength="200" value="{{ cr.line.product.name }}"></div>
       <p class="muted">Yeni kod da {{ cr.line.order.customer.name }} müşterisine ait olur (ürün kodu müşteriye özeldir). Kalem bu koda geçer.</p>

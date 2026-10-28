@@ -30,5 +30,6 @@ def run_form_action(request, form, *, action, fn, success_message, url_for):
     if result.duplicate:
         messages.info(request, "Bu işlem daha önce kaydedilmişti; tekrar uygulanmadı.")
         return redirect(result.url or request.path)
-    messages.success(request, success_message(result.value) if callable(success_message) else success_message)
+    if success_message is not None:  # None: çağıran tek, sonuca göre bir mesaj ekler
+        messages.success(request, success_message(result.value) if callable(success_message) else success_message)
     return redirect(result.url or request.path)

@@ -188,7 +188,7 @@ def recipe_draft(request, pk):
             request, form, action="recipe.draft_save",
             fn=lambda d: recipe_drafts.save_draft(request.user, draft, spec_values=d["spec"], lines=d["lines"],
                                                   change_reason=d["change_reason"], batch_kg=d["batch_kg"]),
-            success_message="Taslak kaydedildi." if action != "onayla" else "Taslak kaydedildi; onay kontrol ediliyor.",
+            success_message="Taslak kaydedildi." if action != "onayla" else None,
             url_for=lambda dr: reverse("catalog:recipe_draft", args=[dr.pk]) + ("?ek=1" if action == "satir" else ""))
         if resp and action == "onayla":
             try:
@@ -204,7 +204,7 @@ def recipe_draft(request, pk):
     table = recipe_drafts.batch_table(lines, draft.batch_kg)
     return render(request, "catalog/recipe_draft.html", {
         "draft": draft, "form": form, "table": table, "total_message": recipe_drafts.total_message(table["total_pct"]),
-        "discard_form": ReasonForm(), "can_manage_material": can(request.user, "material.manage"),
+        "discard_form": ReasonForm(auto_id="id_discard_%s"), "can_manage_material": can(request.user, "material.manage"),
     })
 
 
@@ -275,7 +275,8 @@ def artwork_list(request, product_pk):
     product = _artwork_product(request, product_pk)
     revision = product.current_revision
     rows = [{"art": a, "state": art.approval_state(a, revision) if revision else None,
-             "work_orders": list(a.work_orders.values_list("code", flat=True)[:10])}
+             "work_orders": list(a.work_orders.values_list("code", flat=True)[:10]),
+             "customer_form": CustomerApprovalForm(auto_id=f"id_a{a.pk}_%s")}  # satır başına ayrı anahtar ve kimlik
             for a in product.artworks.select_related("uploaded_by")]
     user = request.user
     return render(request, "catalog/artwork_list.html", {
@@ -284,7 +285,6 @@ def artwork_list(request, product_pk):
         "requires_customer": art.requires_customer_approval(),
         "upload_form": ArtworkUploadForm() if can(user, "artwork.manage", product) else None,
         "can_tech": can(user, "artwork.approve", product), "can_customer": can(user, "artwork.customer_approval", product),
-        "customer_form": CustomerApprovalForm(), "confirm_form": ConfirmForm(), "reason_form": ReasonForm(),
     })
 
 

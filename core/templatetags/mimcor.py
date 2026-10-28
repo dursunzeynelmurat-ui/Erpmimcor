@@ -196,3 +196,9 @@ def item_fields(form, item):
 @register.filter
 def item_spec(form, item):
     return form.item_spec(item)
+
+
+@register.filter
+def delivery_terms_label(code):
+    from catalog.models import DELIVERY_TERMS
+    return dict(DELIVERY_TERMS).get(code, code) if code else "—"

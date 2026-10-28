@@ -41,11 +41,11 @@
     </dl>
     {% if r.state.stale %}<p class="muted">Geçersizleşmiş onaylar: {% for a in r.state.stale %}{{ a.get_kind_display }} (Rev.{{ a.revision.rev_no }}, {{ a.approved_at|date:"d.m.Y" }}){% if not forloop.last %}; {% endif %}{% endfor %}</p>{% endif %}
     {% if print_on and r.art.is_active %}<div class="actions">
-      {% if can_tech and not r.state.technical %}<form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'ic_teknik' %}" class="inline-form">{% csrf_token %}{{ confirm_form.idem_key }}
+      {% if can_tech and not r.state.technical %}<form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'ic_teknik' %}" class="inline-form">{% csrf_token %}{% idem_input %}
         <button type="submit" class="btn btn-primary">İç teknik onay ver</button></form>{% endif %}
       {% if can_customer and not r.state.customer %}<details class="inline-reason"><summary class="btn">Müşteri onayını kaydet</summary>
-        <form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'musteri' %}" class="card form">{% csrf_token %}{{ customer_form.idem_key }}
-          {% include "partials/field.html" with field=customer_form.customer_contact %}{% include "partials/field.html" with field=customer_form.evidence %}
+        <form method="post" action="{% url 'catalog:artwork_approve' r.art.pk 'musteri' %}" class="card form">{% csrf_token %}{{ r.customer_form.idem_key }}
+          {% include "partials/field.html" with field=r.customer_form.customer_contact %}{% include "partials/field.html" with field=r.customer_form.evidence %}
           <p class="muted">Bu kayıt müşterinin görseli onayladığını belgeler; üretim için iç teknik onay ayrıca gerekir.</p>
           <button type="submit" class="btn btn-primary">Müşteri onayını kaydet</button></form></details>{% endif %}
       {% if can_tech and r.state.technical %}{% url 'catalog:artwork_revoke' r.state.technical.pk as u %}{% include "partials/reason_button.html" with action=u label="İç teknik onayı geri al" hint="Yeni iş emirleri bu sürümle serbest bırakılamaz; sabitlenmiş iş emirleri değişmez." %}{% endif %}

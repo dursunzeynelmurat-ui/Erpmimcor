@@ -124,6 +124,7 @@ class Command(BaseCommand):
                                 [(materials["HM-LLDPE"], D("97")), (materials["KT-SLIP"], D("3"))])
 
         self.seed_stock_pallet(products["DEN-PF-030"], materials)
+        self.seed_technical(customers, materials)
 
         if not SalesOrder.objects.exists():
             sales = User.objects.get(personnel_no="2001")
@@ -131,6 +132,55 @@ class Command(BaseCommand):
                                         customer_ref="DT-PO-1001 (kurgusal)",
                                         lines=[{"product": products["DEN-PF-030"], "quantity": D("60"), "unit": Unit.BOX}])
             orders.approve_order(sales, order)  # örnek sipariş onaylı; yeni siparişler taslak açılır
+
+    def seed_technical(self, customers, materials):
+        """Kurgusal körüklü baskılı ürün (onaylı görselli), renklendirici, numune kriteri ve referans numune."""
+        import io
+        import segno
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from catalog import artwork as art
+        from catalog.models import ArtworkApprovalKind
+        from samples import services as smp
+        from samples.models import CriterionUnit, Sample, SampleCriterion, SampleKind
+
+        admin, planner = User.objects.get(personnel_no="1001"), User.objects.get(personnel_no="3001")
+        sales, quality = User.objects.get(personnel_no="2001"), User.objects.get(personnel_no="4004")
+        colorant = Material.objects.filter(code="KT-MAVI").first() or cat.create_definition(
+            admin, Material, {"code": "KT-MAVI", "name": "Mavi masterbatch (kurgusal)", "kind": MaterialKind.COLORANT,
+                              "unit": "kg"})
+        if not colorant.lots.exists():
+            cat.receive_lot(admin, colorant, D("50"), supplier_lot="TED-KT-MAVI-001")
+        product = Product.objects.filter(code="ORN-KB-045").first() or cat.create_definition(admin, Product, {
+            "code": "ORN-KB-045", "customer": customers["M-ORNEK"], "name": "Körüklü baskılı poşet 45µ (kurgusal)",
+            "unit": Unit.BOX, "units_per_box": 500, "notes": "Kurgusal demo ürünü"})
+        if product.current_revision is None:
+            cat.create_revision(planner, product, {
+                "width_mm": D("400"), "thickness_micron": D("45"), "product_length_mm": D("550"), "length_m": None,
+                "gusset_type": "yan", "gusset_depth_mm": D("60"), "width_basis": "kapali", "width_tol_mm": D("2"),
+                "thickness_tol_micron": D("3"), "appearance": "renkli", "color": "Mavi", "color_system": "ral",
+                "color_code": "RAL 5015", "color_preview": "#1E5AA8", "perforation": "yok", "print_status": "var",
+                "plate_status": "yeni", "plate_code": "KL-ORN-01", "cylinder_circumference_mm": D("600"),
+                "print_repeat_mm": D("550"), "print_gap_mm": D("50"), "print_color_count": 2,
+                "print_colors": "Pantone 286 C, Siyah (kurgusal)", "print_sides": "tek",
+                "print_direction": "Rulodan çıkarken yazı okunur", "process_notes": "Kurgusal proses notu"},
+                [(materials["HM-LDPE"], D("60")), (materials["HM-LLDPE"], D("36")), (colorant, D("3")),
+                 (materials["KT-SLIP"], D("1"))])
+        if not product.artworks.exists():
+            buf = io.BytesIO()
+            segno.make("ORN-KB-045 KURGUSAL BASKI GORSELI").save(buf, kind="png", scale=6)
+            a = art.upload_artwork(sales, product, SimpleUploadedFile("orn-kb-045.png", buf.getvalue()),
+                                   note="Kurgusal demo görseli")
+            art.approve(planner, a, ArtworkApprovalKind.TECHNICAL)
+            art.approve(sales, a, ArtworkApprovalKind.CUSTOMER, evidence="Kurgusal demo: e-posta onayı",
+                        customer_contact="Örnek Gıda Satın Alma")
+        if not SampleCriterion.objects.exists():
+            smp.create_criterion(quality, name="Kalınlık", unit=CriterionUnit.MICRON,
+                                 description="Kurgusal demo kriteri; kabul aralığını yetkili kişi tanımlar.")
+        if not Sample.objects.exists():
+            smp.create_sample(quality, kind=SampleKind.CUSTOMER_REFERENCE, customer=customers["M-ORNEK"],
+                              product=product, quantity=D("5"), unit="adet", counterpart="Örnek Gıda Satın Alma",
+                              room="Kalite lab", cabinet="D1", shelf="R2", box="K1",
+                              notes="Müşterinin referans poşetleri (kurgusal)", shared_note="Referans numune alındı.")
 
     def seed_stock_pallet(self, product, materials):
         """Demo B başlangıcı: müşteri stoğu için üretilmiş, kabul edilmiş, uygun, 40 kutulu palet."""

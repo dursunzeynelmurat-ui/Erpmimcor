@@ -49,9 +49,10 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         self.pw.stop()
 
     def ids(self, code):
+        """(müşteri, ilk ürün, müşterinin bütün aktif ürünleri — uç noktanın sıralamasıyla)"""
         customer = Customer.objects.get(code=code)
-        product = Product.objects.filter(customer=customer).first()
-        return str(customer.pk), (str(product.pk) if product else None)
+        products = [str(p.pk) for p in Product.objects.active().filter(customer=customer).order_by("code")]
+        return str(customer.pk), (products[0] if products else None), products
 
     def products_url(self, customer_id):
         return re.compile(rf".*/siparisler/musteri/{customer_id}/urunler/$")
@@ -74,8 +75,8 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         product, customer = page.locator("[name=product]"), page.locator("[name=customer]")
         help_text = page.locator("#id_product_helptext")
         retry = page.get_by_role("button", name="Tekrar dene")
-        a_cust, a_prod = self.ids("M-ORNEK")
-        b_cust, b_prod = self.ids("M-DENEME")
+        a_cust, a_prod, a_all = self.ids("M-ORNEK")
+        b_cust, b_prod, b_all = self.ids("M-DENEME")
 
         # 1) Müşteri seçilmeden ürün kilitli
         expect(product).to_be_disabled()
@@ -85,13 +86,13 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         # 2) A → yalnız A'nın aktif ürünleri
         customer.select_option(a_cust)
         expect(product).to_be_enabled()
-        self.assertEqual(self.option_values(page), [a_prod])
+        self.assertEqual(self.option_values(page), a_all)
         product.select_option(a_prod)
 
         # 3) B'ye geçiş: önceki seçim temizlenir, yalnız B'nin ürünleri
         customer.select_option(b_cust)
         expect(product).to_be_enabled()
-        self.assertEqual(self.option_values(page), [b_prod])
+        self.assertEqual(self.option_values(page), b_all)
         self.assertEqual(product.input_value(), "")
 
         # 4) Ürünsüz müşteri
@@ -111,7 +112,7 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         retry.click()
         expect(product).to_be_enabled()
         expect(retry).to_be_hidden()
-        self.assertEqual(self.option_values(page), [a_prod])
+        self.assertEqual(self.option_values(page), a_all)
 
         # 6) Hızlı değişim: A'nın yanıtı bekletilir, B seçilir; A'nın geç yanıtı B listesini ezmez
         held = []
@@ -128,7 +129,7 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
                 pass
         page.unroute(self.products_url(a_cust))
         page.wait_for_load_state("networkidle")
-        self.assertEqual(self.option_values(page), [b_prod])
+        self.assertEqual(self.option_values(page), b_all)
         self.assertEqual(customer.input_value(), b_cust)
 
         # 7) Doğrulama hatasında müşteri ve ürün seçimi korunur (3 adımlı giriş: hata 2. adımda, geri dönünce seçili)
@@ -145,7 +146,7 @@ class OrderProductFilterBrowserTests(StaticLiveServerTestCase):
         self.assertEqual(customer.input_value(), b_cust)
         self.assertEqual(product.input_value(), b_prod)
         expect(product).to_be_enabled()
-        self.assertEqual(self.option_values(page), [b_prod])
+        self.assertEqual(self.option_values(page), b_all)
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
 
         # 8) Geçerli kayıt

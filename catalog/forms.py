@@ -128,7 +128,7 @@ class ActiveToggleForm(IdemForm):
 
 class LotReceiveForm(IdemForm):
     material = forms.ModelChoiceField(label="Malzeme", queryset=Material.objects.active())
-    quantity = forms.DecimalField(label="Miktar (kg)", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), **DEC)
+    quantity = TRDecimalField(label="Miktar (kg)", max_digits=14, decimal_places=3, min_value=Decimal("0.001"))
     supplier_lot = forms.CharField(label="Tedarikçi parti / irsaliye no", help_text="Zorunlu. Mal kabulü her zaman yeni lot açar; sayım farkı için kullanılmaz.")
 
 

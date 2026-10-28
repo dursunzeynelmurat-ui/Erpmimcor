@@ -115,14 +115,17 @@ def sample_detail(request, pk):
             "attachments": sample.attachments.all(), "history": history_for(sample),
             "can_manage": can(user, "sample.manage", sample), "can_stock": can(user, "sample.stock"),
             "can_decide": can(user, "sample.decide"),
-            "move_form": MoveForm(initial={"room": sample.room, "cabinet": sample.cabinet, "shelf": sample.shelf,
-                                           "box": sample.box}),
-            "allocate_form": AllocateForm(initial={"boxes": int(sample.quantity) if sample.unit == "kutu" else None}),
-            "send_form": SendForm(), "return_form": ReturnForm(), "reason_form": ReasonForm(),
-            "decision_form": DecisionForm(), "measure_form": MeasurementForm(), "attachment_form": AttachmentForm(),
+            # Aynı sayfadaki formlarda alan kimlikleri ayrılır (aynı ad, farklı id); her formun kendi işlem anahtarı var.
+            "move_form": MoveForm(auto_id="id_move_%s", initial={"room": sample.room, "cabinet": sample.cabinet,
+                                                                 "shelf": sample.shelf, "box": sample.box}),
+            "allocate_form": AllocateForm(auto_id="id_stock_%s",
+                                          initial={"boxes": int(sample.quantity) if sample.unit == "kutu" else None}),
+            "send_form": SendForm(auto_id="id_send_%s"), "return_form": ReturnForm(auto_id="id_back_%s"),
+            "decision_form": DecisionForm(auto_id="id_dec_%s"), "measure_form": MeasurementForm(auto_id="id_meas_%s"),
+            "attachment_form": AttachmentForm(auto_id="id_att_%s"),
         })
     ctx["can_feedback"] = can(user, "sample.feedback", sample)
-    ctx["feedback_form"] = FeedbackForm()
+    ctx["feedback_form"] = FeedbackForm(auto_id="id_fb_%s")
     return render(request, "samples/sample_detail.html", ctx)
 
 
@@ -158,17 +161,16 @@ def sample_action(request, pk, action):
         raise Http404
     form_cls, audit_action, fn, message = ACTIONS[action]
     form = form_cls(request.POST, request.FILES) if action == "ek" else form_cls(request.POST)
-    if action == "stok":
-        def fn(u, s, d, f):
-            return services.allocate_from_pallet(u, s, _resolve(Pallet, d["pallet_code"], "pallet_code"), d["boxes"],
-                                                 d["reason"])
-    if action == "karar":
-        def fn(u, s, d, f):
-            def many(model, text, field):
-                return [_resolve(model, c, field) for c in (text or "").replace(";", ",").split(",") if c.strip()]
-            return services.decide(u, s, d["decision"], d["reason"],
-                                   pallets=many(Pallet, d["pallet_codes"], "pallet_codes"),
-                                   coils=many(Coil, d["coil_codes"], "coil_codes"))
+    def allocate(u, s, d, f):
+        return services.allocate_from_pallet(u, s, _resolve(Pallet, d["pallet_code"], "pallet_code"), d["boxes"],
+                                             d["reason"])
+
+    def decide(u, s, d, f):
+        def many(model, text, field):
+            return [_resolve(model, c, field) for c in (text or "").replace(";", ",").split(",") if c.strip()]
+        return services.decide(u, s, d["decision"], d["reason"], pallets=many(Pallet, d["pallet_codes"], "pallet_codes"),
+                               coils=many(Coil, d["coil_codes"], "coil_codes"))
+    fn = {"stok": allocate, "karar": decide}.get(action, fn)
     resp = run_form_action(request, form, action=audit_action, fn=lambda d: fn(request.user, sample, d, form),
                            success_message=message, url_for=lambda _: _url(sample))
     return resp or redirect(_url(sample))

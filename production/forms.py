@@ -3,7 +3,7 @@ from decimal import Decimal
 from django import forms
 
 from catalog.models import Machine, MaterialLot, Product, RecipeRevision, Unit
-from core.forms import IdemForm
+from core.forms import IdemForm, TRDecimalField
 from core.templatetags.mimcor import qty
 from core.models import QualityStatus, ValueSource
 
@@ -26,8 +26,8 @@ def foreman_candidates():
 class WorkOrderForm(IdemForm):
     """Operasyon sırası: 1. satır extruder, sonraki satırlar sırayla matbaa/perfore/dilimleme vb."""
 
-    target_quantity = forms.DecimalField(label="Hedef miktar", max_digits=14, decimal_places=3,
-                                         min_value=Decimal("0.001"), widget=DEC)
+    target_quantity = TRDecimalField(label="Hedef miktar", max_digits=14, decimal_places=3,
+                                         min_value=Decimal("0.001"))
     unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX)
     planned_start = forms.DateField(label="Planlanan başlangıç", widget=DATE, required=False)
     notes = forms.CharField(label="Not", widget=forms.Textarea(attrs={"rows": 2}), required=False)
@@ -75,11 +75,11 @@ class CoilForm(IdemForm):
     """Bobin kaydı. Dönüştürme/bölme operasyonlarında en az bir kaynak bobin ve tüketilen miktar girilir."""
 
     SOURCE_ROWS = 3
-    weight_kg = forms.DecimalField(label="Bobin ağırlığı (kg)", max_digits=12, decimal_places=3,
-                                   min_value=Decimal("0.001"), widget=DEC)
+    weight_kg = TRDecimalField(label="Bobin ağırlığı (kg)", max_digits=12, decimal_places=3,
+                                   min_value=Decimal("0.001"))
     weight_source = forms.ChoiceField(label="Ağırlık kaynağı", choices=ValueSource.choices[:1] + ValueSource.choices[2:],
                                       initial=ValueSource.MEASURED)
-    length_m = forms.DecimalField(label="Uzunluk (m)", max_digits=10, decimal_places=2, required=False, widget=DEC)
+    length_m = TRDecimalField(label="Uzunluk (m)", max_digits=10, decimal_places=2, required=False)
     notes = forms.CharField(label="Not", required=False)
 
     def __init__(self, op, *args, **kwargs):
@@ -92,9 +92,9 @@ class CoilForm(IdemForm):
                 self.fields[f"source_{i}"] = forms.ModelChoiceField(label=f"Kaynak bobin {i}", queryset=sources,
                                                                     required=(i == 1))
                 self.fields[f"source_{i}"].label_from_instance = lambda c: f"{c.code} (kalan {qty(c.remaining_kg)} kg)"
-                self.fields[f"consumed_{i}"] = forms.DecimalField(label=f"Tüketilen {i} (kg)", max_digits=12,
+                self.fields[f"consumed_{i}"] = TRDecimalField(label=f"Tüketilen {i} (kg)", max_digits=12,
                                                                   decimal_places=3, required=(i == 1),
-                                                                  min_value=Decimal("0.001"), widget=DEC)
+                                                                  min_value=Decimal("0.001"))
 
     def source_rows(self):
         if not self.needs_source:
@@ -119,8 +119,8 @@ class CoilForm(IdemForm):
 
 class MaterialMoveForm(IdemForm):
     lot = forms.ModelChoiceField(label="Malzeme lotu", queryset=MaterialLot.objects.none())
-    quantity = forms.DecimalField(label="Miktar (lotun biriminde)", max_digits=14, decimal_places=3,
-                                  min_value=Decimal("0.001"), widget=DEC)
+    quantity = TRDecimalField(label="Miktar (lotun biriminde)", max_digits=14, decimal_places=3,
+                                  min_value=Decimal("0.001"))
 
     def __init__(self, *args, lots=None, deviation=False, recipe_ids=(), **kwargs):
         super().__init__(*args, **kwargs)
@@ -161,7 +161,7 @@ class PalletFromProductionForm(IdemForm):
 
 
 class ClosureForm(IdemForm):
-    scrap_kg = forms.DecimalField(label="Fire (kg)", max_digits=12, decimal_places=3, min_value=Decimal("0"), widget=DEC,
+    scrap_kg = TRDecimalField(label="Fire (kg)", max_digits=12, decimal_places=3, min_value=Decimal("0"),
                                   help_text="Fire yoksa 0 yazın.")
     remaining_confirmed = forms.BooleanField(label="Makine başında kalan malzeme lota iade edildi veya kalmadı", required=False)
     reason = forms.CharField(label="Gerekçe (denge farkı varsa zorunlu)", required=False,

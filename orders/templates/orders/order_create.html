@@ -45,7 +45,7 @@
       <details><summary>Teknik özellikler</summary>{% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}</details></section>
     <section class="summary-section"><header><h3>Teslimat</h3></header>
       <dl class="kv"><dt>Teslimat adresi</dt><dd>{{ snapshot.shipping_address|default:"Müşteri kartında varsayılan teslimat adresi yok" }}</dd>
-        <dt>Teslim şekli / yeri</dt><dd>{{ snapshot.delivery_terms|default:"—" }} · {{ snapshot.delivery_place|default:"—" }}</dd></dl>
+        <dt>Teslim şekli / yeri</dt><dd>{{ snapshot.delivery_terms|delivery_terms_label }} · {{ snapshot.delivery_place|default:"—" }}</dd></dl>
       {% if show_errors %}{% include "partials/field.html" with field=form.delivery_confirmed %}{% else %}{% include "partials/field_noerror.html" with field=form.delivery_confirmed %}{% endif %}</section>
     <div class="actions"><button type="submit" name="git" value="kaydet" class="btn btn-primary">Siparişi kaydet</button>
       <button type="submit" name="git" value="geri" class="btn" formnovalidate>← Geri</button></div>

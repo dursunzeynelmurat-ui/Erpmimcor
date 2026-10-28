@@ -3,7 +3,7 @@ from decimal import Decimal, InvalidOperation
 from django import forms
 
 from catalog.models import Unit
-from core.forms import IdemForm
+from core.forms import IdemForm, TRDecimalField
 from core.templatetags.mimcor import qty
 from core.models import QualityStatus
 from orders.models import LineStatus, OrderLine
@@ -15,8 +15,7 @@ INT = forms.NumberInput(attrs={"inputmode": "numeric", "min": "1"})
 
 
 def kg_field(label, required=False, help_text=""):
-    return forms.DecimalField(label=label, max_digits=12, decimal_places=3, required=required, min_value=Decimal("0"),
-                              widget=DEC, help_text=help_text)
+    return TRDecimalField(label=label, max_digits=12, decimal_places=3, required=required, min_value=Decimal("0"), help_text=help_text)
 
 
 class WeighingForm(IdemForm):

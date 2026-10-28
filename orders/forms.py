@@ -95,6 +95,9 @@ class OrderCreateForm(IdemForm):
         customer, product = data.get("customer"), data.get("product")
         if customer and product and (product.customer_id != customer.pk or not product.is_active):
             self.add_error("product", "Bu ürün seçilen müşteriye ait aktif bir ürün değil.")
+        qty_value, unit = data.get("quantity"), data.get("unit")
+        if qty_value is not None and unit == Unit.BOX and qty_value != qty_value.to_integral_value():
+            self.add_error("quantity", f"Kutu biriminde miktar tam sayı olmalı ({qty(qty_value)} girildi). Örnek: 12.")
         if self.final and not data.get("delivery_confirmed"):
             self.add_error("delivery_confirmed", "Kaydetmeden önce teslimat bilgilerini kontrol edip işaretleyin.")
         return data
@@ -123,7 +126,7 @@ class OrderCreateForm(IdemForm):
 
 class LineAddForm(IdemForm):
     product = forms.ModelChoiceField(label="Ürün", queryset=Product.objects.none())
-    quantity = forms.DecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
+    quantity = TRDecimalField(label="Miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"))
     unit = forms.ChoiceField(label="Birim", choices=Unit.choices, initial=Unit.BOX)
     due_date = forms.DateField(label="Kalem termini", widget=DATE, required=False)
 
@@ -152,7 +155,7 @@ class ApproveLineForm(IdemForm):
 
 
 class LineChangeForm(IdemForm):
-    quantity = forms.DecimalField(label="Yeni miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"), widget=DEC)
+    quantity = TRDecimalField(label="Yeni miktar", max_digits=14, decimal_places=3, min_value=Decimal("0.001"))
     due_date = forms.DateField(label="Kalem termini", widget=DATE, required=False)
     reason = forms.CharField(label="Değişiklik gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
                              help_text="Onaylı siparişte zorunlu (ör. müşteri miktarı 500'den 400'e düşürdü).")
