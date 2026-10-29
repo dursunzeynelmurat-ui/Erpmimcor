@@ -15,8 +15,8 @@ from core.services import history_for
 from core.viewutils import run_form_action
 
 from . import services
-from .forms import (AllocateForm, AttachmentForm, CriterionForm, DecisionForm, FeedbackForm, MeasurementForm,
-                    MoveForm, ReturnForm, SampleCreateForm, SendForm)
+from .forms import (AllocateForm, AttachmentForm, CriterionForm, DecisionForm, FeedbackForm, LinkMovementForm,
+                    MeasurementForm, MoveForm, ReturnForm, SampleCreateForm, SendForm, StockSourceForm)
 from .models import PhysicalStatus, Sample, SampleAttachment, SampleCriterion, SampleKind
 
 
@@ -83,7 +83,8 @@ def sample_create(request):
                 pallet=_resolve(Pallet, d["pallet_code"], "pallet_code"), counterpart=d["counterpart"],
                 occurred_at=d["occurred_at"], quantity=d["quantity"], unit=d["unit"], room=d["room"],
                 cabinet=d["cabinet"], shelf=d["shelf"], box=d["box"], retention_until=d["retention_until"],
-                retention_conditions=d["retention_conditions"], notes=d["notes"], shared_note=d["shared_note"])
+                retention_conditions=d["retention_conditions"], notes=d["notes"], shared_note=d["shared_note"],
+                stock_source=d["stock_source"])
         resp = run_form_action(request, form, action="sample.create", fn=create,
                                success_message=lambda s: f"Numune kaydedildi: {s.code}. Sıradaki adım: QR etiketini "
                                                          "basın; firma stoğundan ayrılacaksa 'Stoktan ayır'.",
@@ -123,6 +124,10 @@ def sample_detail(request, pk):
             "send_form": SendForm(auto_id="id_send_%s"), "return_form": ReturnForm(auto_id="id_back_%s"),
             "decision_form": DecisionForm(auto_id="id_dec_%s"), "measure_form": MeasurementForm(auto_id="id_meas_%s"),
             "attachment_form": AttachmentForm(auto_id="id_att_%s"),
+            "source_form": StockSourceForm(auto_id="id_src_%s", initial={"stock_source": sample.stock_source}),
+            "link_form": LinkMovementForm(auto_id="id_link_%s", sample=sample),
+            "stock_effect": services.stock_effect(sample),
+            "stock_pending": services.stock_pending(sample),
         })
     ctx["can_feedback"] = can(user, "sample.feedback", sample)
     ctx["feedback_form"] = FeedbackForm(auto_id="id_fb_%s")
@@ -134,6 +139,10 @@ ACTIONS = {
                                                                         shelf=d["shelf"], box=d["box"], note=d["note"]),
               "Konum güncellendi."),
     "stok": (AllocateForm, "sample.stock", None, "Numune için kutular stoktan ayrıldı (tek stok hareketi)."),
+    "kaynak": (StockSourceForm, "sample.stock_source", lambda u, s, d, f: services.set_stock_source(
+        u, s, d["stock_source"], d["reason"]), "Stok kaynağı kaydedildi."),
+    "bagla": (LinkMovementForm, "sample.stock_link", None,
+              "Önceki stok çıkışı numuneye bağlandı; yeni stok düşümü yapılmadı."),
     "gonder": (SendForm, "sample.send", lambda u, s, d, f: services.send(u, s, counterpart=d["counterpart"],
                                                                          note=d["note"]),
                "Gönderim kaydedildi. Stok hareketi oluşmadı."),
@@ -160,7 +169,12 @@ def sample_action(request, pk, action):
     if action not in ACTIONS:
         raise Http404
     form_cls, audit_action, fn, message = ACTIONS[action]
-    form = form_cls(request.POST, request.FILES) if action == "ek" else form_cls(request.POST)
+    if action == "ek":
+        form = form_cls(request.POST, request.FILES)
+    elif action == "bagla":
+        form = form_cls(request.POST, sample=sample)
+    else:
+        form = form_cls(request.POST)
     def allocate(u, s, d, f):
         return services.allocate_from_pallet(u, s, _resolve(Pallet, d["pallet_code"], "pallet_code"), d["boxes"],
                                              d["reason"])
@@ -170,7 +184,14 @@ def sample_action(request, pk, action):
             return [_resolve(model, c, field) for c in (text or "").replace(";", ",").split(",") if c.strip()]
         return services.decide(u, s, d["decision"], d["reason"], pallets=many(Pallet, d["pallet_codes"], "pallet_codes"),
                                coils=many(Coil, d["coil_codes"], "coil_codes"))
-    fn = {"stok": allocate, "karar": decide}.get(action, fn)
+    def link(u, s, d, f):
+        from warehouse.models import PalletMovement
+        mv = PalletMovement.objects.filter(pk=d["movement"]).first() if str(d["movement"]).isdigit() else None
+        if mv is None:
+            raise BusinessRuleError("Stok hareketini listeden seçin.", field="movement")
+        return services.link_prior_movement(u, s, mv)
+
+    fn = {"stok": allocate, "karar": decide, "bagla": link}.get(action, fn)
     resp = run_form_action(request, form, action=audit_action, fn=lambda d: fn(request.user, sample, d, form),
                            success_message=message, url_for=lambda _: _url(sample))
     return resp or redirect(_url(sample))

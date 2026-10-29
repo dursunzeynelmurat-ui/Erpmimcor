@@ -23,7 +23,8 @@
   {% if s.pallet %}<dt>Palet</dt><dd>{{ s.pallet.code }}</dd>{% endif %}
   <dt>Konum</dt><dd>{{ s.location }}</dd>
   <dt>Saklama</dt><dd>{{ s.retention_until|date:"d.m.Y"|default:"Son tarih yok" }}{% if s.retention_conditions %} · {{ s.retention_conditions }}{% endif %}</dd>
-  <dt>Stok etkisi</dt><dd>{% if s.stock_movement %}{{ s.stock_pallet.code }} paletinden {{ s.stock_boxes }} kutu ayrıldı (tek hareket){% elif s.kind == "musteri_referans" %}Yok — müşterinin numunesi firma stoğu değildir{% else %}Stoktan ayrılmadı{% endif %}</dd>
+  {% if s.kind != "musteri_referans" %}<dt>Stok kaynağı</dt><dd>{{ s.get_stock_source_display }}</dd>{% endif %}
+  <dt>Stok etkisi</dt><dd>{{ stock_effect }}</dd>
   {% if s.notes %}<dt>İç açıklama</dt><dd>{{ s.notes }}</dd>{% endif %}
   {% endif %}
   {% if s.shared_note %}<dt>Paylaşılabilir not</dt><dd>{{ s.shared_note }}</dd>{% endif %}
@@ -38,11 +39,20 @@
 {% if can_manage and s.physical_status != "imha" %}
 <section class="card"><h2>İşlemler</h2>
   <details><summary class="btn">Konum değiştir</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'konum' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=move_form %}<button type="submit" class="btn btn-primary">Konumu kaydet</button></form></details>
-  {% if can_stock and not s.stock_movement and s.kind != "musteri_referans" and s.physical_status == "saklamada" %}
-  <details><summary class="btn">Stoktan ayır</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'stok' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=allocate_form %}
+  {% if stock_pending %}<p class="msg msg-warning" id="stok-eksik">Bu numune firma stoğundan geliyor ama stok işlemi tamamlanmadı: {{ stock_effect }}</p>{% endif %}
+  {% if not s.stock_movement and s.kind != "musteri_referans" and s.physical_status == "saklamada" %}
+  <details><summary class="btn">Stok kaynağını belirt / düzelt</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'kaynak' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=source_form %}
+    <p class="muted">Etkisi: yalnız numunenin stokla ilişkisi kaydedilir; stok hareketi oluşmaz.</p>
+    <button type="submit" class="btn btn-primary">Stok kaynağını kaydet</button></form></details>{% endif %}
+  {% if can_stock and not s.stock_movement and s.stock_source == "onceden_cikti" and s.physical_status == "saklamada" %}
+  <details><summary class="btn">Önceki stok çıkışını bağla</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'bagla' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=link_form %}
+    <p class="muted">Etkisi: kutular zaten stoktan çıkmıştı; numuneye bağlanır, yeni stok düşümü yapılmaz. Bir hareket yalnız bir numuneye bağlanır.</p>
+    <button type="submit" class="btn btn-primary">Hareketi bağla</button></form></details>{% endif %}
+  {% if can_stock and not s.stock_movement and s.kind != "musteri_referans" and s.stock_source != "stok_disi" and s.stock_source != "onceden_cikti" and s.physical_status == "saklamada" %}
+  <details id="stoktan-ayir"><summary class="btn">Stoktan ayır</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'stok' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=allocate_form %}
     <p class="muted">Etkisi: paletin serbest kutularından {{ s.quantity|qty }} kutu düşer; bu kutular sevk edilemez. Gönderim, iade ve imha tekrar stok düşmez. Kısmi kutu (adet/rulo/kg) numunesi stoktan düşülmez.</p>
     <button type="submit" class="btn btn-primary">Kutuları stoktan ayır</button></form></details>{% endif %}
-  {% if s.physical_status == "saklamada" %}<details><summary class="btn">Müşteriye gönder</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'gonder' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=send_form %}<p class="muted">Etkisi: yalnız fiziksel durum değişir; stok hareketi oluşmaz.</p><button type="submit" class="btn btn-primary">Gönderimi kaydet</button></form></details>{% endif %}
+  {% if s.physical_status == "saklamada" %}<details><summary class="btn">Müşteriye gönder</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'gonder' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=send_form %}<p class="muted">Etkisi: yalnız fiziksel durum değişir; stok hareketi oluşmaz.{% if stock_pending %} <strong>Önce stok işlemini tamamlayın</strong> (yukarıdaki uyarı).{% endif %}</p><button type="submit" class="btn btn-primary">Gönderimi kaydet</button></form></details>{% endif %}
   {% if s.physical_status == "gonderildi" %}<details><summary class="btn">Geri döndü / iade alındı</summary><form method="post" action="{% url 'samples:sample_action' s.pk 'geri' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=return_form %}<p class="muted">Etkisi: numune firmaya döner; satılabilir stoğa eklenmez.</p><button type="submit" class="btn btn-primary">Geri dönüşü kaydet</button></form></details>{% endif %}
   {% if s.physical_status != "gonderildi" %}{% url 'samples:sample_action' s.pk 'imha' as u %}{% include "partials/reason_button.html" with action=u label="İmha edildi olarak kaydet" btn_class="btn-danger" hint="Etkisi: numune kullanılamaz olarak kapanır; stok hareketi oluşmaz." %}{% endif %}
   <details><summary class="btn">Ek dosya yükle</summary><form method="post" enctype="multipart/form-data" action="{% url 'samples:sample_action' s.pk 'ek' %}" class="form">{% csrf_token %}{% include "partials/form_fields.html" with form=attachment_form %}<button type="submit" class="btn btn-primary">Yükle</button></form></details>

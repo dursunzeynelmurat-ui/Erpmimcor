@@ -26,6 +26,14 @@ class SampleKind(models.TextChoices):
 INTERNAL_KINDS = (SampleKind.PRODUCTION_CONTROL, SampleKind.RETAINED, SampleKind.TO_CUSTOMER)
 
 
+class StockSource(models.TextChoices):
+    """Firma içi numunenin stokla ilişkisi. Boş: müşteri referansı veya eski kayıt (belirtilmemiş)."""
+    UNKNOWN = "", "Belirtilmemiş"
+    FROM_STOCK = "stoktan", "Firma stoğundan tam kutu (stoktan ayrılacak)"
+    NOT_FROM_STOCK = "stok_disi", "Stok dışı (hattan/kesimden alındı; stok etkisi kaydedilmez)"
+    ALREADY_OUT = "onceden_cikti", "Daha önce başka işlemle stoktan çıkarıldı (o hareket bağlanır)"
+
+
 class SampleUnit(models.TextChoices):
     PIECE = "adet", "adet"
     BOX = "kutu", "kutu"
@@ -107,6 +115,9 @@ class Sample(models.Model):
     stock_boxes = models.PositiveIntegerField("Stoktan ayrılan kutu", null=True, blank=True)
     stock_movement = models.OneToOneField("warehouse.PalletMovement", on_delete=models.PROTECT, null=True, blank=True,
                                           related_name="sample")
+    stock_source = models.CharField("Stok kaynağı", max_length=15, choices=StockSource.choices, blank=True,
+                                    help_text="Firma içi numune firma stoğundan mı geliyor? Stoktan gelende gönderim/"
+                                              "imha öncesi stok hareketi tamamlanmalıdır.")
     qr_token = models.CharField(max_length=40, unique=True, default=new_token, editable=False)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)

@@ -7,7 +7,10 @@ from django.utils import timezone
 from catalog.models import Customer, Product
 from core.forms import IdemForm, TRDecimalField
 
-from .models import CriterionUnit, CustomerFeedback, QualityDecision, SampleCriterion, SampleKind, SampleUnit
+from .models import (INTERNAL_KINDS, CriterionUnit, CustomerFeedback, QualityDecision, SampleCriterion, SampleKind,
+                     SampleUnit, StockSource)
+
+STOCK_SOURCE_CHOICES = [("", "Seçin")] + [(v, label) for v, label in StockSource.choices if v]
 
 DATE = forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
 DATETIME = forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M")
@@ -26,6 +29,10 @@ class SampleCreateForm(IdemForm):
     coil_code = forms.CharField(label="Bobin no", required=False, max_length=30)
     pallet_code = forms.CharField(label="Palet no", required=False, max_length=30,
                                   help_text="Bağlantı içindir; stok düşmez. Stoktan ayırma kayıttan sonra yapılır.")
+    stock_source = forms.ChoiceField(
+        label="Stok kaynağı (firma içi numune)", choices=STOCK_SOURCE_CHOICES, required=False,
+        help_text="Firma stoğundan tam kutu: kayıttan sonra 'Stoktan ayır' yapılmadan gönderilemez/imha edilemez. "
+                  "Adet/rulo/kg numunede stok düşümü desteklenmez; 'Stok dışı' seçin. Müşteri referansında boş bırakın.")
     counterpart = forms.CharField(label="Teslim eden / teslim alan kişi", required=False, max_length=120)
     occurred_at = forms.DateTimeField(label="Alınma / teslim tarihi ve saati", widget=DATETIME,
                                       initial=lambda: timezone.localtime().strftime("%Y-%m-%dT%H:%M"))
@@ -63,6 +70,32 @@ class SampleCreateForm(IdemForm):
         })
         if customer is None:
             field.widget.attrs["disabled"] = "disabled"
+
+    def clean(self):
+        data = super().clean()
+        if data.get("kind") in INTERNAL_KINDS and not data.get("stock_source"):
+            self.add_error("stock_source", "Firma içi numunede stok kaynağını seçin (firma stoğundan / stok dışı / "
+                                           "daha önce stoktan çıkarıldı).")
+        return data
+
+
+class StockSourceForm(IdemForm):
+    stock_source = forms.ChoiceField(label="Stok kaynağı", choices=STOCK_SOURCE_CHOICES)
+    reason = forms.CharField(label="Gerekçe", max_length=200, help_text="Örnek: numune hattan kesildi, stoktan değil.")
+
+
+class LinkMovementForm(IdemForm):
+    movement = forms.ChoiceField(label="Önceki stok çıkışı", choices=[],
+                                 help_text="Aynı ürünün, numuneyle aynı kutu sayısındaki çıkış hareketleri listelenir. "
+                                           "Bağlama yeni stok düşümü yapmaz.")
+
+    def __init__(self, *args, sample=None, **kwargs):
+        from .services import prior_movement_candidates
+        super().__init__(*args, **kwargs)
+        moves = prior_movement_candidates(sample) if sample is not None else []
+        self.fields["movement"].choices = [("", "Seçin")] + [
+            (m.pk, f"{m.pallet.code} · {m.get_kind_display()} · {-m.quantity} kutu · {m.at:%d.%m.%Y}")
+            for m in moves]
 
 
 class MoveForm(IdemForm):

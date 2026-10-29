@@ -156,6 +156,7 @@ class TechnicalSampleRepeatBrowserTests(StaticLiveServerTestCase):
         depot.locator("[name=product]").select_option(str(den.pk))
         depot.locator("[name=quantity]").fill("2")
         depot.locator("[name=unit]").select_option("kutu")
+        depot.locator("[name=stock_source]").select_option("stoktan")
         depot.locator("[name=room]").fill("Numune odası")
         self.click(depot, "Numuneyi kaydet")
         expect(depot.locator(".msg-success")).to_contain_text("Numune kaydedildi")
