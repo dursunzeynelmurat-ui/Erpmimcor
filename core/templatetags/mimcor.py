@@ -178,7 +178,10 @@ def spec_card(context, revision, product=None, title="Teknik özellikler", show_
             can(request.user, "artwork.view", product):
         from catalog import artwork as art
         artwork = {"valid": art.valid_artwork(product, revision), "product": product}
-    return {"revision": revision, "sections": spec.card(revision) if revision else [], "product": product,
+    # İç üretim notu yalnız reçete görme yetkisi olana üretilir (satış/müşteri yanıtında hiç yer almaz).
+    internal = bool(request and can(request.user, "recipe.view", product))
+    return {"revision": revision, "sections": spec.card(revision, internal=internal) if revision else [],
+            "product": product,
             "title": title, "customer": product.customer if (product and show_customer_notes) else None,
             "artwork": artwork}
 

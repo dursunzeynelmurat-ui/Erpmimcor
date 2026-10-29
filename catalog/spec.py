@@ -131,8 +131,10 @@ FIELDS = [
 BY_NAME = {f.name: f for f in FIELDS}
 FIELD_NAMES = [f.name for f in FIELDS]
 PRINT_CRITICAL = [f.name for f in FIELDS if f.print_critical]
-# Satışçının revizyonlu repete isteğinde değiştirebileceği alanlar (karışım ve proses notu yok)
-CHANGEABLE = [n for n in FIELD_NAMES if n not in ("process_notes",)]
+# İç üretim alanları: yalnız reçete görme yetkisi olana ve üretim talimatına; satış/müşteri yanıtında üretilmez.
+INTERNAL = frozenset({"process_notes"})
+# Satışçının revizyonlu repete isteğinde değiştirebileceği alanlar (karışım ve iç alanlar yok)
+CHANGEABLE = [n for n in FIELD_NAMES if n not in INTERNAL]
 
 
 def visible(spec_field, values):
@@ -174,14 +176,17 @@ def display(spec_field, value):
     return str(value)
 
 
-def card(revision, include_hidden=False):
-    """Teknik özet kartı bölümleri: [(başlık, [satır sözlüğü])]. Karışım içermez."""
+def card(revision, include_hidden=False, internal=False):
+    """Teknik özet kartı bölümleri: [(başlık, [satır sözlüğü])]. Karışım içermez. İç alanlar (INTERNAL) yalnız
+    internal=True iken üretilir; çağıran yetkiyi (recipe.view) kontrol eder."""
     values = {n: getattr(revision, n) for n in FIELD_NAMES}
     out = []
     for key, title in SECTIONS:
         rows = []
         for f in FIELDS:
             if f.section != key or (not include_hidden and not visible(f, values)):
+                continue
+            if f.name in INTERNAL and not internal:
                 continue
             if f.kind == "text" and not values[f.name] and f.name in ("perforation_spec", "print_spec",
                                                                        "process_notes", "packing_notes"):
