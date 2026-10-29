@@ -143,15 +143,23 @@ def line_approve(request, pk):
     if request.method == "POST":
         resp = run_form_action(
             request, form, action="order.line_approve",
-            fn=lambda d: services.approve_line(request.user, line, d["revision"], d["note"]),
+            fn=lambda d: services.approve_line(request.user, line, d["revision"], d["note"],
+                                               deviation_reason=d["deviation_reason"]),
             success_message=lambda ln: f"{ln.code} teknik olarak onaylandı (Rev.{ln.approved_revision.rev_no}).",
             url_for=lambda ln: reverse("orders:planning_queue"))
         if resp:
             return resp
-    from .repeat import pending_request, source_warnings
-    revision = line.product.current_revision
+    from .repeat import expected_basis, pending_request, revision_cards, source_warnings
+    revisions = list(form.fields["revision"].queryset)
+    by_pk = {r.pk: r for r in revisions}
+    chosen = form["revision"].value() if form.is_bound else request.GET.get("rev") or form.fields["revision"].initial
+    chosen = getattr(chosen, "pk", chosen)
+    revision = by_pk.get(int(chosen)) if str(chosen or "").isdigit() and int(chosen) in by_pk else \
+        form.fields["revision"].initial
     return render(request, "orders/line_approve.html", {
         "line": line, "form": form, "revision": revision, "history": history_for(line),
+        "cards": revision_cards(revisions, form.expected), "expected": form.expected,
+        "expected_basis": expected_basis(line) if form.expected else "",
         "source_warnings": source_warnings(line.source_line) if line.source_line_id else [],
         "pending": pending_request(line)})
 

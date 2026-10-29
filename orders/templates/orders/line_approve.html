@@ -8,16 +8,29 @@
   <dt>Miktar</dt><dd>{{ line.quantity|qty }} {{ line.get_unit_display }}</dd>
   <dt>Termin</dt><dd>{{ line.due_date|date:"d.m.Y"|default:"—" }}</dd>
   {% if line.source_line %}<dt>Repete kaynağı</dt><dd>{{ line.source_line.code }} · {% if line.source_line.approved_revision %}Rev.{{ line.source_line.approved_revision.rev_no }} ile üretildi{% else %}teknik onaysız{% endif %}</dd>{% endif %}
+  {% if expected %}<dt>Beklenen revizyon</dt><dd><strong>Rev.{{ expected.rev_no }}</strong> · {{ expected_basis }}</dd>{% endif %}
 </dl>
 {% for w in source_warnings %}<p class="msg msg-warning">{{ w }}</p>{% endfor %}
 {% if pending %}<p class="msg msg-warning">Satışın teknik değişiklik isteği karara bağlanmadan onay verilemez. <a href="{% url 'orders:change_request' pending.pk %}">İsteği aç</a></p>{% endif %}
 {% if revision %}
-{% spec_card revision line.product title="Güncel teknik özellikler" %}
-<section class="card"><h2>Güncel karışım: Rev.{{ revision.rev_no }}</h2>
-  <p>{% for c in revision.components.all %}{{ c.material.code }} %{{ c.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
-  <a href="{% url 'catalog:recipe_detail' line.product.pk %}">Tüm revizyonlar</a>
-</section>
-<form method="post" class="card form" novalidate>{% csrf_token %}
+{% if expected %}<p class="muted">Varsayılan seçim beklenen revizyondur. Başka bir revizyon seçerseniz aşağıda beklenen
+  revizyona göre farklar gösterilir; onay için farkları kontrol ettiğinizi işaretleyip gerekçe yazmanız gerekir.</p>{% endif %}
+{% for c in cards %}
+<div class="revision-card" data-revision-card="{{ c.rev.pk }}"{% if c.rev.pk != revision.pk %} hidden{% endif %}>
+  {% spec_card c.rev line.product title="Seçili revizyonun teknik özellikleri" %}
+  <section class="card"><h2>Karışım: Rev.{{ c.rev.rev_no }}{% if c.is_expected %} <span class="status status-uygun">Beklenen</span>{% endif %}</h2>
+    <p>{% for comp in c.rev.components.all %}{{ comp.material.code }} %{{ comp.percentage|qty }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>
+    {% if c.diff %}<h3>Beklenen Rev.{{ expected.rev_no }} ile farklar</h3>
+    <div class="table-wrap"><table class="table compact"><thead><tr><th>Özellik</th><th>Beklenen Rev.{{ expected.rev_no }}</th><th>Rev.{{ c.rev.rev_no }}</th></tr></thead>
+      <tbody>{% for r in c.diff %}<tr><td data-label="Özellik">{{ r.label }}</td><td data-label="Beklenen">{{ r.old }}</td><td data-label="Seçili"><strong>{{ r.new }}</strong></td></tr>{% endfor %}</tbody></table></div>
+    {% elif expected and not c.is_expected %}<p class="muted">Teknik özellikler beklenen revizyonla aynı; karışımı kontrol edin.</p>{% endif %}
+    <a href="{% url 'catalog:recipe_detail' line.product.pk %}">Tüm revizyonlar</a>
+  </section>
+</div>
+{% endfor %}
+<noscript><p>Başka revizyonun özetini görmek için:
+  {% for c in cards %}<a href="?rev={{ c.rev.pk }}">Rev.{{ c.rev.rev_no }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}</p></noscript>
+<form method="post" class="card form" novalidate data-revision-select>{% csrf_token %}
   {% include "partials/form_fields.html" %}
   <button type="submit" class="btn btn-primary">Teknik bilgileri ve reçeteyi onayla</button>
 </form>

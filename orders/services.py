@@ -67,8 +67,12 @@ def add_line(actor, order, *, product, quantity, unit, due_date=None, source_lin
     line_no = (order.lines.aggregate(m=Max("line_no"))["m"] or 0) + 1
     if source_line is not None and (source_line.product_id != product.pk or source_line.replacement_for_id):
         raise BusinessRuleError("Repete kaynağı aynı ürünün normal (yerine gönderim olmayan) kalemi olmalı.")
+    # Repete: kaynağın şu anki onaylı revizyonu beklenen revizyon olarak sabitlenir (kaynak sonradan değişse de).
+    expected = (OrderLine.objects.filter(pk=source_line.pk).values_list("approved_revision_id", flat=True).first()
+                if source_line is not None else None)
     line = OrderLine.objects.create(order=order, line_no=line_no, product=product, quantity=quantity, unit=unit,
-                                    due_date=due_date or order.due_date, source_line=source_line)
+                                    due_date=due_date or order.due_date, source_line=source_line,
+                                    expected_revision_id=expected)
     audit(actor, "order.line_add", line, {"product": (None, product.code), "quantity": (None, quantity),
                                           "unit": (None, unit),
                                           **({"kaynak": (None, source_line.code)} if source_line else {})},
@@ -77,15 +81,16 @@ def add_line(actor, order, *, product, quantity, unit, due_date=None, source_lin
 
 
 @transaction.atomic
-def approve_line(actor, line, revision, note=""):
-    """Planlama teknik bilgileri/reçeteyi onaylar; onaylanan revizyon kaleme sabitlenir."""
+def approve_line(actor, line, revision, note="", deviation_reason=""):
+    """Planlama teknik bilgileri/reçeteyi onaylar; onaylanan revizyon kaleme sabitlenir.
+    Repete kaleminde beklenen revizyon (repeat.expected_revision) dışında bir revizyon yalnız gerekçeyle seçilir."""
     check(actor, "planning.approve")
     line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=line.pk)
     if line.order.status in (OrderStatus.DRAFT, OrderStatus.CANCELLED):
         raise BusinessRuleError("Taslak veya iptal edilmiş siparişin kalemi teknik onaya alınamaz.")
     if line.status not in (LineStatus.WAITING_PLANNING, LineStatus.APPROVED):
         raise BusinessRuleError("Bu kalem için üretim başlamış; onay değiştirilemez.")
-    from .repeat import pending_request
+    from .repeat import expected_basis, expected_revision, pending_request
     if pending_request(line):
         raise BusinessRuleError("Bu kalem için satışın teknik değişiklik isteği karara bağlanmadan teknik onay "
                                 "verilemez (yeni revizyon / yeni ürün kodu / ret).")
@@ -99,6 +104,13 @@ def approve_line(actor, line, revision, note=""):
     revision = RecipeRevision.objects.select_related("recipe").get(pk=revision.pk)
     if revision.recipe.product_id != line.product_id:
         raise BusinessRuleError("Seçilen reçete revizyonu bu ürüne ait değil.", field="revision")
+    expected = expected_revision(line)
+    deviation_reason = (deviation_reason or "").strip()
+    deviating = expected is not None and expected.pk != revision.pk
+    if deviating and not deviation_reason:
+        raise BusinessRuleError(
+            f"Bu kalem için beklenen teknik revizyon Rev.{expected.rev_no} ({expected_basis(line)}). Rev.{revision.rev_no} "
+            "ile onaylamak için farkları kontrol edip gerekçe yazın.", field="deviation_reason")
     old = (line.approved_revision, line.status)
     line.approved_revision = revision
     line.approved_by = actor
@@ -106,8 +118,11 @@ def approve_line(actor, line, revision, note=""):
     line.planning_note = note
     line.status = LineStatus.APPROVED
     line.save()
-    audit(actor, "order.line_approve", line, {"approved_revision": (old[0], revision), "status": (old[1], line.status)},
-          reason=note, code=line.code)
+    changes = {"approved_revision": (old[0], revision), "status": (old[1], line.status)}
+    if deviating:
+        changes["beklenen_revizyon"] = (f"Rev.{expected.rev_no}", f"Rev.{revision.rev_no}")
+    reason = " · ".join(p for p in (f"Beklenen revizyondan sapma: {deviation_reason}" if deviating else "", note) if p)
+    audit(actor, "order.line_approve", line, changes, reason=reason, code=line.code)
     return line
 
 

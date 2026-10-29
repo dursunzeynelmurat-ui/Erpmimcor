@@ -127,6 +127,51 @@ def comparison(cr):
     return rows
 
 
+def revision_cards(revisions, expected):
+    """Teknik onay ekranı: her seçilebilir revizyon için beklenen revizyona göre fark satırları (planlama içindir)."""
+    def values(rev):
+        return {n: getattr(rev, n) for n in spec.FIELD_NAMES}
+    base = values(expected) if expected else None
+    out = []
+    for rev in revisions:
+        rows = []
+        if base is not None and rev.pk != expected.pk:
+            cur = values(rev)
+            for name in spec.FIELD_NAMES:
+                f = spec.BY_NAME[name]
+                old, new = spec.display(f, base[name]), spec.display(f, cur[name])
+                if old != new:
+                    rows.append({"label": f.label, "old": old, "new": new})
+        out.append({"rev": rev, "diff": rows, "is_expected": bool(expected and rev.pk == expected.pk)})
+    return out
+
+
+def _decided_request(line):
+    return (line.change_requests.exclude(status__in=OPEN_CHANGE_STATES)
+            .select_related("result_revision", "base_revision").order_by("-decided_at", "-pk").first())
+
+
+def expected_revision(line):
+    """Teknik onayda beklenen revizyon: karara bağlanmış değişiklik isteğinin sonucu (yeni revizyon / yeni ürün kodu),
+    reddedilmiş istekte temel revizyon, aksi hâlde repete anında sabitlenen kaynak revizyonu. Repete değilse None."""
+    cr = _decided_request(line)
+    if cr is not None:
+        if cr.status in (ChangeStatus.NEW_REVISION, ChangeStatus.NEW_PRODUCT) and cr.result_revision_id:
+            return cr.result_revision
+        if cr.status == ChangeStatus.REJECTED and cr.base_revision_id:
+            return cr.base_revision
+    return line.expected_revision
+
+
+def expected_basis(line):
+    cr = _decided_request(line)
+    if cr is not None and cr.status in (ChangeStatus.NEW_REVISION, ChangeStatus.NEW_PRODUCT) and cr.result_revision_id:
+        return "satışın teknik değişiklik isteğinin sonucu"
+    if cr is not None and cr.status == ChangeStatus.REJECTED and cr.base_revision_id:
+        return "değişiklik isteği reddedildi; temel revizyon"
+    return "repete kaynağının onaylı revizyonu"
+
+
 def _lock(cr):
     cr = LineChangeRequest.objects.select_for_update(of=("self",)).select_related(
         "line__order__customer", "line__product", "base_revision").get(pk=cr.pk)

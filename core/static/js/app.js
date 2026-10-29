@@ -257,3 +257,18 @@ if (document.querySelector('[data-autoprint]')) { window.addEventListener('load'
   });
   recalc();
 })();
+
+// Teknik onay: revizyon seçimi değişince gösterilen teknik kart ve farklar seçilen revizyona geçer.
+(function () {
+  const form = document.querySelector('form[data-revision-select]');
+  if (!form) return;
+  const select = form.querySelector('select[name="revision"]');
+  if (!select) return;
+  const show = function () {
+    document.querySelectorAll('[data-revision-card]').forEach(function (card) {
+      card.hidden = card.dataset.revisionCard !== select.value;
+    });
+  };
+  select.addEventListener('change', show);
+  show();
+})();

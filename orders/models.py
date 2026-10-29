@@ -99,6 +99,11 @@ class OrderLine(models.Model):
     source_line = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="repeats",
                                     verbose_name="Repete kaynağı",
                                     help_text="Bu kalem hangi eski kalemin tekrarı. Üretim/sevk/onay kayıtları kopyalanmaz.")
+    expected_revision = models.ForeignKey(
+        RecipeRevision, on_delete=models.PROTECT, null=True, blank=True, related_name="+",
+        verbose_name="Beklenen teknik revizyon (repete)",
+        help_text="Repete açılırken kaynak kalemin onaylı revizyonu (anlık). Kaynak sonradan değişse de bu değişmez; "
+                  "planlama başka revizyon seçerse farkı gerekçesiyle doğrular.")
     cancel_reason = models.TextField("İptal gerekçesi", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

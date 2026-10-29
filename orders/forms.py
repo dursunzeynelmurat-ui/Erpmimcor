@@ -145,13 +145,34 @@ class ApproveLineForm(IdemForm):
     revision = forms.ModelChoiceField(label="Onaylanan reçete revizyonu", queryset=RecipeRevision.objects.none())
     note = forms.CharField(label="Planlama notu", widget=forms.Textarea(attrs={"rows": 2}), required=False)
 
+    deviation_confirmed = forms.BooleanField(
+        label="Beklenen revizyondan farklı revizyon seçtim; farkları kontrol ettim", required=False)
+    deviation_reason = forms.CharField(
+        label="Farklı revizyon gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
+        help_text="Yalnız beklenen revizyon dışında bir revizyon seçerken zorunlu (ör. müşteri yeni ölçüyü yazılı "
+                  "kabul etti).")
+
     def __init__(self, line, *args, **kwargs):
+        from .repeat import expected_revision
         super().__init__(*args, **kwargs)
         qs = RecipeRevision.objects.filter(recipe__product=line.product).order_by("-rev_no")
+        self.expected = expected_revision(line)
         self.fields["revision"].queryset = qs
-        self.fields["revision"].initial = qs.first()
+        self.fields["revision"].initial = self.expected or line.product.current_revision or qs.first()
         self.fields["revision"].label_from_instance = lambda r: (
-            f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})")
+            f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})"
+            + (" · beklenen" if self.expected and r.pk == self.expected.pk else ""))
+
+    def clean(self):
+        data = super().clean()
+        rev = data.get("revision")
+        if self.expected and rev and rev.pk != self.expected.pk:
+            if not data.get("deviation_confirmed"):
+                self.add_error("deviation_confirmed", f"Beklenen revizyon Rev.{self.expected.rev_no}. Rev.{rev.rev_no} "
+                                                      "ile onaylamak için farkları kontrol ettiğinizi işaretleyin.")
+            if not (data.get("deviation_reason") or "").strip():
+                self.add_error("deviation_reason", "Farklı revizyon için gerekçe yazın.")
+        return data
 
 
 class LineChangeForm(IdemForm):
