@@ -130,3 +130,15 @@ class LineChangeRequestTests(TestCase):
                                          reason="Kurgusal eski istek", requested_by=self.w.sales)
         with self.assertRaisesMessage(BusinessRuleError, "teknik talebi karara bağlanmadı"):
             self.w.work_order(line=line, machines=[self.w.free_extruder()])
+
+
+class WizardPrefillTests(TestCase):
+    def test_step2_request_fields_prefilled_with_current_values(self):
+        w = World()
+        self.client.force_login(w.sales)
+        # 1. adım formu gizli talep alanlarını boş gönderir; 2. adımda ürünün mevcut değerleri gelmeli.
+        resp = self.client.post(reverse("orders:order_create"), {
+            "adim": "1", "git": "ileri", "customer": w.cust_a.pk, "product": w.prod_a.pk, "s_width_mm": "",
+            "s_color": ""})
+        form = resp.context["form"]
+        self.assertEqual((form["s_width_mm"].value(), form["s_color"].value()), ("600", "Şeffaf"))

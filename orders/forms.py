@@ -20,6 +20,15 @@ HAS_PRODUCTS = "Yalnız seçilen müşteriye ait aktif ürün kodları listeleni
 SPEC_PREFIX = "s_"
 
 
+def _as_input(value):
+    """Mevcut değeri form girdisi biçimine çevirir (ondalık: gereksiz sıfırsız, virgüllü)."""
+    if value is None:
+        return ""
+    if isinstance(value, Decimal):
+        return format(value.normalize(), "f").replace(".", ",")
+    return str(value)
+
+
 def add_spec_request_fields(form, revision, with_toggle=True):
     """Satışın teknik talep alanları: izinli teknik alanlar (karışım ve iç notlar yok), mevcut revizyonun
     değerleriyle. Döner: forma eklenen alan adları."""
@@ -151,6 +160,15 @@ class OrderCreateForm(IdemForm):
         self.spec_names = add_spec_request_fields(self, product.current_revision if product else None)
         self.STEPS = {**self.STEPS, 2: (self.STEPS[2][0], self.STEPS[2][1] + self.spec_names)}
         self.spec_changes = {}
+        if self.is_bound and product and (self.data.get("adim") == "1"
+                                          or not any(k.startswith(SPEC_PREFIX) for k in self.data)):
+            # 1. adımdan gelişte (ürün yeni seçilmiş/değişmiş olabilir) talep alanları ürünün mevcut değerleriyle
+            # doldurulur; form bağlı olduğu için initial kendiliğinden kullanılmaz.
+            data = self.data.copy()
+            for name in self.spec_names:
+                if name.startswith(SPEC_PREFIX):
+                    data[name] = _as_input(self.fields[name].initial)
+            self.data = data
 
     def _selected_customer(self):
         value = self.data.get(self.add_prefix("customer")) if self.is_bound else self.initial.get("customer")
