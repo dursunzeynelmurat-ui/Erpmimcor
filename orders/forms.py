@@ -17,6 +17,72 @@ NO_PRODUCTS = "Bu müşteriye ait aktif ürün bulunmuyor."
 HAS_PRODUCTS = "Yalnız seçilen müşteriye ait aktif ürün kodları listelenir."
 
 
+SPEC_PREFIX = "s_"
+
+
+def add_spec_request_fields(form, revision, with_toggle=True):
+    """Satışın teknik talep alanları: izinli teknik alanlar (karışım ve iç notlar yok), mevcut revizyonun
+    değerleriyle. Döner: forma eklenen alan adları."""
+    from catalog import spec
+    from catalog.forms import spec_form_field
+    names = []
+    if with_toggle:
+        form.fields["want_change"] = forms.BooleanField(
+            label="Farklı teknik özellik istiyorum", required=False,
+            help_text="Ürün ve reçete değişmez; istek planlamaya gider. Planlama yeni revizyon veya yeni ürün kodu "
+                      "kararı verene kadar kalem teknik onay alamaz ve üretime çıkmaz.")
+        names.append("want_change")
+    form.fields["change_reason"] = forms.CharField(
+        label="Talebin gerekçesi", required=False, widget=forms.Textarea(attrs={"rows": 2}),
+        help_text="Örnek: müşteri 650 mm en ve mavi renk istedi (e-posta 30.10.2026).")
+    names.append("change_reason")
+    for f in spec.FIELDS:
+        if f.name not in spec.CHANGEABLE:
+            continue
+        field = spec_form_field(f)
+        field.initial = getattr(revision, f.name) if revision else None
+        form.fields[SPEC_PREFIX + f.name] = field
+        names.append(SPEC_PREFIX + f.name)
+    return names
+
+
+def clean_spec_request(form, data, product_or_line):
+    """İstenen değerlerden mevcut revizyondan farklı olanları döner; gerekçe ve en az bir fark zorunlu."""
+    from catalog import spec
+    from core.exceptions import BusinessRuleError
+    from .repeat import requested_changes
+    # Yalnız gönderilen alanlar talep sayılır; formda bulunmayan (gönderilmemiş) alan "silindi" anlamına gelmez.
+    requested = {n: data.get(SPEC_PREFIX + n) for n in spec.CHANGEABLE if form.add_prefix(SPEC_PREFIX + n) in form.data}
+    try:
+        _rev, changed = requested_changes(product_or_line, requested)
+    except BusinessRuleError as exc:
+        form.add_error(None, exc.message)
+        return {}
+    if not changed:
+        form.add_error("want_change" if "want_change" in form.fields else None,
+                       "Farklı teknik özellik işaretli ama hiçbir değer değişmedi; farklı bir değer girin veya "
+                       "işareti kaldırın.")
+    if not (data.get("change_reason") or "").strip():
+        form.add_error("change_reason", "Teknik talebin gerekçesini yazın (ör. müşteri 650 mm istedi).")
+    return {k: new for k, (_old, new) in changed.items()}
+
+
+class LineSpecRequestForm(IdemForm):
+    """Taslak veya planlama bekleyen kalem için satışın teknik talebi."""
+
+    def __init__(self, line, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.line = line
+        self.spec_names = add_spec_request_fields(self, line.approved_revision or line.product.current_revision,
+                                                  with_toggle=False)
+        self.spec_changes = {}
+
+    def clean(self):
+        data = super().clean()
+        self.spec_changes = clean_spec_request(self, data, self.line)
+        return data
+
+
 def products_for(customer):
     """Müşteriye bağlı aktif ürün kodları (form listesi ve ürün uç noktası aynı sorguyu kullanır)."""
     return Product.objects.active().filter(customer=customer).order_by("code")
@@ -80,6 +146,11 @@ class OrderCreateForm(IdemForm):
             field.help_text = NO_PRODUCTS
         else:
             field.help_text = HAS_PRODUCTS
+        # Farklı teknik özellik talebi (2. adım): izinli alanlar ürünün mevcut değerleriyle dolu gelir.
+        product = self.selected_product() if self.is_bound else None
+        self.spec_names = add_spec_request_fields(self, product.current_revision if product else None)
+        self.STEPS = {**self.STEPS, 2: (self.STEPS[2][0], self.STEPS[2][1] + self.spec_names)}
+        self.spec_changes = {}
 
     def _selected_customer(self):
         value = self.data.get(self.add_prefix("customer")) if self.is_bound else self.initial.get("customer")
@@ -100,6 +171,8 @@ class OrderCreateForm(IdemForm):
             self.add_error("quantity", f"Kutu biriminde miktar tam sayı olmalı ({qty(qty_value)} girildi). Örnek: 12.")
         if self.final and not data.get("delivery_confirmed"):
             self.add_error("delivery_confirmed", "Kaydetmeden önce teslimat bilgilerini kontrol edip işaretleyin.")
+        if product and data.get("want_change"):
+            self.spec_changes = clean_spec_request(self, data, product)
         return data
 
     @property

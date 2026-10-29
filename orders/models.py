@@ -122,6 +122,10 @@ class OrderLine(models.Model):
     def code(self):
         return f"{self.order.code}/{self.line_no:02d}"
 
+    @property
+    def open_change_request(self):
+        return self.change_requests.filter(status__in=OPEN_CHANGE_STATES).first()
+
 
 class CompatibilityException(models.Model):
     """Teknik eşdeğerlik onayı: kalemin onay anındaki hedef revizyonundan teknik olarak farklı (ölçü, renk, baskı,

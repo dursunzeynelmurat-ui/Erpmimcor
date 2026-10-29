@@ -1,5 +1,6 @@
 {% if p.line.status != "iptal" and p.line.status != "sevk_edildi" and p.line.order.status != "iptal" and p.line.order.status != "tamamlandi" %}
   {% if can.order_change %}<a class="btn" href="{% url 'orders:line_change' p.line.pk %}">{% if p.line.needs_review %}Miktar/termini onayla{% else %}Miktar / termin değiştir{% endif %}</a>{% endif %}
+  {% if can.order_create and p.line.status == "planlama_bekliyor" and not p.work_orders and not p.line.open_change_request %}<a class="btn" href="{% url 'orders:line_change_request' p.line.pk %}">Farklı teknik özellik iste</a>{% endif %}
   {% if can.order_cancel %}{% url 'orders:line_cancel' p.line.pk as u %}{% include "partials/reason_button.html" with action=u label="Kalemi iptal et" btn_class="btn-danger" %}{% endif %}
   {% if can.exception_approve and p.line.unit == "kutu" %}
   <a class="btn" href="{% url 'orders:line_exception' p.line.pk 'uyumluluk' %}">Teknik eşdeğerlik onayı</a>

@@ -104,13 +104,53 @@ def create_repeat_order(actor, *, customer, items, order_date=None, due_date=Non
         line = services.add_line(actor, order, product=src.product, quantity=item["quantity"], unit=src.unit,
                                  due_date=item.get("due_date"), source_line=src)
         if changed:
-            cr = LineChangeRequest.objects.create(
-                line=line, base_revision=src.approved_revision or src.product.current_revision,
-                requested={k: _json(v) for k, (_o, v) in changed.items()}, reason=item["reason"].strip(),
-                requested_by=actor)
-            audit(actor, "order.change_request", line, {k: (_json(o), _json(v)) for k, (o, v) in changed.items()},
-                  reason=cr.reason, code=line.code)
+            _create_request(actor, line, src.approved_revision or src.product.current_revision, changed,
+                            item["reason"].strip())
     return order
+
+
+def _create_request(actor, line, base, changed, reason):
+    cr = LineChangeRequest.objects.create(
+        line=line, base_revision=base, requested={k: _json(v) for k, (_o, v) in changed.items()}, reason=reason,
+        requested_by=actor)
+    audit(actor, "order.change_request", line, {k: (_json(o), _json(v)) for k, (o, v) in changed.items()},
+          reason=reason, code=line.code)
+    return cr
+
+
+def requested_changes(line_or_product, changes):
+    """Satışın girdiği değerlerden yalnız izinli ve mevcut revizyondan gerçekten farklı olanlar. Reçetesi olmayan
+    üründe dolu her değer müşteri talebidir."""
+    unknown = set(changes) - set(spec.CHANGEABLE)
+    if unknown:
+        raise BusinessRuleError("Bu alanlar teknik talepte değiştirilemez (karışım ve iç notlar planlamadadır): "
+                                + ", ".join(sorted(unknown)))
+    product = getattr(line_or_product, "product", line_or_product)
+    rev = getattr(line_or_product, "approved_revision", None) or product.current_revision
+    base = {n: getattr(rev, n) for n in spec.FIELD_NAMES} if rev else {}
+    return rev, diff_values(base, changes)
+
+
+@transaction.atomic
+def request_line_change(actor, line, changes, reason):
+    """Normal sipariş (taslak veya planlama bekleyen) kaleminde satışın teknik talebi. Ürün/reçete değişmez; istek
+    planlamaya gider (yeni revizyon / yeni ürün kodu / ret). Karar verilene kadar teknik onay ve iş emri engellidir."""
+    line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=line.pk)
+    check(actor, "order.create", line.order)
+    if line.status != LineStatus.WAITING_PLANNING or line.order.status in (OrderStatus.CANCELLED, OrderStatus.DONE):
+        raise BusinessRuleError("Teknik talep yalnız planlama onayı bekleyen (taslak veya onaylı siparişteki) kalemde "
+                                "açılabilir. Onaylanmış veya üretimi başlamış kalemde planlamayla görüşün.")
+    if line.work_orders.exists():
+        raise BusinessRuleError("Bu kalemin iş emri var; teknik talep bu yolla açılamaz.")
+    rev, changed = requested_changes(line, changes)
+    if pending_request(line):
+        raise BusinessRuleError("Bu kalem için açık bir teknik değişiklik isteği var; planlama kararını bekleyin.")
+    reason = (reason or "").strip()
+    if not changed:
+        raise BusinessRuleError("İstenen değerler mevcut özelliklerle aynı; farklı bir değer girin.")
+    if not reason:
+        raise BusinessRuleError("Teknik talebin gerekçesini yazın (ör. müşteri 650 mm istedi).", field="change_reason")
+    return _create_request(actor, line, rev, changed, reason)
 
 
 def pending_request(line):
@@ -119,9 +159,14 @@ def pending_request(line):
 
 def comparison(cr):
     """Planlama için yan yana: [(etiket, birim, eski gösterim, yeni gösterim)]"""
-    base = {n: getattr(cr.base_revision, n) for n in spec.FIELD_NAMES} if cr.base_revision else {}
+    return change_rows(cr.base_revision, cr.requested)
+
+
+def change_rows(base_revision, requested):
+    """Mevcut revizyon (yoksa 'Belirtilmemiş') ile istenen değerler yan yana."""
+    base = {n: getattr(base_revision, n) for n in spec.FIELD_NAMES} if base_revision else {}
     rows = []
-    for name, new in cr.requested.items():
+    for name, new in requested.items():
         f = spec.BY_NAME[name]
         rows.append({"label": f.label, "old": spec.display(f, base.get(name)), "new": spec.display(f, new)})
     return rows

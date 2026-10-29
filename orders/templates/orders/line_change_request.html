@@ -1,0 +1,23 @@
+{% extends "base.html" %}{% load mimcor %}
+{% block title %}Teknik talep {{ line.code }}{% endblock %}
+{% block content %}
+<h1>Farklı teknik özellik talebi: {{ line.code }}</h1>
+<p>{{ line.order.customer.name }} · {{ line.product }} · {{ line.quantity|qty }} {{ line.get_unit_display }}</p>
+<p class="muted">Ürün ve reçete değişmez. Talebiniz planlamaya gider; planlama yeni teknik revizyon veya yeni ürün kodu
+  kararı verir. Karardan önce kalem teknik onay almaz ve üretime çıkmaz. Karışım (reçete bileşimi) planlamada belirlenir.</p>
+{% if pending %}<p class="msg msg-warning">Bu kalem için açık bir teknik değişiklik isteği var ({{ pending.get_status_display }}); planlama kararını bekleyin.</p>{% endif %}
+{% if revision %}<details><summary>Mevcut teknik özellikler (Rev.{{ revision.rev_no }})</summary>{% spec_card revision line.product title="Mevcut teknik özellikler" %}</details>
+{% else %}<p class="msg msg-warning">Bu ürünün henüz onaylı reçetesi yok. Yazdığınız değerler müşteri talebi olarak kaydedilir; planlama ilk reçeteyi bu talepten hazırlar.</p>{% endif %}
+{% if diff %}<section class="card"><h2>Mevcut ve istenen</h2><div class="table-wrap"><table class="table compact"><thead><tr><th>Özellik</th><th>Mevcut</th><th>İstenen</th></tr></thead>
+  <tbody>{% for r in diff %}<tr><td data-label="Özellik">{{ r.label }}</td><td data-label="Mevcut">{{ r.old }}</td><td data-label="İstenen"><strong>{{ r.new }}</strong></td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
+<form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
+  {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları düzeltin; girdiğiniz bilgiler korunur.</strong>{{ form.non_field_errors }}</div>{% endif %}
+  {{ form.idem_key }}
+  {% include "partials/field.html" with field=form.change_reason %}
+  <h2>İstenen teknik değerler</h2>
+  <p class="muted">Yalnız değişmesini istediğiniz değerleri değiştirin; diğerleri mevcut değerleriyle kalır.</p>
+  {% for field in fields %}{% include "partials/field.html" %}{% endfor %}
+  <div class="actions"><button type="submit" class="btn btn-primary">Talebi planlamaya ilet</button>
+    <a class="btn" href="{% url 'orders:order_detail' line.order.pk %}">Vazgeç</a></div>
+</form>
+{% endblock %}

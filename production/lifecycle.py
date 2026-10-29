@@ -61,6 +61,9 @@ def release(actor, wo):
         raise BusinessRuleError("Yalnız taslak iş emri serbest bırakılabilir.")
     if not wo.assigned_foreman_id:
         raise BusinessRuleError("Serbest bırakmadan önce sorumlu ustabaşı atanmalı.", field="foreman")
+    if wo.order_line_id and wo.order_line.open_change_request:
+        raise BusinessRuleError("Sipariş kaleminde satışın teknik talebi karara bağlanmadı; iş emri serbest "
+                                "bırakılamaz.")
     conflict = revision_conflict(wo)
     if conflict:
         raise BusinessRuleError(conflict)

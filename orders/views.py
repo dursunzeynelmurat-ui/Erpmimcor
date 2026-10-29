@@ -11,8 +11,8 @@ from core.services import history_for
 from core.viewutils import run_form_action
 
 from . import services
-from .forms import (ApproveLineForm, CompatibilityForm, LineAddForm, LineChangeForm, OrderCreateForm, OverDeliveryForm,
-                    products_for)
+from .forms import (ApproveLineForm, CompatibilityForm, LineAddForm, LineChangeForm, LineSpecRequestForm,
+                    OrderCreateForm, OverDeliveryForm, products_for)
 from .models import CreationMethod, LineStatus, OrderLine, OrderStatus, SalesOrder
 from .selectors import line_progress
 
@@ -41,6 +41,7 @@ def order_list(request):
 def order_create(request):
     """Kısa adımlı sipariş girişi. 'git': ileri / geri / 1-2 (Düzenle) / kaydet. Adım bilgisi olmadan gelen tam
     gönderim (eski form) kaydet olarak işlenir; her durumda aynı sunucu doğrulaması uygulanır."""
+    from . import repeat
     form = OrderCreateForm(request.POST or None, user=request.user)
     step, stuck = 1, False
     if request.method == "POST":
@@ -55,16 +56,26 @@ def order_create(request):
         elif action in ("1", "2"):
             step = int(action)
         else:
+            from django.db import transaction
+
+            @transaction.atomic
             def create(d):
-                return services.create_order(
+                order = services.create_order(
                     request.user, customer=d["customer"], order_date=d["order_date"], due_date=d["due_date"],
                     customer_ref=d["customer_ref"], notes=d["notes"], purpose=d["purpose"], charge=d["charge"],
                     creation_method=CreationMethod.NEW,
                     lines=[{"product": d["product"], "quantity": d["quantity"], "unit": d["unit"]}])
+                if d.get("want_change") and form.spec_changes:
+                    repeat.request_line_change(request.user, order.lines.get(), form.spec_changes, d["change_reason"])
+                return order
+
+            def created(o):
+                tail = (" Teknik talebiniz planlamaya iletildi; planlama kararından önce kalem teknik onay almaz."
+                        if form.spec_changes else "")
+                return (f"Sipariş oluşturuldu: {o.code} (taslak).{tail} Sıradaki adım: kalemleri kontrol edin, "
+                        "gerekiyorsa kalem ekleyin ve 'Siparişi onayla' düğmesine basın.")
             resp = run_form_action(
-                request, form, action="order.create", fn=create,
-                success_message=lambda o: f"Sipariş oluşturuldu: {o.code} (taslak). Sıradaki adım: kalemleri kontrol "
-                                          "edin, gerekiyorsa kalem ekleyin ve 'Siparişi onayla' düğmesine basın.",
+                request, form, action="order.create", fn=create, success_message=created,
                 url_for=lambda o: reverse("orders:order_detail", args=[o.pk]))
             if resp:
                 return resp
@@ -76,11 +87,16 @@ def order_create(request):
         form.errors.clear()  # temizlenmiş değerler korunur; yeni açılan adımda hata/aria-invalid gösterilmez
     product = form.selected_product() if form.is_bound else None
     customer = form._selected_customer() if form.is_bound else None
+    revision = product.current_revision if product else None
+    visible = form.STEPS[step][1]
     return render(request, "orders/order_create.html", {
         "form": form, "step": step, "steps": [(k, t) for k, (t, _) in form.STEPS.items()],
-        "visible": form.STEPS[step][1], "show_errors": show_errors, "product": product, "customer": customer,
+        "visible": visible, "visible_plain": [n for n in visible if n not in form.spec_names],
+        "spec_request": [form[n] for n in form.spec_names if n != "want_change"],
+        "spec_diff": repeat.change_rows(revision, form.spec_changes) if form.spec_changes else [],
+        "show_errors": show_errors, "product": product, "customer": customer,
         "snapshot": services.order_snapshot(customer) if customer else None,
-        "revision": product.current_revision if product else None,
+        "revision": revision,
     })
 
 
@@ -223,6 +239,30 @@ def order_archive(request, pk):
     order = _get_order(request, pk)
     return _post(request, order, ConfirmForm(request.POST), "order.archive",
                  lambda d: services.archive_order(request.user, order), "Sipariş arşivlendi.")
+
+
+@require_perm("order.create")
+def line_change_request(request, pk):
+    """Satış: taslak / planlama bekleyen kalem için farklı teknik özellik talebi (karışım yok; karar planlamada)."""
+    from . import repeat
+    line = get_object_or_404(OrderLine.objects.select_related("order__customer", "product", "approved_revision"),
+                             pk=pk)
+    order = _get_order(request, line.order_id)
+    form = LineSpecRequestForm(line, request.POST or None)
+    if request.method == "POST":
+        resp = run_form_action(
+            request, form, action="order.change_request",
+            fn=lambda d: repeat.request_line_change(request.user, line, form.spec_changes, d["change_reason"]),
+            success_message="Teknik talep planlamaya iletildi. Planlama kararından önce kalem teknik onay almaz ve "
+                            "üretime çıkmaz; ürün ve reçete değişmedi.",
+            url_for=lambda _: _order_url(order))
+        if resp:
+            return resp
+    return render(request, "orders/line_change_request.html", {
+        "line": line, "form": form, "revision": line.approved_revision or line.product.current_revision,
+        "fields": [form[n] for n in form.spec_names if n != "change_reason"], "pending": repeat.pending_request(line),
+        "diff": repeat.change_rows(line.approved_revision or line.product.current_revision, form.spec_changes)
+        if form.spec_changes else []})
 
 
 @require_perm("order.change")

@@ -21,10 +21,18 @@
   {% elif step == 2 %}
     <h2>2. Özellikler ve miktar</h2>
     <p><strong>{{ customer.name }}</strong> · {{ product }}</p>
-    {% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}
-    <p class="muted">Teknik özellikler ürünün onaylı revizyonundan gelir ve burada değiştirilemez. Farklı özellik
-      gerekiyorsa siparişi kaydettikten sonra planlamaya değişiklik isteği iletin.</p>
-    {% for field in form.visible_fields %}{% if field.name in visible %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endif %}{% endfor %}
+    {% if revision %}{% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}
+    <p class="muted">Teknik özellikler ürünün onaylı revizyonundan otomatik gelir. Müşteri farklı özellik istiyorsa
+      aşağıdaki "Farklı teknik özellik istiyorum" bölümünü kullanın; ürün ve reçete değişmez, talep planlamaya gider.</p>
+    {% else %}<p class="msg msg-warning">Bu ürünün henüz onaylı reçetesi yok. Müşterinin istediği ölçü, kalınlık, renk,
+      baskı ve paketleme bilgilerini aşağıdaki talep bölümüne yazın; planlama ilk reçeteyi bu talepten hazırlar.
+      Talep üretime onaylı sayılmaz.</p>{% endif %}
+    {% for field in form.visible_fields %}{% if field.name in visible_plain %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endif %}{% endfor %}
+    <details class="card" data-spec-request{% if form.want_change.value or not revision %} open{% endif %}><summary>Farklı teknik özellik istiyorum</summary>
+      {% if show_errors %}{% include "partials/field.html" with field=form.want_change %}{% else %}{% include "partials/field_noerror.html" with field=form.want_change %}{% endif %}
+      <p class="muted">Yalnız değişmesini istediğiniz değerleri değiştirin. Karışım (reçete bileşimi) planlamada belirlenir.</p>
+      {% for field in spec_request %}{% if show_errors %}{% include "partials/field.html" %}{% else %}{% include "partials/field_noerror.html" %}{% endif %}{% endfor %}
+    </details>
     <div class="actions"><button type="submit" name="git" value="ileri" class="btn btn-primary">İleri: teslimat ve kontrol →</button>
       <button type="submit" name="git" value="geri" class="btn" formnovalidate>← Geri</button></div>
 
@@ -42,7 +50,11 @@
         <dt>Müşteri ref.</dt><dd>{{ form.customer_ref.value|default:"—" }}</dd>
         {% if form.notes.value %}<dt>Not</dt><dd>{{ form.notes.value }}</dd>{% endif %}
       </dl>
-      <details><summary>Teknik özellikler</summary>{% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}</details></section>
+      {% if revision %}<details><summary>Teknik özellikler</summary>{% spec_card revision product title="Ürünün onaylı teknik özellikleri" %}</details>{% endif %}
+      {% if spec_diff %}<h4>Farklı teknik özellik talebi <span class="status status-kontrol_bekliyor">Planlama kararı gerekir</span></h4>
+      <div class="table-wrap"><table class="table compact"><thead><tr><th>Özellik</th><th>Mevcut</th><th>İstenen</th></tr></thead>
+        <tbody>{% for r in spec_diff %}<tr><td data-label="Özellik">{{ r.label }}</td><td data-label="Mevcut">{{ r.old }}</td><td data-label="İstenen"><strong>{{ r.new }}</strong></td></tr>{% endfor %}</tbody></table></div>
+      <p>Gerekçe: {{ form.change_reason.value }}</p>{% endif %}</section>
     <section class="summary-section"><header><h3>Teslimat</h3></header>
       <dl class="kv"><dt>Teslimat adresi</dt><dd>{{ snapshot.shipping_address|default:"Müşteri kartında varsayılan teslimat adresi yok" }}</dd>
         <dt>Teslim şekli / yeri</dt><dd>{{ snapshot.delivery_terms|delivery_terms_label }} · {{ snapshot.delivery_place|default:"—" }}</dd></dl>

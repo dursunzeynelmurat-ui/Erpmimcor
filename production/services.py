@@ -41,6 +41,8 @@ def create_work_order(actor, *, machines, target_quantity, unit, order_line=None
         order_line = OrderLine.objects.select_for_update(of=("self",)).select_related("order", "product").get(pk=order_line.pk)
         if order_line.status not in (LineStatus.APPROVED, LineStatus.IN_PRODUCTION, LineStatus.PRODUCED_SHORT):
             raise BusinessRuleError("Sipariş kalemi planlama tarafından teknik olarak onaylanmamış.")
+        if order_line.open_change_request:
+            raise BusinessRuleError("Bu kalem için satışın teknik talebi karara bağlanmadı; iş emri açılamaz.")
         purpose, product, revision = WorkOrderPurpose.ORDER, order_line.product, order_line.approved_revision
     else:
         if product is None or revision is None:
