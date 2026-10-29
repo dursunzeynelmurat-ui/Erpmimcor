@@ -52,6 +52,7 @@ jobs:
       DEMO_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/demo
       SCENARIO_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/saha-senaryolari
       TNR_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/teknik-numune-repete
+      DSD_SCREENSHOT_DIR: ${{ github.workspace }}/browser-artifacts/demo-son-duzeltmeler
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -64,7 +65,7 @@ jobs:
         run: >-
           python manage.py test --noinput
           ui_checks.browser_checks ui_checks.order_product_filter_checks ui_checks.field_scenarios_checks
-          ui_checks.teknik_numune_checks
+          ui_checks.teknik_numune_checks ui_checks.demo_son_checks
       - name: Ekran görüntüleri ve hata trace'leri
         if: always()
         uses: actions/upload-artifact@v4
