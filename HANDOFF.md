@@ -1,3 +1,25 @@
+# Demo öncesi son işlevsel düzeltmeler — 30 Ekim 2026 (güncel)
+
+Branch: `fix/mimcor-demo-son-duzeltmeler` (taban `c316506`; merge/PR/canlı yayın yok). Ayrıntı, her bulgu için önceki
+davranış / düzeltme / regresyon testi / kalan sınır, doğrulama, demo senaryoları ve Astra UI devri:
+**[docs/demo-son-duzeltmeler.md](docs/demo-son-duzeltmeler.md)**.
+
+| # | Düzeltme |
+|---|---|
+| 1 | İç proses notu satış yanıtlarında hiç üretilmez (`recipe.view` sınırı) |
+| 2 | Repete teknik onayında beklenen revizyon (kaynak anlık / karar sonucu); başka revizyon yalnız gerekçeyle |
+| 3 | Firma stoğundan numune stok hareketi tamamlanmadan gönderilemez/imha edilemez; önceki çıkış bağlanabilir |
+| 4 | Numune fiziksel kaynağın üretim revizyonuna bağlanır; çelişki ve belirsizlikte tahmin yok |
+| 5 | Talimatta uygulama notu ve ürüne özel ambalaj notu (müşteri genel talimatından ayrı) |
+| 6 | Numune işlem formu hatada girilen bilgiyi, alan hatasını ve açık bölümü korur |
+| 7 | Normal yeni siparişte ve planlama bekleyen kalemde satışın teknik talebi; karar çıkana kadar onay/iş emri yok |
+
+Doğrulama: 426 Django testi, 12 tarayıcı testi (1440/390 emülasyon), temiz kurulum ve iki yükseltme kopyası OK.
+**Açık demo engeli:** erişilebilir sunum kurulumu yok (yalnız konteyner içi 127.0.0.1; tünel açılmadı). Gerçek
+telefon, fiziksel yazıcı ve gerçek kullanıcı gözlemi yapılmadı.
+
+---
+
 # Teknik sipariş, reçete, baskı, numune ve repete — 28 Ekim 2026
 
 Branch: `feature/mimcor-teknik-numune-repete` (taban `63a5105`; merge/PR/canlı yayın yok). Ayrıntı, iş kuralları, yetki
