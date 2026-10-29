@@ -39,9 +39,14 @@ def technical_info(op):
                 info[n] = spec.display(spec.BY_NAME[n], value)
 
     if op.machine_type == MachineType.EXTRUDER:
+        mix = []
+        for c in rev.components.select_related("material"):
+            item = {"malzeme": c.material.code, "ad": c.material.name, "oran": _q(c.percentage)}
+            if c.application_note:
+                item["not"] = c.application_note  # boş not eklenmez (eski talimat sürümleri gereksiz yenilenmez)
+            mix.append(item)
         info.update({"en_mm": _q(rev.width_mm), "kalinlik_mikron": _q(rev.thickness_micron), "renk": rev.color,
-                     "karisim": [{"malzeme": c.material.code, "ad": c.material.name, "oran": _q(c.percentage)}
-                                 for c in rev.components.select_related("material")]})
+                     "karisim": mix})
         put("width_basis", "gusset_type", "gusset_depth_mm", "width_tol_mm", "thickness_tol_micron", "appearance",
             "color_system", "color_code")
     elif op.machine_type == MachineType.PRINT:
@@ -87,7 +92,7 @@ def build_snapshot(op):
     docs = [{"baslik": d.title, "surum": d.version, "tur": d.get_kind_display(),
              "tarih": d.valid_from.isoformat() if d.valid_from else None}
             for d in customer.documents.filter(is_active=True, visibility=DocumentVisibility.OPERATIONS)]
-    return {
+    snapshot = {
         "is_emri": wo.code, "operasyon": op.code,
         "siparis": wo.order_line.code if wo.order_line_id else "Müşteri stoğu (siparişsiz)", "sira": op.seq, "operasyon_turu": op.get_machine_type_display(),
         "urun": f"{wo.product.code} – {wo.product.name}", "makine": f"{op.machine.code} {op.machine.name}",
@@ -99,6 +104,11 @@ def build_snapshot(op):
         "etiketleme": (customer.labeling_instructions if last else ""),
         "belgeler": docs if last else [],
     }
+    # Ürüne özel ambalaj/etiket notu (revizyondan) son operasyonda, müşteri genel talimatından ayrı anahtar.
+    # Yalnız doluysa eklenir: notsuz işlerde içerik özeti değişmez, eski basılı sürümler gereksiz yenilenmez.
+    if last and wo.recipe_revision.packing_notes:
+        snapshot["urun_ambalaj"] = wo.recipe_revision.packing_notes
+    return snapshot
 
 
 def _hash(snapshot):

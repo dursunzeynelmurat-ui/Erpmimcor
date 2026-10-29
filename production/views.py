@@ -79,11 +79,18 @@ def workorder_detail(request, pk):
     ops = list(wo.operations.select_related("machine", "started_by", "finished_by", "shift", "work_order")
                .prefetch_related("instructions", "stops"))
     op_rows = []
+    last_seq = max((op.seq for op in ops), default=None)
     for op in ops:
         ins = list(op.instructions.all())
+        tech = instructions.technical_info(op) if instructions.can_view_technical(user, op) else None
         op_rows.append({
             "op": op,
-            "tech": instructions.technical_info(op) if instructions.can_view_technical(user, op) else None,
+            "tech": tech,
+            # Son operasyon: ürüne özel ambalaj/etiket notu ve müşteri genel talimatı ayrı başlıklarla
+            "packing": ({"urun": wo.recipe_revision.packing_notes,
+                         "musteri_paket": wo.product.customer.packing_instructions,
+                         "musteri_etiket": wo.product.customer.labeling_instructions}
+                        if tech is not None and op.seq == last_seq else None),
             "can_hold": can(user, "production.hold", op), "can_schedule": can(user, "workorder.schedule", op),
             "can_print": can(user, "instruction.print", op),
             "current_instruction": next((i for i in ins if i.status == "gecerli"), None),
