@@ -84,7 +84,7 @@ def sample_create(request):
                 occurred_at=d["occurred_at"], quantity=d["quantity"], unit=d["unit"], room=d["room"],
                 cabinet=d["cabinet"], shelf=d["shelf"], box=d["box"], retention_until=d["retention_until"],
                 retention_conditions=d["retention_conditions"], notes=d["notes"], shared_note=d["shared_note"],
-                stock_source=d["stock_source"])
+                stock_source=d["stock_source"], revision=d["revision"], revision_uncertain=d["revision_uncertain"])
         resp = run_form_action(request, form, action="sample.create", fn=create,
                                success_message=lambda s: f"Numune kaydedildi: {s.code}. Sıradaki adım: QR etiketini "
                                                          "basın; firma stoğundan ayrılacaksa 'Stoktan ayır'.",

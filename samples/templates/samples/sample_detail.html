@@ -17,6 +17,7 @@
   <dt>Tarih / saat</dt><dd>{{ s.occurred_at|date:"d.m.Y H:i" }}</dd>
   {% if s.counterpart %}<dt>Teslim eden / alan</dt><dd>{{ s.counterpart }}</dd>{% endif %}
   {% if s.order_line %}<dt>Sipariş kalemi</dt><dd>{{ s.order_line.code }}</dd>{% endif %}
+  {% if s.product %}<dt>Teknik revizyon</dt><dd>{% if s.revision %}Rev.{{ s.revision.rev_no }}{% else %}Kesin bilinmiyor{% endif %}{% if s.revision_basis %} <small class="muted">· {{ s.get_revision_basis_display }}</small>{% endif %}</dd>{% endif %}
   {% if internal %}
   {% if s.work_order %}<dt>İş emri</dt><dd>{{ s.work_order.code }}</dd>{% endif %}
   {% if s.coil %}<dt>Bobin</dt><dd>{{ s.coil.code }}</dd>{% endif %}

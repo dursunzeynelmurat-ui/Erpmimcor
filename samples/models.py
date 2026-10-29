@@ -26,6 +26,17 @@ class SampleKind(models.TextChoices):
 INTERNAL_KINDS = (SampleKind.PRODUCTION_CONTROL, SampleKind.RETAINED, SampleKind.TO_CUSTOMER)
 
 
+class RevisionBasis(models.TextChoices):
+    """Numunenin teknik revizyonunun neye dayandığı."""
+    UNKNOWN = "", "Belirtilmemiş (eski kayıt)"
+    PHYSICAL = "fiziksel", "Fiziksel kaynağın (bobin/palet) üretim revizyonu"
+    WORK_ORDER = "is_emri", "İş emrinin revizyonu"
+    ORDER_LINE = "siparis_kalemi", "Sipariş kaleminin onaylı revizyonu"
+    PRODUCT_CURRENT = "urun_guncel", "Fiziksel/üretim bağlantısı yok; kayıt anındaki güncel ürün revizyonu"
+    USER = "kullanici", "Birden fazla olası revizyondan kullanıcı seçimi"
+    UNCERTAIN = "belirsiz", "Revizyon kesin bilinmiyor (açıkça belirsiz)"
+
+
 class StockSource(models.TextChoices):
     """Firma içi numunenin stokla ilişkisi. Boş: müşteri referansı veya eski kayıt (belirtilmemiş)."""
     UNKNOWN = "", "Belirtilmemiş"
@@ -70,6 +81,7 @@ class Sample(models.Model):
                                 related_name="samples")
     revision = models.ForeignKey("catalog.RecipeRevision", on_delete=models.PROTECT, null=True, blank=True,
                                  related_name="+")
+    revision_basis = models.CharField("Revizyon dayanağı", max_length=15, choices=RevisionBasis.choices, blank=True)
     order_line = models.ForeignKey("orders.OrderLine", on_delete=models.PROTECT, null=True, blank=True,
                                    related_name="samples")
     work_order = models.ForeignKey("production.WorkOrder", on_delete=models.PROTECT, null=True, blank=True,

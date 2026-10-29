@@ -4,7 +4,7 @@ from django import forms
 from django.urls import reverse
 from django.utils import timezone
 
-from catalog.models import Customer, Product
+from catalog.models import Customer, Product, RecipeRevision
 from core.forms import IdemForm, TRDecimalField
 
 from .models import (INTERNAL_KINDS, CriterionUnit, CustomerFeedback, QualityDecision, SampleCriterion, SampleKind,
@@ -29,6 +29,13 @@ class SampleCreateForm(IdemForm):
     coil_code = forms.CharField(label="Bobin no", required=False, max_length=30)
     pallet_code = forms.CharField(label="Palet no", required=False, max_length=30,
                                   help_text="Bağlantı içindir; stok düşmez. Stoktan ayırma kayıttan sonra yapılır.")
+    revision = forms.ModelChoiceField(
+        label="Teknik revizyon", queryset=RecipeRevision.objects.none(), required=False,
+        help_text="Boş bırakın: bobin/palet/iş emri bağlıysa üretim revizyonu otomatik alınır. Palet birden fazla "
+                  "revizyondan oluşuyorsa veya fiziksel bağlantı yoksa seçin.")
+    revision_uncertain = forms.BooleanField(
+        label="Revizyon kesin bilinmiyor", required=False,
+        help_text="Yalnız olası revizyonlardan hangisi olduğu bilinmiyorsa işaretleyin; tahmin yapılmaz.")
     stock_source = forms.ChoiceField(
         label="Stok kaynağı (firma içi numune)", choices=STOCK_SOURCE_CHOICES, required=False,
         help_text="Firma stoğundan tam kutu: kayıttan sonra 'Stoktan ayır' yapılmadan gönderilemez/imha edilemez. "
@@ -70,6 +77,12 @@ class SampleCreateForm(IdemForm):
         })
         if customer is None:
             field.widget.attrs["disabled"] = "disabled"
+        pid = self.data.get("product") if self.is_bound else None
+        self.fields["revision"].queryset = (RecipeRevision.objects.filter(
+            recipe__product__customer=customer, recipe__product_id=pid).order_by("-rev_no")
+            if customer and pid and str(pid).isdigit() else RecipeRevision.objects.none())
+        self.fields["revision"].label_from_instance = lambda r: (
+            f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})")
 
     def clean(self):
         data = super().clean()

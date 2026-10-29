@@ -28,7 +28,7 @@ from core.services import audit, next_code
 
 from .models import (INTERNAL_KINDS, CriterionUnit, CustomerFeedback, EventKind, MeasurementResult, PhysicalStatus,
                      QualityDecision, Sample, SampleAttachment, SampleCriterion, SampleEvent, SampleKind,
-                     SampleMeasurement, SampleUnit, StockSource)
+                     SampleMeasurement, SampleUnit, RevisionBasis, StockSource)
 
 # Numuneye bağlanabilecek önceki çıkış hareketleri (kutular paletten fiziksel olarak ayrılmış)
 PRIOR_OUT_KINDS = ("hasar_ayirma", "sayim_duzeltme", "duzeltme", "numune_ayirma")
@@ -115,10 +115,93 @@ def _locked(actor, sample, perm):
     return sample
 
 
+def pallet_sources(pallet):
+    """Paletin (aktarım/hasar ayırmayla kutu aldığı kaynak paletler dahil) fiziksel kökeni:
+    (olası üretim revizyonları, iş emirleri, bobinler ve kaynak bobin zinciri)."""
+    from production.models import Coil, CoilLink, WorkOrder
+    from warehouse import services as wh
+    from warehouse.models import MovementKind, Pallet, PalletCoil, PalletMovement
+    pallets = wh._pallet_ancestors({pallet.pk})
+    coils = set(PalletCoil.objects.filter(pallet_id__in=pallets).values_list("coil_id", flat=True))
+    wos = set(Pallet.objects.filter(pk__in=pallets, work_order__isnull=False).values_list("work_order_id", flat=True))
+    wos |= set(Coil.objects.filter(pk__in=coils).values_list("work_order_id", flat=True))
+    wos |= set(PalletMovement.objects.filter(pallet_id__in=pallets, kind=MovementKind.PRODUCTION,
+                                             work_order__isnull=False).values_list("work_order_id", flat=True))
+    chain = wh._expand(coils, lambda ids: CoilLink.objects.filter(output_id__in=ids).values_list("source_id", flat=True))
+    revisions = set(WorkOrder.objects.filter(pk__in=wos).values_list("recipe_revision_id", flat=True))
+    return revisions, wos, chain
+
+
+def _rev_names(ids):
+    from catalog.models import RecipeRevision
+    return ", ".join(f"Rev.{n}" for n in RecipeRevision.objects.filter(pk__in=ids).order_by("rev_no")
+                     .values_list("rev_no", flat=True)) or "bilinmiyor"
+
+
+def _resolve_revision(product, revision, uncertain, *, order_line, work_order, coil, pallet):
+    """Numunenin teknik revizyonu ve dayanağı. Öncelik: fiziksel kaynak (bobin/palet) → iş emri → sipariş kalemi →
+    kullanıcı seçimi; ürünün güncel revizyonu yalnız hiçbir fiziksel/üretim bağlantısı yoksa ve dayanağı yazılarak.
+    Çelişen bağlantı ve belirsiz paletteki tahmin reddedilir."""
+    from catalog.models import RecipeRevision
+    if work_order is not None and order_line is not None and work_order.order_line_id and \
+            work_order.order_line_id != order_line.pk:
+        raise BusinessRuleError(f"{work_order.code} iş emri bu sipariş kalemine ait değil; bağlantılar çelişiyor.",
+                                field="order_line")
+    candidates = None
+    if coil is not None:
+        candidates = {coil.work_order.recipe_revision_id}
+    if pallet is not None:
+        revs, wos, coils = pallet_sources(pallet)
+        if coil is not None and coil.pk not in coils:
+            raise BusinessRuleError(f"{coil.code} bobini bu palette değil ({pallet.code}); bağlantılar çelişiyor.",
+                                    field="coil")
+        if work_order is not None and work_order.pk not in wos:
+            raise BusinessRuleError(f"{pallet.code} paleti {work_order.code} iş emrinden gelmiyor; bağlantılar "
+                                    "çelişiyor.", field="work_order")
+        candidates = revs if candidates is None else candidates
+    if candidates is not None:
+        if len(candidates) == 1:
+            known = RecipeRevision.objects.get(pk=next(iter(candidates)))
+            if revision is not None and revision.pk != known.pk:
+                raise BusinessRuleError(f"Fiziksel kaynak Rev.{known.rev_no} ile üretildi; seçilen Rev.{revision.rev_no} "
+                                        "ile çelişiyor.", field="revision")
+            return known, RevisionBasis.PHYSICAL
+        names = _rev_names(candidates)
+        if revision is not None:
+            if candidates and revision.pk not in candidates:
+                raise BusinessRuleError(f"Seçilen Rev.{revision.rev_no} bu paletin olası revizyonları arasında değil "
+                                        f"({names}).", field="revision")
+            return revision, RevisionBasis.USER
+        if uncertain:
+            return None, RevisionBasis.UNCERTAIN
+        what = (f"{pallet.code} paleti birden fazla revizyondan oluşuyor ({names})" if len(candidates) > 1
+                else f"{pallet.code} paletinin üretim revizyonu kayıtlı değil")
+        raise BusinessRuleError(f"{what}; tahmin yapılmaz. Numunenin revizyonunu seçin veya 'Revizyon kesin "
+                                "bilinmiyor' işaretleyin.", field="revision")
+    if work_order is not None:
+        if revision is not None and revision.pk != work_order.recipe_revision_id:
+            raise BusinessRuleError(f"{work_order.code} Rev.{work_order.recipe_revision.rev_no} ile üretiliyor; seçilen "
+                                    f"Rev.{revision.rev_no} ile çelişiyor.", field="revision")
+        return work_order.recipe_revision, RevisionBasis.WORK_ORDER
+    if order_line is not None and order_line.approved_revision_id:
+        if revision is not None and revision.pk != order_line.approved_revision_id:
+            raise BusinessRuleError(f"{order_line.code} Rev.{order_line.approved_revision.rev_no} ile onaylı; seçilen "
+                                    f"Rev.{revision.rev_no} ile çelişiyor.", field="revision")
+        return order_line.approved_revision, RevisionBasis.ORDER_LINE
+    if revision is not None:
+        return revision, RevisionBasis.USER
+    if uncertain:
+        return None, RevisionBasis.UNCERTAIN
+    if product is not None and product.current_revision is not None:
+        return product.current_revision, RevisionBasis.PRODUCT_CURRENT
+    return None, RevisionBasis.UNKNOWN
+
+
 @transaction.atomic
 def create_sample(actor, *, kind, customer, product=None, revision=None, order_line=None, work_order=None, coil=None,
                   pallet=None, counterpart="", occurred_at=None, quantity, unit, room="", cabinet="", shelf="", box="",
-                  retention_until=None, retention_conditions="", notes="", shared_note="", stock_source=None):
+                  retention_until=None, retention_conditions="", notes="", shared_note="", stock_source=None,
+                  revision_uncertain=False):
     if kind not in SampleKind.values:
         raise BusinessRuleError("Numune türünü seçin.", field="kind")
     if unit not in SampleUnit.values:
@@ -142,14 +225,11 @@ def create_sample(actor, *, kind, customer, product=None, revision=None, order_l
             raise BusinessRuleError(f"Bağlanan {label} bu ürüne ait değil.", field=field)
     if coil and work_order and coil.work_order_id != work_order.pk:
         raise BusinessRuleError("Bobin bu iş emrine ait değil.", field="coil")
-    if revision is None and work_order is not None:
-        revision = work_order.recipe_revision
-    if revision is None and order_line is not None:
-        revision = order_line.approved_revision
-    if revision is None and product is not None:
-        revision = product.current_revision
+    revision, basis = _resolve_revision(product, revision, revision_uncertain, order_line=order_line,
+                                        work_order=work_order, coil=coil, pallet=pallet)
     sample = Sample.objects.create(
-        code=next_code("NUM"), kind=kind, customer=customer, product=product, revision=revision, order_line=order_line,
+        code=next_code("NUM"), kind=kind, customer=customer, product=product, revision=revision, revision_basis=basis,
+        order_line=order_line,
         work_order=work_order, coil=coil, pallet=pallet, counterpart=counterpart, stock_source=stock_source,
         occurred_at=occurred_at or timezone.now(), quantity=quantity, unit=unit, room=room, cabinet=cabinet, shelf=shelf,
         box=box, retention_until=retention_until, retention_conditions=retention_conditions, notes=notes,
@@ -201,6 +281,19 @@ def allocate_from_pallet(actor, sample, pallet, boxes, reason=""):
     (pallet,) = wh._lock(pallet)
     if pallet.product_id != sample.product_id:
         raise BusinessRuleError("Palet bu numunenin ürününe ait değil.", field="pallet")
+    if sample.pallet_id != pallet.pk:
+        # Numune kaydındaki bağlantılardan farklı bir paletten ayırma: fiziksel köken tekrar doğrulanır.
+        revs, wos, coils = pallet_sources(pallet)
+        if sample.coil_id and sample.coil_id not in coils:
+            raise BusinessRuleError(f"Numunenin bobini {sample.coil.code} bu palette değil; bağlantılar çelişiyor.",
+                                    field="pallet_code")
+        if sample.work_order_id and sample.work_order_id not in wos:
+            raise BusinessRuleError(f"{pallet.code} paleti numunenin iş emrinden ({sample.work_order.code}) gelmiyor.",
+                                    field="pallet_code")
+        if sample.revision_id and revs != {sample.revision_id}:
+            raise BusinessRuleError(f"{pallet.code} paletinin üretim revizyonu ({_rev_names(revs)}) numunenin "
+                                    f"Rev.{sample.revision.rev_no} revizyonuyla uyuşmuyor; bu paletten ayrılamaz.",
+                                    field="pallet_code")
     wh._require_in_stock(pallet)
     wh._require_available(pallet, boxes)
     mv = wh._move(actor, pallet, MovementKind.SAMPLE_OUT, -int(boxes), reason=f"{sample.code}: {reason}".strip(": "),
