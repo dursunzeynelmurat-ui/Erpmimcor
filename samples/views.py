@@ -105,33 +105,54 @@ def customer_products(request, pk):
     return resp
 
 
-def sample_detail(request, pk):
-    sample = _sample(request, pk)
+# İşlem → (şablondaki form adı, alan kimliği öneki). Aynı sayfadaki formlarda alan kimlikleri ayrılır (aynı ad,
+# farklı id); her formun kendi işlem anahtarı var. Hatalı form aynı önekle yeniden çizilir.
+FORM_SLOTS = {
+    "konum": ("move_form", "id_move_%s"), "stok": ("allocate_form", "id_stock_%s"),
+    "kaynak": ("source_form", "id_src_%s"), "bagla": ("link_form", "id_link_%s"),
+    "gonder": ("send_form", "id_send_%s"), "geri": ("return_form", "id_back_%s"),
+    "imha": ("destroy_form", "id_dest_%s"), "karar": ("decision_form", "id_dec_%s"),
+    "olcum": ("measure_form", "id_meas_%s"), "geri_bildirim": ("feedback_form", "id_fb_%s"),
+    "ek": ("attachment_form", "id_att_%s"),
+}
+
+
+def _detail_context(request, sample, action=None, bound=None):
     user = request.user
     internal = services.internal_view(user, sample)
-    ctx = {"s": sample, "internal": internal}
+    ctx = {"s": sample, "internal": internal, "open_action": action}
     if internal:
+        slot = lambda name: FORM_SLOTS[name][1]  # noqa: E731
         ctx.update({
             "events": sample.events.select_related("user"), "measurements": sample.measurements.select_related("measured_by"),
             "attachments": sample.attachments.all(), "history": history_for(sample),
             "can_manage": can(user, "sample.manage", sample), "can_stock": can(user, "sample.stock"),
             "can_decide": can(user, "sample.decide"),
-            # Aynı sayfadaki formlarda alan kimlikleri ayrılır (aynı ad, farklı id); her formun kendi işlem anahtarı var.
-            "move_form": MoveForm(auto_id="id_move_%s", initial={"room": sample.room, "cabinet": sample.cabinet,
-                                                                 "shelf": sample.shelf, "box": sample.box}),
-            "allocate_form": AllocateForm(auto_id="id_stock_%s",
+            "move_form": MoveForm(auto_id=slot("konum"), initial={"room": sample.room, "cabinet": sample.cabinet,
+                                                                  "shelf": sample.shelf, "box": sample.box}),
+            "allocate_form": AllocateForm(auto_id=slot("stok"),
                                           initial={"boxes": int(sample.quantity) if sample.unit == "kutu" else None}),
-            "send_form": SendForm(auto_id="id_send_%s"), "return_form": ReturnForm(auto_id="id_back_%s"),
-            "decision_form": DecisionForm(auto_id="id_dec_%s"), "measure_form": MeasurementForm(auto_id="id_meas_%s"),
-            "attachment_form": AttachmentForm(auto_id="id_att_%s"),
-            "source_form": StockSourceForm(auto_id="id_src_%s", initial={"stock_source": sample.stock_source}),
-            "link_form": LinkMovementForm(auto_id="id_link_%s", sample=sample),
+            "send_form": SendForm(auto_id=slot("gonder")), "return_form": ReturnForm(auto_id=slot("geri")),
+            "destroy_form": ReasonForm(auto_id=slot("imha")),
+            "decision_form": DecisionForm(auto_id=slot("karar")), "measure_form": MeasurementForm(auto_id=slot("olcum")),
+            "attachment_form": AttachmentForm(auto_id=slot("ek")),
+            "source_form": StockSourceForm(auto_id=slot("kaynak"), initial={"stock_source": sample.stock_source}),
+            "link_form": LinkMovementForm(auto_id=slot("bagla"), sample=sample),
             "stock_effect": services.stock_effect(sample),
             "stock_pending": services.stock_pending(sample),
         })
     ctx["can_feedback"] = can(user, "sample.feedback", sample)
-    ctx["feedback_form"] = FeedbackForm(auto_id="id_fb_%s")
-    return render(request, "samples/sample_detail.html", ctx)
+    ctx["feedback_form"] = FeedbackForm(auto_id=FORM_SLOTS["geri_bildirim"][1])
+    if bound is not None:
+        ctx[FORM_SLOTS[action][0]] = bound
+        # Tarayıcı güvenliği gereği seçilen dosya geri yüklenemez; kullanıcıya açıkça söylenir.
+        ctx["file_reselect"] = action == "ek"
+    return ctx
+
+
+def sample_detail(request, pk):
+    sample = _sample(request, pk)
+    return render(request, "samples/sample_detail.html", _detail_context(request, sample))
 
 
 ACTIONS = {
@@ -169,12 +190,14 @@ def sample_action(request, pk, action):
     if action not in ACTIONS:
         raise Http404
     form_cls, audit_action, fn, message = ACTIONS[action]
+    auto_id = FORM_SLOTS[action][1]
     if action == "ek":
-        form = form_cls(request.POST, request.FILES)
+        form = form_cls(request.POST, request.FILES, auto_id=auto_id)
     elif action == "bagla":
-        form = form_cls(request.POST, sample=sample)
+        form = form_cls(request.POST, sample=sample, auto_id=auto_id)
     else:
-        form = form_cls(request.POST)
+        form = form_cls(request.POST, auto_id=auto_id)
+
     def allocate(u, s, d, f):
         return services.allocate_from_pallet(u, s, _resolve(Pallet, d["pallet_code"], "pallet_code"), d["boxes"],
                                              d["reason"])
@@ -194,7 +217,11 @@ def sample_action(request, pk, action):
     fn = {"stok": allocate, "karar": decide, "bagla": link}.get(action, fn)
     resp = run_form_action(request, form, action=audit_action, fn=lambda d: fn(request.user, sample, d, form),
                            success_message=message, url_for=lambda _: _url(sample))
-    return resp or redirect(_url(sample))
+    if resp:
+        return resp
+    # Hata: yönlendirme yok; girilen değerler ve alan hataları korunur, ilgili bölüm açık gösterilir.
+    sample = _sample(request, pk)
+    return render(request, "samples/sample_detail.html", _detail_context(request, sample, action, form), status=400)
 
 
 def sample_label(request, pk):

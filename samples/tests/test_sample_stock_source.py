@@ -169,7 +169,7 @@ class StockSourceViewTests(TestCase):
         detail = self.client.get(reverse("samples:sample_detail", args=[s.pk]))
         self.assertContains(detail, "stok işlemi tamamlanmadı")
         resp = self.client.post(reverse("samples:sample_action", args=[s.pk, "gonder"]),
-                                {"idem_key": "g-1", "counterpart": "Kurgu Kargo"}, follow=True)
-        self.assertContains(resp, "Stoktan ayır")
+                                {"idem_key": "g-1", "counterpart": "Kurgu Kargo"})
+        self.assertContains(resp, "Stoktan ayır", status_code=400)  # form girilen bilgiyle yeniden gösterilir
         s.refresh_from_db()
         self.assertEqual(s.physical_status, PhysicalStatus.STORED)
