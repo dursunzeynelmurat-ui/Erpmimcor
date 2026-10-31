@@ -23,7 +23,9 @@ Bu belge uygulamayı **kendi bilgisayarınızda** Docker Desktop ile çalıştı
 | `astra` | Astra güvenlik testi | http://localhost:8081 | https://localhost:8444 |
 | `claude` | Claude güvenlik testi | http://localhost:8082 | https://localhost:8445 |
 
-Bir ortam ya yerel HTTP ya da güvenlik (HTTPS) profiliyle kurulur (aynı anda ikisi değil).
+Bir ortam ya yerel HTTP ya da güvenlik (HTTPS) profiliyle kurulur (aynı anda ikisi değil). Ortam adı Docker'daki proje
+adıdır (`mimcor-demo` vb.): aynı bilgisayarda depoyu **tek klasörde** tutun; iki ayrı klondan aynı ortamı kurmak
+aynı veritabanını kullanır.
 
 Veri: veritabanı ve yüklenen dosyalar Docker volume'larında tutulur; durdurma/yeniden başlatma veriyi silmez.
 Demo verisi tamamen kurgusaldır (`seed_demo`); gerçek veritabanı yedeği veya müşteri verisi kullanılmaz.
