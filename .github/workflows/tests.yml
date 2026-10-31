@@ -33,6 +33,28 @@ jobs:
       - run: python manage.py test
       - run: python manage.py migrate && python manage.py seed_demo
 
+  docker:
+    # Yerel Docker ortamı: imaj derlenir, iki profilin yapılandırması doğrulanır, örnek ortam kurulup HTTP ile denenir.
+    name: Docker yapılandırması
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compose yapılandırması (local-http ve secure)
+        run: |
+          docker compose --env-file env/example.env -f compose.yml config -q
+          docker compose --env-file env/example.env -f compose.yml -f compose.secure.yml config -q
+      - name: Temiz kurulum, giriş sayfası ve statik dosya (DEBUG=0)
+        run: |
+          ./scripts/mimcor.sh init demo
+          curl -fsS -o /dev/null http://localhost:8080/giris/
+          curl -fsS -o /dev/null http://localhost:8080/static/css/app.css
+          ./scripts/mimcor.sh down demo
+          ./scripts/mimcor.sh up demo
+          curl -fsS -o /dev/null http://localhost:8080/giris/
+      - name: Ortamı kaldır
+        if: always()
+        run: docker compose -p mimcor-demo --env-file env/demo.env -f compose.yml down -v || true
+
   browser:
     # Gerçek Chromium + PostgreSQL ile tarayıcı senaryoları (1440 px ve 390 px emülasyon; gerçek telefon testi değildir).
     name: Tarayıcı testleri (Chromium)

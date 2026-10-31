@@ -1,0 +1,27 @@
+# Güvenlik denetimi kipi: HTTPS (Caddy'nin yerel/iç sertifika otoritesi), DEBUG=0, Secure çerezler.
+# Yalnız https://localhost (IP ile bağlantıda SNI olmadığından sertifika doğrulanmaz). Sertifika yerel bir CA'dan üretilir; tarayıcı bu CA'ya güvenmedikçe uyarı gösterir (bkz. docs/yerel-kurulum.md).
+{
+	admin off
+	skip_install_trust
+}
+
+https://localhost:443 {
+	tls internal
+	encode gzip
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+	handle {
+		reverse_proxy app:8000
+	}
+	request_body {
+		max_size 13MB
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+}

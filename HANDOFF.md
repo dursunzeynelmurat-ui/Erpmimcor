@@ -1,4 +1,24 @@
-# Demo öncesi son işlevsel düzeltmeler — 30 Ekim 2026 (güncel)
+# Yerel Docker ortamı — 31 Ekim 2026 (güncel)
+
+Branch: `chore/mimcor-local-docker` (taban `0abbc87`; merge/PR/canlı yayın yok). Kullanım: **[docs/yerel-kurulum.md](docs/yerel-kurulum.md)**.
+
+- `compose.yml`: PostgreSQL 16.15 (port yayınlanmaz, hazır olma kontrolü), uygulama (gunicorn, root olmayan kullanıcı),
+  Caddy (statik dosyalar + yönlendirme, yalnız `127.0.0.1`). Veritabanı ve yüklenen dosyalar volume'da korunur.
+  `compose.secure.yml`: HTTPS (Caddy yerel CA), DEBUG=0, Secure çerezler, 4 worker.
+- Ortamlar `demo` / `astra` / `claude`: compose proje adıyla ayrı veritabanı, dosya, ağ, port; sabit container/volume
+  adı yok; CPU/bellek sınırları. `scripts/mimcor.ps1` (Windows) ve `scripts/mimcor.sh`: init, up, down, status, build,
+  logs, migrate, seed, backup, restore, reset (yalnız seçilen ortam; demo için ek onay).
+- Sırlar `env/<ortam>.env` dosyasında kurulumda rastgele üretilir (Git dışı). Migration/demo verisi yalnız `init`,
+  `migrate`, `seed`, `reset` ile; normal başlatma veriye ve parolalara dokunmaz.
+- Ayarlar (iş kuralı değişmedi): `DJANGO_LOCAL_HTTP` (yalnız açıkça istenince Secure olmayan çerez; DEBUG açılmaz),
+  `DJANGO_BEHIND_TLS_PROXY`, `DJANGO_CACHE=db` (çoklu worker'da giriş kilidi paylaşılır — süreç içi önbellekte her
+  worker ayrı sayar), `STATIC_ROOT`, konsol logu. Varsayılanlar önceki davranışı korur.
+- Doğrulama bulut konteynerinde gerçek Docker ile yapıldı (temiz kurulum, yeniden başlatma, ortam ayrımı, sıfırlama,
+  yedek/geri yükleme, HTTPS profili, PowerShell 7). **Kullanıcının Windows / Docker Desktop ortamında denenmedi.**
+
+---
+
+# Demo öncesi son işlevsel düzeltmeler — 30 Ekim 2026
 
 Branch: `fix/mimcor-demo-son-duzeltmeler` (taban `c316506`; merge/PR/canlı yayın yok). Ayrıntı, her bulgu için önceki
 davranış / düzeltme / regresyon testi / kalan sınır, doğrulama, demo senaryoları ve Astra UI devri:

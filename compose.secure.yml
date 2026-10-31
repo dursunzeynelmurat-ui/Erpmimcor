@@ -1,0 +1,17 @@
+# Güvenlik denetimi profili (compose.yml'nin üzerine): DEBUG=0, HTTPS (Caddy iç CA), Secure çerezler,
+# birden fazla gunicorn worker'ı, paylaşılan veritabanı önbelleği. HTTP portu yayınlanmaz.
+#   docker compose -p mimcor-<ortam> --env-file env/<ortam>.env -f compose.yml -f compose.secure.yml up -d
+services:
+  app:
+    environment:
+      DJANGO_LOCAL_HTTP: "0"
+      DJANGO_BEHIND_TLS_PROXY: "1"
+      GUNICORN_WORKERS: ${GUNICORN_WORKERS_SECURE:-4}
+
+  web:
+    volumes:
+      - ./docker/Caddyfile.secure:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+    ports: !override
+      - "127.0.0.1:${HTTPS_PORT:?HTTPS_PORT tanımlı değil}:443"

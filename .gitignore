@@ -7,3 +7,9 @@ __pycache__/
 venv/
 /media/
 /browser-artifacts/
+
+# Docker ortamları: üretilen ayar dosyaları (sırlar içerir) ve yedekler
+/env/*.env
+/env/*.pem
+!/env/example.env
+/backups/

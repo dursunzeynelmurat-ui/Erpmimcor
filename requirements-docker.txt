@@ -1,0 +1,3 @@
+# Docker imajı: uygulama bağımlılıkları + WSGI uygulama sunucusu (geliştirme sunucusu yerine).
+-r requirements.txt
+gunicorn==23.0.0

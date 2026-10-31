@@ -1,0 +1,98 @@
+# Mimcor yerel Docker ortamı. Her ortam (demo / astra / claude) ayrı compose projesi olarak çalışır:
+#   docker compose -p mimcor-<ortam> --env-file env/<ortam>.env up -d
+# Proje adı ağ ve volume adlarına önek olur; sabit container/volume adı yoktur, ortamlar çakışmaz.
+# Doğrudan değil, scripts/mimcor.ps1 (Windows) veya scripts/mimcor.sh ile kullanın.
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME tanımlı değil (env dosyasıyla başlatın)}
+
+x-app-env: &app-env
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY tanımlı değil}
+  DJANGO_DEBUG: "0"
+  DJANGO_LOCAL_HTTP: ${DJANGO_LOCAL_HTTP:-1}
+  DJANGO_BEHIND_TLS_PROXY: ${DJANGO_BEHIND_TLS_PROXY:-0}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+  DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-}
+  DJANGO_CACHE: db
+  APP_BASE_URL: ${APP_BASE_URL:-}
+  POSTGRES_DB: mimcor
+  POSTGRES_USER: mimcor
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD tanımlı değil}
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
+  DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
+  STATIC_ROOT: /app/staticfiles
+  MEDIA_ROOT: /app/media
+  SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-30}
+  SESSION_MAX_HOURS: ${SESSION_MAX_HOURS:-12}
+  PRINT_REQUIRE_CUSTOMER_APPROVAL: ${PRINT_REQUIRE_CUSTOMER_APPROVAL:-1}
+  CORRECTION_SELF_APPROVAL: "0"
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+
+services:
+  db:
+    image: postgres:16.15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mimcor
+      POSTGRES_USER: mimcor
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD tanımlı değil}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Port yayınlanmaz: veritabanına yalnız bu projenin iç ağından erişilir.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mimcor -d mimcor"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    cpus: ${DB_CPUS:-1.0}
+    mem_limit: ${DB_MEMORY:-512m}
+
+  app:
+    build:
+      context: .
+      # İsteğe bağlı: TLS denetimli kurumsal ağda pip için ek CA (MIMCOR_EXTRA_CA=yol). İmaja yazılmaz.
+      secrets:
+        - extra_ca
+    image: mimcor-app:${APP_IMAGE_TAG:-local}
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - media:/app/media
+      - static:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    cpus: ${APP_CPUS:-1.5}
+    mem_limit: ${APP_MEMORY:-768m}
+
+  web:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - static:/srv/static:ro
+      - caddy_data:/data
+    ports:
+      # Yalnız bu bilgisayarın localhost adresi; ağdaki diğer cihazlar erişemez.
+      - "127.0.0.1:${HTTP_PORT:?HTTP_PORT tanımlı değil}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    cpus: ${WEB_CPUS:-0.5}
+    mem_limit: ${WEB_MEMORY:-128m}
+
+secrets:
+  extra_ca:
+    file: ${MIMCOR_EXTRA_CA:-./docker/no-extra-ca.pem}
+
+volumes:
+  pgdata:
+  media:
+  static:
+  caddy_data:

@@ -1,0 +1,8 @@
+# Konteynerde çalışan dosyalar Windows'ta da LF satır sonuyla çıkmalı (CRLF, entrypoint.sh'yi bozar).
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker/Caddyfile* text eol=lf
+compose*.yml text eol=lf
+env/example.env text eol=lf
+# PowerShell betiği Windows satır sonuyla
+*.ps1 text eol=crlf

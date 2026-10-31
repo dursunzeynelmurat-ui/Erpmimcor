@@ -1,0 +1,25 @@
+# Yerel HTTP (demo) kipi: yalnız bilgisayarın localhost'unda. TLS yok; üretim güvenliği sağlamaz.
+{
+	auto_https off
+	admin off
+}
+
+:80 {
+	encode gzip
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+		header Cache-Control "public, max-age=3600"
+	}
+	handle {
+		reverse_proxy app:8000
+	}
+	request_body {
+		max_size 13MB
+	}
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy same-origin
+		-Server
+	}
+}

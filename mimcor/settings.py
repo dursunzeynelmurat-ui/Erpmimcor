@@ -102,15 +102,28 @@ SESSION_IDLE_MINUTES = int(env("SESSION_IDLE_MINUTES", "30"))
 SESSION_COOKIE_AGE = int(env("SESSION_MAX_HOURS", "12")) * 3600
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
-SESSION_COOKIE_SECURE = not DEBUG
-CSRF_COOKIE_SECURE = not DEBUG
+# Çerezler varsayılan olarak yalnız HTTPS'te gönderilir. DJANGO_LOCAL_HTTP=1 yalnız bilgisayarın kendi localhost'unda
+# HTTP ile demo içindir (DEBUG açmadan giriş yapılabilsin); üretim güvenliği sağlamaz.
+LOCAL_HTTP = env("DJANGO_LOCAL_HTTP", "0") == "1"
+SESSION_COOKIE_SECURE = not (DEBUG or LOCAL_HTTP)
+CSRF_COOKIE_SECURE = not (DEBUG or LOCAL_HTTP)
+# TLS'yi önündeki ters vekil (ör. Caddy) sonlandırıyorsa: isteğin HTTPS olduğu X-Forwarded-Proto'dan okunur.
+# Yalnız vekil bu başlığı kendisi yazıyorsa açılmalıdır.
+if env("DJANGO_BEHIND_TLS_PROXY", "0") == "1":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 LOGIN_MAX_FAILURES = 5
 LOGIN_LOCK_MINUTES = 15
 
 WORK_ORDER_BALANCE_TOLERANCE_PCT = env("WORK_ORDER_BALANCE_TOLERANCE_PCT", "3")
 
-CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
+# Giriş deneme kilidi önbellekte tutulur. Birden fazla uygulama süreci (worker) çalışıyorsa süreç içi önbellek her
+# süreçte ayrı sayaç tutar; DJANGO_CACHE=db ile tüm süreçler veritabanı önbellek tablosunu paylaşır
+# (tablo: manage.py createcachetable).
+if env("DJANGO_CACHE", "locmem") == "db":
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.db.DatabaseCache", "LOCATION": "mimcor_cache"}}
+else:
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
 
 LANGUAGE_CODE = "tr"
 LANGUAGES = [("tr", "Türkçe")]  # Arayüz yalnız Türkçe; tarayıcı dili ne olursa olsun hata mesajları Türkçe
@@ -120,7 +133,15 @@ USE_TZ = True
 USE_THOUSAND_SEPARATOR = False
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(env("STATIC_ROOT", str(BASE_DIR / "staticfiles")))
+
+# Konteynerde hatalar standart çıktıya yazılır (docker compose logs); DEBUG kapalıyken 500 ayrıntısı tarayıcıya gitmez.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {"console": {"class": "logging.StreamHandler"}},
+    "loggers": {"django": {"handlers": ["console"], "level": env("DJANGO_LOG_LEVEL", "WARNING")}},
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 MESSAGE_STORAGE = "django.contrib.messages.storage.session.SessionStorage"

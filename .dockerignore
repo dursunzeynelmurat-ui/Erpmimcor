@@ -1,0 +1,15 @@
+# İmaja yalnız uygulama kodu girer; sırlar, yerel veriler ve yedekler girmez.
+.git
+.github
+.env
+env/
+backups/
+media/
+staticfiles/
+browser-artifacts/
+docs/screenshots/
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+*.sqlite3
