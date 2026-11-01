@@ -16,6 +16,7 @@ from core.models import QualityStatus
 from core.services import history_for
 from core.viewutils import run_form_action
 from orders.models import SalesOrder
+from samples import access as sample_access
 
 from . import services
 from .forms import (DamageForm, LocationForm, PackageLabelForm, PalletFilterForm, QualityForm,
@@ -76,7 +77,7 @@ def pallet_detail(request, pk):
     weighing = pallet.current_weighing
     weighings = pallet.weighings.select_related("user")
     ctx = {
-        "can_sample": can(u, "sample.manage", pallet) and can(u, "sample.manage", pallet.product.customer),
+        "can_sample": sample_access.pallets(u).filter(pk=pallet.pk).exists(),
         "pallet": pallet, "current_weighing": weighing,
         "weighing_rows": services.weight_breakdown(weighing, pallet) if weighing else None,
         "coil_holds": services.coil_holds(pallet),

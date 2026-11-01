@@ -53,6 +53,9 @@ Güvenlik incelemesinde özellikle:
 
 ## Ayrı mevcut bulgu: ustabaşı numune formu
 
+> **Güncelleme:** `fix/mimcor-ustabasi-numune-kapsami` dalında düzeltildi; ayrıntı
+> [ustabasi-numune-kapsami.md](ustabasi-numune-kapsami.md). Aşağıdaki metin kaynak sürümün durumudur.
+
 Kaynak sürümde ustabaşının `sample.manage=assigned` yetkisi var; `SampleCreateForm` müşteri listesini
 `scoped(Customer, sample.manage)` ile kuruyor. Customer modelinde assigned kapsamı tanımlı olmadığından
 liste boş. `seed_demo` kullanıcısı 4001 için doğrulama: `can(sample.manage)=True`, müşteri queryset sayısı=0.

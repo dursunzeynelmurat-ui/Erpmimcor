@@ -8,13 +8,13 @@ from django.utils.safestring import mark_safe
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.permissions import can, check, get_scoped_or_404, require_perm, scoped
-from catalog.models import Customer, Product
+from catalog.models import Product
 from core.exceptions import BusinessRuleError
 from core.forms import ReasonForm
 from core.services import history_for
 from core.viewutils import run_form_action
 
-from . import services
+from . import access, services
 from .forms import (AllocateForm, AttachmentForm, CriterionForm, DecisionForm, FeedbackForm, LinkMovementForm,
                     MeasurementForm, MoveForm, ReturnForm, SampleCreateForm, SendForm, StockSourceForm)
 from .models import PhysicalStatus, Sample, SampleAttachment, SampleCriterion, SampleKind
@@ -48,61 +48,80 @@ def sample_list(request):
         "can_create": can(request.user, "sample.manage")})
 
 
-def _resolve(model, code, field):
+def _resolve(qs, code, field):
+    """Kodla çözümleme yalnız kullanıcının numune kapsamındaki kayıtlarda yapılır; kapsam dışı kayıt ile olmayan kayıt
+    aynı mesajı alır (varlığı açığa çıkmaz)."""
     if not code:
         return None
-    obj = model.objects.filter(code=code.strip()).first()
+    obj = qs.filter(code=code.strip()).first()
     if obj is None:
-        raise BusinessRuleError(f"{code} bulunamadı.", field=field)
+        raise BusinessRuleError(f"{code} bulunamadı veya bu numune için kullanılamaz.", field=field)
     return obj
 
 
-def _resolve_line(code):
-    from orders.models import OrderLine
+def _resolve_line(qs, code):
     if not code:
         return None
     order_code, _, no = code.strip().rpartition("/")
-    line = OrderLine.objects.filter(order__code=order_code, line_no=int(no)).first() if no.isdigit() else None
+    line = qs.filter(order__code=order_code, line_no=int(no)).first() if no.isdigit() else None
     if line is None:
-        raise BusinessRuleError(f"{code} sipariş kalemi bulunamadı.", field="order_line_code")
+        raise BusinessRuleError(f"{code} sipariş kalemi bulunamadı veya bu numune için kullanılamaz.",
+                                field="order_line_code")
     return line
+
+
+# Servis hata alanı → formdaki kod alanı
+_FIELD_MAP = {"work_order": "work_order_code", "coil": "coil_code", "pallet": "pallet_code",
+              "order_line": "order_line_code"}
+
+
+def _source(request):
+    """?is_emri= / ?bobin= / ?palet= kaynağı: görüntüleme yetkisi VE numune oluşturma kapsamı (samples.access)
+    gerekir; aksi halde 404. GET hiçbir kayıt veya stok hareketi oluşturmaz."""
+    from production.models import Coil, WorkOrder
+    from warehouse.models import Pallet
+    for param, model, permission, in_scope, key in [
+            ("is_emri", WorkOrder, "workorder.view", access.work_orders, "work_order"),
+            ("bobin", Coil, "workorder.view", access.coils, "coil"),
+            ("palet", Pallet, "stock.view", access.pallets, "pallet")]:
+        if param not in request.GET:
+            continue
+        pk = request.GET[param]
+        if not pk.isdigit():
+            raise Http404
+        source = get_scoped_or_404(model.objects.all(), request.user, permission, pk=pk)
+        if not in_scope(request.user).filter(pk=source.pk).exists():
+            raise Http404
+        initial = access.source_initial(request.user, **{key: source})
+        product = Product.objects.get(pk=initial["product"])
+        if not access.products(request.user, product.customer).filter(pk=product.pk).exists():
+            raise Http404
+        return source, initial
+    return None, {}
 
 
 @require_perm("sample.manage")
 def sample_create(request):
-    from production.models import Coil, WorkOrder
-    from warehouse.models import Pallet
-    initial, source = {}, None
-    if request.method == "GET":
-        for param, model, permission in [("palet", Pallet, "stock.view"), ("bobin", Coil, "workorder.view")]:
-            if param not in request.GET:
-                continue
-            pk = request.GET[param]
-            if not pk.isdigit():
-                raise Http404
-            source = get_scoped_or_404(model.objects.all(), request.user, permission, pk=pk)
-            # A visible source alone does not grant the right to manage its samples.
-            if not can(request.user, "sample.manage", source):
-                raise Http404
-            product = source.product if param == "palet" else source.work_order.product
-            if not can(request.user, "sample.manage", product.customer):
-                raise Http404
-            initial = {"customer": product.customer_id, "product": product.pk,
-                       "pallet_code" if param == "palet" else "coil_code": source.code}
-            break
+    source, initial = _source(request) if request.method == "GET" else (None, {})
     form = SampleCreateForm(request.POST or None, user=request.user, initial=initial)
     if request.method == "POST":
         def create(d):
-            return services.create_sample(
-                request.user, kind=d["kind"], customer=d["customer"], product=d["product"],
-                order_line=_resolve_line(d["order_line_code"]),
-                work_order=_resolve(WorkOrder, d["work_order_code"], "work_order_code"),
-                coil=_resolve(Coil, d["coil_code"], "coil_code"),
-                pallet=_resolve(Pallet, d["pallet_code"], "pallet_code"), counterpart=d["counterpart"],
-                occurred_at=d["occurred_at"], quantity=d["quantity"], unit=d["unit"], room=d["room"],
-                cabinet=d["cabinet"], shelf=d["shelf"], box=d["box"], retention_until=d["retention_until"],
-                retention_conditions=d["retention_conditions"], notes=d["notes"], shared_note=d["shared_note"],
-                stock_source=d["stock_source"], revision=d["revision"], revision_uncertain=d["revision_uncertain"])
+            user = request.user
+            try:
+                return services.create_sample(
+                    user, kind=d["kind"], customer=d["customer"], product=d["product"],
+                    order_line=_resolve_line(access.order_lines(user), d["order_line_code"]),
+                    work_order=_resolve(access.work_orders(user), d["work_order_code"], "work_order_code"),
+                    coil=_resolve(access.coils(user), d["coil_code"], "coil_code"),
+                    pallet=_resolve(access.pallets(user), d["pallet_code"], "pallet_code"),
+                    counterpart=d["counterpart"],
+                    occurred_at=d["occurred_at"], quantity=d["quantity"], unit=d["unit"], room=d["room"],
+                    cabinet=d["cabinet"], shelf=d["shelf"], box=d["box"], retention_until=d["retention_until"],
+                    retention_conditions=d["retention_conditions"], notes=d["notes"], shared_note=d["shared_note"],
+                    stock_source=d["stock_source"], revision=d["revision"], revision_uncertain=d["revision_uncertain"])
+            except BusinessRuleError as exc:
+                exc.field = _FIELD_MAP.get(exc.field, exc.field)
+                raise
         resp = run_form_action(request, form, action="sample.create", fn=create,
                                success_message=lambda s: f"Numune kaydedildi: {s.code}. Sıradaki adım: QR etiketini "
                                                          "basın; firma stoğundan ayrılacaksa 'Stoktan ayır'.",
@@ -116,9 +135,9 @@ def sample_create(request):
 @require_GET
 @require_perm("sample.manage")
 def customer_products(request, pk):
-    customer = get_object_or_404(scoped(Customer.objects.active(), request.user, "sample.manage"), pk=pk)
+    customer = get_object_or_404(access.customers(request.user), pk=pk)
     resp = JsonResponse({"products": [{"id": p.pk, "label": str(p)}
-                                      for p in Product.objects.active().filter(customer=customer).order_by("code")]})
+                                      for p in access.products(request.user, customer).order_by("code")]})
     resp["Cache-Control"] = "no-store"
     return resp
 
@@ -218,12 +237,12 @@ def sample_action(request, pk, action):
         form = form_cls(request.POST, auto_id=auto_id)
 
     def allocate(u, s, d, f):
-        return services.allocate_from_pallet(u, s, _resolve(Pallet, d["pallet_code"], "pallet_code"), d["boxes"],
+        return services.allocate_from_pallet(u, s, _resolve(Pallet.objects.all(), d["pallet_code"], "pallet_code"), d["boxes"],
                                              d["reason"])
 
     def decide(u, s, d, f):
         def many(model, text, field):
-            return [_resolve(model, c, field) for c in (text or "").replace(";", ",").split(",") if c.strip()]
+            return [_resolve(model.objects.all(), c, field) for c in (text or "").replace(";", ",").split(",") if c.strip()]
         return services.decide(u, s, d["decision"], d["reason"], pallets=many(Pallet, d["pallet_codes"], "pallet_codes"),
                                coils=many(Coil, d["coil_codes"], "coil_codes"))
     def link(u, s, d, f):

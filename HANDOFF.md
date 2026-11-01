@@ -1,3 +1,22 @@
+# Ustabaşı numune kapsamı — 1 Kasım 2026 (güncel)
+
+Dal: `fix/mimcor-ustabasi-numune-kapsami` (taban `design/mimcor-kullanim-kolayligi` @ `ab7819c`; merge/PR/canlı yayın yok).
+Ayrıntı: **[docs/ustabasi-numune-kapsami.md](docs/ustabasi-numune-kapsami.md)**.
+
+Ustabaşı kendi iş emri için numuneyi servis üzerinden açabiliyor ama arayüzden açamıyordu: müşteri listesi boş,
+ürün sorgusu ve kısayollar 404 dönüyordu. Artık form, ürün sorgusu, iş emri/bobin/palet kısayolları, detay
+bağlantıları ve servis tek kuralı (`samples/access.py`) kullanıyor. Ustabaşına yalnız şu anda atanmış iş emirlerinin
+müşterisi ve ürünü seçenek olarak görünüyor. Numune bir atanmış iş emrine bağlanmadan kaydedilmiyor; bağlı bobin,
+palet ve sipariş kalemi o iş emrine ait olmalı. Değiştirilmiş POST ve devirden önce açılmış form sunucuda güncel
+atamayla reddediliyor. Rol kataloğu ve kapsam tabloları değişmedi. Müşteri kartı veya sipariş erişimi, stok ayırma
+ve kalite kararı yetkisi genişlemedi; makine/vardiya/devir kuralları aynı. Depo ve kalite akışı aynı; kısayol artık
+iş emri ve sipariş kalemi kodunu da dolduruyor.
+
+Kalan: iş emri alanı boş transfer/karışık paletler ustabaşına kaynak olarak açılmaz. Gerçek telefon ve gerçek
+kullanıcı testi yapılmadı.
+
+---
+
 # UI/UX kullanım kolaylığı — 1 Kasım 2026 (güncel)
 
 Kaynak: `chore/mimcor-local-docker` / `8e689b6`; ayrı dal: `design/mimcor-kullanim-kolayligi`.

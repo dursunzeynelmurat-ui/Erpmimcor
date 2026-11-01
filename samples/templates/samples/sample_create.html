@@ -2,7 +2,8 @@
 {% block title %}Yeni numune{% endblock %}
 {% block content %}<h1>Yeni numune</h1>
 <p class="muted">Önce numuneyi tanımlayın, sonra bağlı kayıtları ve fiziksel yerini kontrol edin. Bu kayıt tek başına stok düşürmez.</p>
-{% if source %}<p class="msg"><strong>Kaynak: {{ source.code }}</strong> · Müşteri, ürün ve kaynak kodu dolduruldu. Miktarı ve numune türünü siz seçin.</p>{% endif %}
+{% if form.assigned_only %}<p class="msg">Numuneyi yalnız size atanmış iş emri için açabilirsiniz. Müşteri ve ürün listesi bu iş emirlerinden gelir; iş emri no zorunludur.{% if not form.fields.customer.queryset.exists %} <strong>Şu anda size atanmış iş emri yok.</strong>{% endif %}</p>{% endif %}
+{% if source %}<p class="msg"><strong>Kaynak: {{ source.code }}</strong> · Müşteri, ürün ve bilinen bağlı kayıtlar (iş emri, sipariş kalemi, bobin/palet) dolduruldu. Miktarı ve numune türünü siz seçin.</p>{% endif %}
 <form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
 {% for field in form.hidden_fields %}{{ field }}{% endfor %}
 {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları düzeltin; diğer bilgiler korunur.</strong>{{ form.non_field_errors }}{% for field in form.hidden_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}

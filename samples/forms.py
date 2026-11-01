@@ -59,14 +59,20 @@ class SampleCreateForm(IdemForm):
                                   help_text="Satış ekibi görür. İç ölçüm ve reçete bilgisi yazmayın.")
 
     def __init__(self, *args, user=None, **kwargs):
-        from accounts.permissions import scoped
+        from . import access
         super().__init__(*args, **kwargs)
-        customers = scoped(Customer.objects.active(), user, "sample.manage") if user else Customer.objects.none()
+        self.user = user
+        # Seçenekler servisle aynı kapsam kuralından (samples.access) gelir; POST'ta güncel yetkiyle yeniden kurulur.
+        customers = access.customers(user) if user else Customer.objects.none()
         self.fields["customer"].queryset = customers
+        self.assigned_only = bool(user) and access.assigned_only(user)
+        if self.assigned_only:
+            self.fields["work_order_code"].help_text = ("Zorunlu: size atanmış iş emri. Müşteri ve ürün listesi yalnız "
+                                                        "bu iş emirlerinden gelir.")
         cid = self.data.get("customer") if self.is_bound else self.initial.get("customer")
         customer = customers.filter(pk=cid).first() if cid and str(cid).isdigit() else None
         field = self.fields["product"]
-        field.queryset = Product.objects.active().filter(customer=customer) if customer else Product.objects.none()
+        field.queryset = access.products(user, customer) if customer else Product.objects.none()
         field.widget.attrs.update({
             "data-customer-field": "customer",
             "data-products-url": reverse("samples:customer_products", args=[0]).replace("/0/", "/__ID__/"),
@@ -78,11 +84,14 @@ class SampleCreateForm(IdemForm):
         if customer is None:
             field.widget.attrs["disabled"] = "disabled"
         pid = self.data.get("product") if self.is_bound else self.initial.get("product")
-        self.fields["revision"].queryset = (RecipeRevision.objects.filter(
-            recipe__product__customer=customer, recipe__product_id=pid).order_by("-rev_no")
-            if customer and pid and str(pid).isdigit() else RecipeRevision.objects.none())
+        product = field.queryset.filter(pk=pid).first() if customer and pid and str(pid).isdigit() else None
+        self.fields["revision"].queryset = (access.revisions(user, product) if product is not None
+                                            else RecipeRevision.objects.none())
         self.fields["revision"].label_from_instance = lambda r: (
             f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})")
+        if self.assigned_only:
+            # İş emri bağlamında revizyon iş emrinden alınır; seçenekte teknik ölçü gösterilmez.
+            self.fields["revision"].label_from_instance = lambda r: f"Rev.{r.rev_no} ({r.created_at:%d.%m.%Y})"
 
     def sections(self):
         return [(title, [self[n] for n in names]) for title, names in [
@@ -96,6 +105,12 @@ class SampleCreateForm(IdemForm):
         if data.get("kind") in INTERNAL_KINDS and not data.get("stock_source"):
             self.add_error("stock_source", "Firma içi numunede stok kaynağını seçin (firma stoğundan / stok dışı / "
                                            "daha önce stoktan çıkarıldı).")
+        from . import access
+        customer = data.get("customer")
+        if customer is not None and self.user and not data.get("work_order_code", "").strip() \
+                and access.customer_needs_work_order(self.user, customer):
+            self.add_error("work_order_code", "Bu müşteri için numune yalnız size atanmış iş emrine bağlanarak "
+                                              "kaydedilir; iş emri no girin.")
         return data
 
 

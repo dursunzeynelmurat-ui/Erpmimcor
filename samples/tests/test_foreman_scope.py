@@ -144,6 +144,32 @@ class ForemanSampleScopeTests(TestCase):
         self.assertEqual(Pallet.objects.get(pk=self.pallet.pk).box_count, self.pallet.box_count)
 
 
+    def test_service_applies_same_rule_without_form(self):
+        from decimal import Decimal
+        from core.exceptions import BusinessRuleError
+        from samples import services
+        base = dict(kind="uretim_kontrol", quantity=Decimal("1"), unit="rulo", stock_source="stok_disi")
+        for label, kw in {
+            "iş emri yok": dict(customer=self.w.cust_a, product=self.w.prod_a),
+            "başka iş emri": dict(customer=self.w.cust_b, product=self.w.prod_b, work_order=self.other_wo),
+            "başka iş emrinin paleti": dict(customer=self.w.cust_a, product=self.w.prod_a, work_order=self.wo,
+                                            pallet=self.other_pallet),
+        }.items():
+            with self.subTest(label), self.assertRaises(BusinessRuleError):
+                services.create_sample(self.w.foreman, **base, **kw)
+        sample = services.create_sample(self.w.foreman, **base, customer=self.w.cust_a, product=self.w.prod_a,
+                                        work_order=self.wo, pallet=self.pallet)
+        self.assertEqual(sample.work_order, self.wo)
+
+    def test_revision_choices_limited_to_work_order_without_measurements(self):
+        form = self.client.get(URL, {"is_emri": self.wo.pk}).context["form"]
+        revisions = list(form.fields["revision"].queryset)
+        self.assertEqual(revisions, [self.wo.recipe_revision])
+        label = form.fields["revision"].label_from_instance(revisions[0])
+        self.assertNotIn("mm", label)
+        self.assertNotIn("µ", label)
+
+
 class OtherRolesUnchangedTests(TestCase):
     """Depo (sample.manage=all) akışı değişmez: iş emri bağlantısı olmadan da müşteri/ürün seçer."""
 

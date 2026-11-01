@@ -10,6 +10,7 @@ from core.forms import ConfirmForm, ReasonForm
 from core.services import history_for
 from core.viewutils import run_form_action
 from orders.models import OrderLine
+from samples import access as sample_access
 
 from . import instructions, lifecycle, services
 from catalog.models import MaterialLot
@@ -102,6 +103,7 @@ def workorder_detail(request, pk):
     return render(request, "production/workorder_detail.html", {
         "wo": wo, "operations": ops, "op_rows": op_rows, "confirm_form": ConfirmForm(),
         "can_execute": can(user, "production.execute", wo),
+        "can_sample": sample_access.work_orders(user).filter(pk=wo.pk).exists(),
         "can_release": can(user, "workorder.release", wo), "can_edit": can(user, "workorder.create", wo),
         "can_cancel": can(user, "workorder.cancel", wo),
         "can_hold_any": any(r["can_hold"] for r in op_rows),
@@ -233,7 +235,7 @@ def coil_detail(request, pk):
             if resp:
                 return resp
     return render(request, "production/coil_detail.html", {
-        "can_sample": can(request.user, "sample.manage", coil) and can(request.user, "sample.manage", coil.work_order.product.customer),
+        "can_sample": sample_access.coils(request.user).filter(pk=coil.pk).exists(),
         "coil": coil, "sources": coil.source_links.select_related("source__machine"),
         "outputs": coil.output_links.select_related("output__machine"),
         "pallet_link": getattr(coil, "pallet_link", None), "form": form, "history": history_for(coil),

@@ -4,6 +4,7 @@
 <h1>İş emri {{ wo.code }} <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span>{% if wo.archived_at %} <span class="status">Arşivde</span>{% endif %}</h1>
 {% for c in conflicts %}<div class="conflict" role="status"><strong>Çelişki:</strong> {{ c }}</div>{% endfor %}
 <div class="actions no-print">
+{% if can_sample %}<a class="btn" href="{% url 'samples:sample_create' %}?is_emri={{ wo.pk }}">Bu iş emrinden numune başlat</a>{% endif %}
 {% if wo.status == "taslak" %}
   {% if can_release %}{% url 'production:workorder_release' wo.pk as u %}{% include "partials/confirm_button.html" with action=u label="Serbest bırak" %}{% endif %}
   {% if can_edit %}<a class="btn" href="{% url 'production:workorder_edit' wo.pk %}">Taslağı düzenle</a>{% endif %}

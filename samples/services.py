@@ -19,9 +19,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.utils import timezone
 
-from accounts.catalog import Scope
-from accounts.permissions import check, scopes_for
-from accounts.scope import customer_in_scope
+from accounts.permissions import check
 from core.exceptions import BusinessRuleError
 from core.models import QualityStatus
 from core.services import audit, next_code
@@ -91,17 +89,17 @@ def _require_stock_complete(sample, action):
                                 f"(Stoktan ayır bölümü) yapılmalı. Numune {action}.")
 
 
-def _check_create_scope(actor, customer, work_order):
-    scopes = scopes_for(actor, "sample.manage")
-    if not scopes:
-        raise PermissionDenied("Numune kaydetme yetkiniz yok.")
-    if Scope.ALL in scopes:
+def _check_create_scope(actor, *, customer, product, work_order, order_line, coil, pallet):
+    """Kayıt anındaki güncel yetki/atama ile kapsam (form ve kısayollarla aynı kural: samples.access)."""
+    from . import access
+    problem = access.check_create(actor, customer=customer, product=product, work_order=work_order,
+                                  order_line=order_line, coil=coil, pallet=pallet)
+    if problem is None:
         return
-    if Scope.CUSTOMER in scopes and customer_in_scope(actor, "sample.manage", customer):
-        return
-    if Scope.ASSIGNED in scopes and work_order is not None and work_order.assigned_foreman_id == actor.pk:
-        return
-    raise PermissionDenied("Bu müşteri / iş emri için numune kaydetme yetkiniz yok.")
+    field, message = problem
+    if field is None:
+        raise PermissionDenied(message)
+    raise BusinessRuleError(message, field=field)
 
 
 def _event(actor, sample, kind, note="", counterpart=""):
@@ -209,7 +207,8 @@ def create_sample(actor, *, kind, customer, product=None, revision=None, order_l
     if quantity is None or quantity <= 0:
         raise BusinessRuleError("Miktar sıfırdan büyük olmalı.", field="quantity")
     stock_source = _resolve_stock_source(kind, unit, stock_source)
-    _check_create_scope(actor, customer, work_order)
+    _check_create_scope(actor, customer=customer, product=product, work_order=work_order, order_line=order_line,
+                        coil=coil, pallet=pallet)
     if product and product.customer_id != customer.pk:
         raise BusinessRuleError("Ürün bu müşteriye ait değil.", field="product")
     if kind != SampleKind.CUSTOMER_REFERENCE and product is None:
