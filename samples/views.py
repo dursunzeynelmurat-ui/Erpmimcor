@@ -72,7 +72,25 @@ def _resolve_line(code):
 def sample_create(request):
     from production.models import Coil, WorkOrder
     from warehouse.models import Pallet
-    form = SampleCreateForm(request.POST or None, user=request.user)
+    initial, source = {}, None
+    if request.method == "GET":
+        for param, model, permission in [("palet", Pallet, "stock.view"), ("bobin", Coil, "workorder.view")]:
+            if param not in request.GET:
+                continue
+            pk = request.GET[param]
+            if not pk.isdigit():
+                raise Http404
+            source = get_scoped_or_404(model.objects.all(), request.user, permission, pk=pk)
+            # A visible source alone does not grant the right to manage its samples.
+            if not can(request.user, "sample.manage", source):
+                raise Http404
+            product = source.product if param == "palet" else source.work_order.product
+            if not can(request.user, "sample.manage", product.customer):
+                raise Http404
+            initial = {"customer": product.customer_id, "product": product.pk,
+                       "pallet_code" if param == "palet" else "coil_code": source.code}
+            break
+    form = SampleCreateForm(request.POST or None, user=request.user, initial=initial)
     if request.method == "POST":
         def create(d):
             return services.create_sample(
@@ -91,7 +109,7 @@ def sample_create(request):
                                url_for=_url)
         if resp:
             return resp
-    return render(request, "core/form_page.html", {"form": form, "title": "Yeni numune", "submit": "Numuneyi kaydet",
+    return render(request, "samples/sample_create.html", {"form": form, "source": source, "title": "Yeni numune", "submit": "Numuneyi kaydet",
                                                    "back": reverse("samples:sample_list")})
 
 
@@ -131,7 +149,8 @@ def _detail_context(request, sample, action=None, bound=None):
             "move_form": MoveForm(auto_id=slot("konum"), initial={"room": sample.room, "cabinet": sample.cabinet,
                                                                   "shelf": sample.shelf, "box": sample.box}),
             "allocate_form": AllocateForm(auto_id=slot("stok"),
-                                          initial={"boxes": int(sample.quantity) if sample.unit == "kutu" else None}),
+                                          initial={"boxes": int(sample.quantity) if sample.unit == "kutu" else None,
+                                                   "pallet_code": sample.pallet.code if sample.pallet_id else ""}),
             "send_form": SendForm(auto_id=slot("gonder")), "return_form": ReturnForm(auto_id=slot("geri")),
             "destroy_form": ReasonForm(auto_id=slot("imha")),
             "decision_form": DecisionForm(auto_id=slot("karar")), "measure_form": MeasurementForm(auto_id=slot("olcum")),

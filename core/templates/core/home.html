@@ -9,11 +9,12 @@
   {% if can.planning_approve %}<a class="tile" href="{% url 'orders:planning_queue' %}">Planlama kuyruğu{% if waiting_planning %} <span class="badge">{{ waiting_planning }}</span>{% endif %}</a>{% endif %}
   {% if can.workorder_create %}<a class="tile" href="{% url 'production:workorder_create_stock' %}">Stok için iş emri</a>{% endif %}
   {% if can.workorder_view %}<a class="tile" href="{% url 'production:workorder_list' %}">İş emirleri</a>{% endif %}
+  {% if can.sample_view %}<a class="tile" href="{% url 'samples:sample_list' %}">Numune takibi</a>{% endif %}
   {% include "partials/home_warehouse_tiles.html" %}
 </div>
 {% if tasks %}<section class="card tasks"><h2>Bekleyen işlerim</h2>
 <div class="dashboard-grid">{% for t in tasks %}<div><h3><a href="{{ t.url }}">{{ t.title }}</a> <span class="badge">{{ t.count }}</span></h3>
-<ul class="list">{% for label, obj in t.items %}<li>{{ label }}</li>{% endfor %}</ul></div>{% endfor %}</div>
+<ul class="list">{% for label, obj in t.items %}<li>{% task_record_url obj t.url as record_url %}<a href="{{ record_url }}">{{ label }} <span aria-hidden="true">→</span></a></li>{% endfor %}</ul></div>{% endfor %}</div>
 <p class="muted">Bildirimler yalnız uygulama içindedir; e-posta veya mesaj gönderilmez.</p></section>{% endif %}
 <div class="dashboard-grid">
 {% if active_work_orders is not None %}

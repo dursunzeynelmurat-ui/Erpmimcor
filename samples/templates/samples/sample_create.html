@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Yeni numune{% endblock %}
+{% block content %}<h1>Yeni numune</h1>
+<p class="muted">Önce numuneyi tanımlayın, sonra bağlı kayıtları ve fiziksel yerini kontrol edin. Bu kayıt tek başına stok düşürmez.</p>
+{% if source %}<p class="msg"><strong>Kaynak: {{ source.code }}</strong> · Müşteri, ürün ve kaynak kodu dolduruldu. Miktarı ve numune türünü siz seçin.</p>{% endif %}
+<form method="post" class="card form" novalidate data-warn-unsaved>{% csrf_token %}
+{% for field in form.hidden_fields %}{{ field }}{% endfor %}
+{% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları düzeltin; diğer bilgiler korunur.</strong>{{ form.non_field_errors }}{% for field in form.hidden_fields %}{{ field.errors }}{% endfor %}</div>{% endif %}
+{% for title, fields in form.sections %}<fieldset class="spec-group"><legend>{{ title }}</legend><div class="field-grid">
+{% for field in fields %}{% include "partials/field.html" %}{% endfor %}</div></fieldset>{% endfor %}
+<p class="msg">Stoktan ayırma yalnız tam kutu için desteklenir ve kayıttan sonra ayrı işlemle yapılır. Adet, rulo ve kg numune kaydı stok düşürmez. Gönderim ve kalite kararı da ayrı işlemlerdir.</p>
+<div class="actions form-actions"><button type="submit" class="btn btn-primary">Numuneyi kaydet</button><a class="btn" href="{{ back }}">Geri</a></div>
+</form>{% endblock %}

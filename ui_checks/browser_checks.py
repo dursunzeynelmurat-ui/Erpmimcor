@@ -88,7 +88,9 @@ class DemoBrowserTests(StaticLiveServerTestCase):
         page.locator('[name=customer]').select_option(str(Customer.objects.get(code=customer).pk))
         page.locator('[name=product]').select_option(str(Product.objects.get(code=product).pk))
         page.get_by_role('button', name='İleri: özellikler ve miktar →').click()
-        expect(page.locator('.spec-card')).to_be_visible()  # onaylı teknik özellikler otomatik gelir
+        page.locator('details.reference-card > summary').click()
+        expect(page.locator('.spec-card')).to_be_visible()  # onaylı özellikler referans bölümünde
+        page.locator('details.reference-card > summary').click()
         page.locator('[name=customer_ref]').fill(reference)
         page.locator('[name=due_date]').fill('2026-10-30')
         page.locator('[name=purpose]').select_option('ticari')

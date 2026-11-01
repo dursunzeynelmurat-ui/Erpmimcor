@@ -16,6 +16,6 @@
   <td data-label="Fiziksel durum">{{ s.get_physical_status_display }}</td>
   {% if internal %}<td data-label="İç kalite kararı">{{ s.get_quality_decision_display }}</td>{% endif %}
   <td data-label="Geri bildirim">{{ s.get_customer_feedback_display }}</td></tr>
-{% empty %}<tr><td colspan="6" class="muted">Numune yok.</td></tr>{% endfor %}</tbody></table></div>
+{% empty %}<tr><td colspan="6" class="muted">Bu aramada numune bulunamadı. <a href="{% url 'samples:sample_list' %}">Filtreleri temizle</a>{% if can_create %} veya <a href="{% url 'samples:sample_create' %}">yeni numune kaydet</a>.{% endif %}</td></tr>{% endfor %}</tbody></table></div>
 {% include "partials/pagination.html" %}
 {% endblock %}

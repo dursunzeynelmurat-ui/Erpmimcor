@@ -18,7 +18,7 @@
 {% if quality_reason %}<p class="msg {% if pallet.quality_status == "blokeli" %}msg-warning{% endif %}"><strong>Kalite gerekçesi:</strong> {{ quality_reason }}</p>{% endif %}
 {% if coil_holds %}<p class="msg msg-warning">İlişkili bobin blokeli ({{ coil_holds|join:", " }}): bu palet sevk edilemez. Aktarımla gelen kutuların kaynağı ayrılamadığı için ilişkili paletler ihtiyatlı olarak bekletilir.</p>{% endif %}
 {% if return_receipts %}<p class="msg msg-warning">Müşteri iadesi paleti: {% for r in return_receipts %}{{ r.code }} ({{ r.shipment_line.shipment.code }}, {{ r.quantity }} kutu) – {{ r.reason }}{% if not forloop.last %}; {% endif %}{% endfor %}. Kalite kararı verilmeden sevk edilemez.</p>{% endif %}
-<div class="actions"><a class="btn" href="{% url 'warehouse:pallet_label' pallet.pk %}">Palet etiketi / QR</a> <a class="btn" href="{% url 'warehouse:package_labels' pallet.pk %}">Kutu/rulo etiketleri</a>
+<div class="actions">{% if can_sample %}<a class="btn" href="{% url 'samples:sample_create' %}?palet={{ pallet.pk }}">Bu paletten numune başlat</a>{% endif %}<a class="btn" href="{% url 'warehouse:pallet_label' pallet.pk %}">Palet etiketi / QR</a> <a class="btn" href="{% url 'warehouse:package_labels' pallet.pk %}">Kutu/rulo etiketleri</a>
 {% if can_relocate %}<a class="btn" href="{% url 'warehouse:pallet_location' pallet.pk %}">Depo yerini değiştir</a>{% endif %}</div>
 
 <section class="card"><h2>Güncel ağırlık</h2>

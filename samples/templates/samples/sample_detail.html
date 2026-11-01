@@ -4,8 +4,9 @@
 <h1>Numune {{ s.code }}</h1>
 <p>{{ s.get_kind_display }} · {{ s.customer.name }}{% if s.product %} · {{ s.product }}{% endif %}{% if s.revision %} · Teknik revizyon Rev.{{ s.revision.rev_no }}{% endif %}</p>
 <section class="card"><h2>Durum</h2>
-  <p class="muted">Bu üç bilgi ayrıdır: numune müşterideyken de iç kalite kararı ayrıca korunur.</p>
+  <p class="muted">Fiziksel yer, kalite kararı, müşteri geri bildirimi ve stok etkisi ayrı bilgilerdir. Gönderim kalite kararı vermez; tekrar stok düşürmez.</p>
   <dl class="kv">
+    {% if internal %}<dt>Fiziksel konum</dt><dd>{{ s.location }}</dd><dt>Stok etkisi</dt><dd>{{ stock_effect }}</dd>{% endif %}
     <dt>Fiziksel durum</dt><dd><strong>{{ s.get_physical_status_display }}</strong></dd>
     {% if internal %}<dt>İç kalite kararı</dt><dd><strong>{{ s.get_quality_decision_display }}</strong>{% if s.decided_at %} · {{ s.decided_by.full_name }} · {{ s.decided_at|date:"d.m.Y H:i" }}<br>{{ s.decision_reason }}{% endif %}</dd>{% endif %}
     <dt>Müşteri geri bildirimi</dt><dd><strong>{{ s.get_customer_feedback_display }}</strong>{% if s.feedback_at %} · {{ s.feedback_by.full_name }} · {{ s.feedback_at|date:"d.m.Y H:i" }}{% if s.feedback_note %}<br>{{ s.feedback_note }}{% endif %}{% if s.feedback_reference %} ({{ s.feedback_reference }}){% endif %}{% endif %}</dd>

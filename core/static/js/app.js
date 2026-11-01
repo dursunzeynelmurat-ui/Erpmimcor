@@ -226,7 +226,7 @@ if (document.querySelector('[data-autoprint]')) { window.addEventListener('load'
     if (totalOut) {
       totalOut.innerHTML = '';
       const strong = document.createElement('strong');
-      strong.textContent = total === 100 ? 'Karışım toplamı %100. Onaylanabilir.'
+      strong.textContent = total === 100 ? 'Karışım toplamı %100. Malzemeleri ve teknik bilgileri kontrol edin; kesin onay kaydederken verilir.'
         : 'Karışım toplamı %' + fmt(total, 3) + '. Onaylamak için %100 olmalı.';
       totalOut.append(strong);
     }
@@ -238,6 +238,10 @@ if (document.querySelector('[data-autoprint]')) { window.addEventListener('load'
     event.preventDefault();
     const last = rows.querySelector('[data-row]:last-of-type');
     const n = Number(count.value);
+    if (!last || n >= 30) {
+      totalOut.textContent = "En fazla 30 malzeme satırı eklenebilir. Mevcut satırları düzenleyin.";
+      return;
+    }
     const row = last.cloneNode(true);
     row.querySelectorAll('[name]').forEach(function (el) {
       el.name = el.name.replace(/_\d+$/, '_' + n);

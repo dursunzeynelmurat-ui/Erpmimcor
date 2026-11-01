@@ -49,6 +49,8 @@ def add_spec_request_fields(form, revision, with_toggle=True):
         if f.name not in spec.CHANGEABLE:
             continue
         field = spec_form_field(f)
+        if f.show_if:
+            field.widget.attrs["data-show-if"] = f"{SPEC_PREFIX}{f.show_if[0]}:{','.join(f.show_if[1])}"
         field.initial = getattr(revision, f.name) if revision else None
         form.fields[SPEC_PREFIX + f.name] = field
         names.append(SPEC_PREFIX + f.name)
@@ -62,6 +64,11 @@ def clean_spec_request(form, data, product_or_line):
     from .repeat import requested_changes
     # Yalnız gönderilen alanlar talep sayılır; formda bulunmayan (gönderilmemiş) alan "silindi" anlamına gelmez.
     requested = {n: data.get(SPEC_PREFIX + n) for n in spec.CHANGEABLE if form.add_prefix(SPEC_PREFIX + n) in form.data}
+    for f in spec.FIELDS:
+        if f.name in spec.CHANGEABLE and f.show_if:
+            controller, allowed = f.show_if
+            if controller in requested and requested[controller] not in allowed:
+                requested[f.name] = None if f.kind in ("decimal", "int") else ""
     try:
         _rev, changed = requested_changes(product_or_line, requested)
     except BusinessRuleError as exc:

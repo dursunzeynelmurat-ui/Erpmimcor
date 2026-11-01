@@ -57,7 +57,7 @@ def workorder_create_stock(request):
 def workorder_list(request):
     check(request.user, "workorder.view")
     status = request.GET.get("durum", "aktif")
-    qs = scoped(WorkOrder.objects.all(), request.user, "workorder.view").select_related("product__customer", "order_line__order").prefetch_related("operations__machine")
+    qs = scoped(WorkOrder.objects.all(), request.user, "workorder.view").select_related("product__customer", "order_line__order").prefetch_related("operations__machine", "operations__responsible_shift", "operations__shift")
     if status != "arsiv":
         qs = qs.filter(archived_at__isnull=True)
     if status == "aktif":
@@ -233,6 +233,7 @@ def coil_detail(request, pk):
             if resp:
                 return resp
     return render(request, "production/coil_detail.html", {
+        "can_sample": can(request.user, "sample.manage", coil) and can(request.user, "sample.manage", coil.work_order.product.customer),
         "coil": coil, "sources": coil.source_links.select_related("source__machine"),
         "outputs": coil.output_links.select_related("output__machine"),
         "pallet_link": getattr(coil, "pallet_link", None), "form": form, "history": history_for(coil),

@@ -76,6 +76,7 @@ def pallet_detail(request, pk):
     weighing = pallet.current_weighing
     weighings = pallet.weighings.select_related("user")
     ctx = {
+        "can_sample": can(u, "sample.manage", pallet) and can(u, "sample.manage", pallet.product.customer),
         "pallet": pallet, "current_weighing": weighing,
         "weighing_rows": services.weight_breakdown(weighing, pallet) if weighing else None,
         "coil_holds": services.coil_holds(pallet),

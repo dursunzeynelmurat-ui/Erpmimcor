@@ -260,3 +260,27 @@ fieldset.spec-group legend { font-weight: 600; padding: 0 4px; }
 }
 .artwork-thumb { display: block; max-width: 220px; max-height: 160px; border: 1px solid var(--border); margin-top: 6px; }
 .artwork-list .artwork { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 10px; }
+
+/* Kullanım kolaylığı: kısa bölümler, görünür işlem alanı, taşmayan form kolonları. */
+.field-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px 20px; }
+.field-grid > *, .recipe-row > * { min-width:0; }
+.field-grid .field:has(textarea) { grid-column:1 / -1; }
+.reference-card { border:1px solid var(--border); border-radius:var(--radius); padding:12px; margin:12px 0 20px; }
+.reference-card > summary { min-height:44px; cursor:pointer; font-weight:600; align-content:center; }
+.section-links { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+.section-links a { display:inline-flex; align-items:center; min-height:44px; padding:8px 12px; background:var(--bg); border-radius:6px; }
+.form-actions { position:sticky; bottom:8px; z-index:2; background:#fff; padding:12px; border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 3px 12px #18374418; }
+.form:has(.form-actions) { padding-bottom:20px; }
+.spec-group legend { color:var(--fg); font-size:1.05rem; }
+.spec-group { scroll-margin-bottom:160px; }
+.form :is(input,select,textarea,button,a) { scroll-margin-bottom:160px; }
+.field[hidden] { display:none; }
+.status { white-space:normal; }
+.kv dd, .tasks li, h1, .field label { overflow-wrap:anywhere; }
+@media(max-width:720px) {
+ .field-grid { grid-template-columns:minmax(0,1fr); }
+ .form-actions { position:static; box-shadow:none; padding:12px 0 0; border:0; border-top:1px solid var(--border); }
+ .form-actions .btn { flex:1 1 100%; text-align:center; }
+ .section-links { gap:4px; }
+}
+@media print { .section-links,.form-actions { display:none; } }

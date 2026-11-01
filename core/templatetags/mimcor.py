@@ -205,3 +205,20 @@ def item_spec(form, item):
 def delivery_terms_label(code):
     from catalog.models import DELIVERY_TERMS
     return dict(DELIVERY_TERMS).get(code, code) if code else "—"
+
+
+@register.simple_tag
+def task_record_url(obj, fallback):
+    """Link already scoped task objects; the target view still enforces permissions."""
+    from django.urls import reverse
+    model = getattr(getattr(obj, "_meta", None), "label_lower", "")
+    routes = {"orders.salesorder": "orders:order_detail", "production.workorder": "production:workorder_detail",
+              "warehouse.pallet": "warehouse:pallet_detail", "warehouse.shipment": "warehouse:shipment_detail",
+              "corrections.correctionrequest": "corrections:correction_detail"}
+    if model in routes:
+        return reverse(routes[model], args=[obj.pk])
+    if model == "orders.orderline":
+        return reverse("orders:order_detail", args=[obj.order_id])
+    if model == "production.shifthandover":
+        return reverse("production:workorder_detail", args=[obj.operation.work_order_id])
+    return fallback

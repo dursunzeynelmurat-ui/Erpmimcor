@@ -88,9 +88,17 @@ def order_create(request):
     product = form.selected_product() if form.is_bound else None
     customer = form._selected_customer() if form.is_bound else None
     revision = product.current_revision if product else None
+    from catalog import spec
     visible = form.STEPS[step][1]
     return render(request, "orders/order_create.html", {
         "form": form, "step": step, "steps": [(k, t) for k, (t, _) in form.STEPS.items()],
+        "order_groups": [(title, [form[n] for n in names]) for title, names in [
+            ("Miktar ve teslim", ["quantity", "unit", "due_date"]),
+            ("Sipariş amacı", ["purpose", "charge"]),
+            ("Sipariş bilgileri", ["customer_ref", "order_date", "notes"])]],
+        "request_groups": [(title, [form["s_" + f.name] for f in spec.FIELDS
+                                     if f.section == key and f.name in spec.CHANGEABLE])
+                           for key, title in spec.SECTIONS],
         "visible": visible, "visible_plain": [n for n in visible if n not in form.spec_names],
         "spec_request": [form[n] for n in form.spec_names if n != "want_change"],
         "spec_diff": repeat.change_rows(revision, form.spec_changes) if form.spec_changes else [],

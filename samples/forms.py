@@ -63,7 +63,7 @@ class SampleCreateForm(IdemForm):
         super().__init__(*args, **kwargs)
         customers = scoped(Customer.objects.active(), user, "sample.manage") if user else Customer.objects.none()
         self.fields["customer"].queryset = customers
-        cid = self.data.get("customer") if self.is_bound else None
+        cid = self.data.get("customer") if self.is_bound else self.initial.get("customer")
         customer = customers.filter(pk=cid).first() if cid and str(cid).isdigit() else None
         field = self.fields["product"]
         field.queryset = Product.objects.active().filter(customer=customer) if customer else Product.objects.none()
@@ -77,12 +77,19 @@ class SampleCreateForm(IdemForm):
         })
         if customer is None:
             field.widget.attrs["disabled"] = "disabled"
-        pid = self.data.get("product") if self.is_bound else None
+        pid = self.data.get("product") if self.is_bound else self.initial.get("product")
         self.fields["revision"].queryset = (RecipeRevision.objects.filter(
             recipe__product__customer=customer, recipe__product_id=pid).order_by("-rev_no")
             if customer and pid and str(pid).isdigit() else RecipeRevision.objects.none())
         self.fields["revision"].label_from_instance = lambda r: (
             f"Rev.{r.rev_no} – {r.width_mm} mm / {r.thickness_micron} µ ({r.created_at:%d.%m.%Y})")
+
+    def sections(self):
+        return [(title, [self[n] for n in names]) for title, names in [
+            ("1. Numune ve ürün", ["kind", "customer", "product", "quantity", "unit", "stock_source"]),
+            ("2. Bağlı üretim kayıtları", ["pallet_code", "coil_code", "work_order_code", "order_line_code", "revision", "revision_uncertain"]),
+            ("3. Fiziksel konum ve teslim", ["room", "cabinet", "shelf", "box", "counterpart", "occurred_at", "retention_until", "retention_conditions"]),
+            ("4. Açıklamalar", ["notes", "shared_note"])]]
 
     def clean(self):
         data = super().clean()

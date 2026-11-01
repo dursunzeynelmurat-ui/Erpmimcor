@@ -10,7 +10,8 @@
   <input type="hidden" name="satir_sayisi" value="{{ form.rows }}" data-row-count>
   {% if form.errors %}<div class="form-errors" role="alert" tabindex="-1"><strong>Kaydedilmedi. İşaretli alanları düzeltin; girdiğiniz bilgiler korunur.</strong>{{ form.non_field_errors }}</div>{% endif %}
 
-  <h2>Karışım (nihai karışımın yüzdesi)</h2>
+  <nav class="section-links" aria-label="Reçete bölümleri"><a href="#karisim">1. Karışım</a><a href="#teknik">2. Teknik özellikler</a><a href="#recete-kaydet">3. Kontrol ve kayıt</a></nav>
+  <h2 id="karisim">1. Karışım (nihai karışımın yüzdesi)</h2>
   <p class="muted">Her satır bir malzeme kartıdır. Oranlar karışımın tamamına göredir (toplam %100); "100 kg ana
     malzemeye ilave" yöntemi kullanılmaz.{% if can_manage_material %} Listede olmayan malzeme için
     <a href="{% url 'catalog:definition_create' 'malzemeler' %}" target="_blank" rel="noopener">yeni malzeme kartı açın</a>
@@ -28,6 +29,7 @@
   <div class="actions"><button type="submit" name="git" value="satir" class="btn" data-add-row>+ Malzeme ekle</button></div>
   <p class="total-line" data-total aria-live="polite"><strong>{{ total_message }}</strong></p>
 
+  <details class="reference-card"><summary>Kaydedilmiş karışımın parti hesabı</summary>
   <h2>Parti hesabı</h2>
   {% include "partials/field.html" with field=form.batch_kg %}
   <div class="table-wrap"><table class="table compact"><thead><tr><th>Malzeme</th><th>Tür</th><th>Oran</th><th>{{ table.batch_kg|qty }} kg partide</th><th>100 kg'de</th></tr></thead>
@@ -39,12 +41,14 @@
   <p class="muted">Kaydedilmiş satırlara göre hesaplanır. kg karşılıkları 0,001 kg'ye yuvarlanır.{% if table.rounding_diff %}
     <strong>Yuvarlama farkı: {{ table.rounding_diff|qty }} kg</strong> (yuvarlanmış kg'lerin toplamı ile parti büyüklüğü arasındaki fark; tartımda dikkate alın).{% endif %}</p>
 
-  <h2>Teknik özellikler</h2>
+  </details>
+  <h2 id="teknik">2. Teknik özellikler</h2>
   <p class="muted">Siparişteki istenen renk burada (Görünüm); renklendirici malzeme ve dozajı yukarıdaki karışım satırlarındadır.</p>
   {% include "partials/spec_fieldsets.html" %}
+  <h2 id="recete-kaydet">3. Kontrol ve kayıt</h2>
   {% include "partials/field.html" with field=form.change_reason %}
 
-  <div class="actions">
+  <div class="actions form-actions">
     <button type="submit" name="git" value="kaydet" class="btn">Taslağı kaydet</button>
     <button type="submit" name="git" value="onayla" class="btn btn-primary">Onayla ve revizyon oluştur</button>
     <a class="btn" href="{% url 'catalog:recipe_detail' draft.product.pk %}">Reçeteye dön</a>

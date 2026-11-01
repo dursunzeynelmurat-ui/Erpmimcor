@@ -11,8 +11,11 @@
   <strong>{{ wo.code }}</strong> <span class="status status-{{ wo.status }}">{{ wo.get_status_display }}</span><br>
   {{ wo.product.code }} · {{ wo.product.customer.name }}<br>
   {{ wo.target_quantity|qty }} {{ wo.get_unit_display }} · {% if wo.order_line %}{{ wo.order_line.code }}{% else %}Stok üretimi{% endif %}<br>
-  <small>{{ wo.stage_display }}</small>
+  <p class="op-plan"><strong>Sıradaki aşama:</strong> {{ wo.stage_display }}</p>
+  {% for op in wo.operations.all %}{% if op.status != "tamamlandi" %}<p class="op-plan">{{ op.seq }}. {{ op.machine.code }} · {{ op.get_machine_type_display }}<br>
+    Vardiya: {% if op.responsible_shift %}{{ op.responsible_shift }}{% elif op.shift %}{{ op.shift }}{% else %}Atanmamış — planlama ile görüşün{% endif %} · {{ op.get_status_display }}</p>{% endif %}{% endfor %}
+  <span class="muted">İşi ve yapılabilecek işlemleri aç →</span>
 </a>
-{% empty %}<p class="muted">İş emri yok.</p>{% endfor %}</div>
+{% empty %}<p class="muted">Bu filtrede iş emri yok. Diğer durumları veya üretim planını kontrol edin.</p>{% endfor %}</div>
 {% include "partials/pagination.html" %}
 {% endblock %}
