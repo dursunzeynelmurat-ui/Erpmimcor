@@ -1,3 +1,31 @@
+# UI/UX kullanım kolaylığı — 1 Kasım 2026 (güncel)
+
+Kaynak: `chore/mimcor-local-docker` / `8e689b6`; ayrı dal: `design/mimcor-kullanim-kolayligi`.
+Eski tasarım dalından devam edilmedi. Uzak kaynak dal başlangıçta ve teslim öncesinde kontrol edildi; aynı commit'te.
+
+**Ayrıntılı devir:** [docs/ui-kullanim-kolayligi.md](docs/ui-kullanim-kolayligi.md).
+**Görseller:** [önce/sonra dizini](docs/screenshots/kullanim-kolayligi/README.md).
+
+Siparişte miktar/teslim öne alındı, teknik talepler bölümlere ayrıldı ve ilgisiz koşullu girdiler temizleniyor.
+Reçete bölüm bağlantıları ve kayıt alanı sadeleştirildi. Numune formu bölümlendi; yetkili palet/bobinden kaynak
+kodları dolduruluyor. İş listesi satırları ilgili kaydı açıyor; iş emri kartı makine/vardiya gösteriyor.
+Servisler, yetki kuralları, stok/revizyon hesapları, şema ve Docker ortam ayrımı değiştirilmedi.
+
+Ayrı mevcut bulgu: ustabaşının assigned kapsamlı numune yetkisi genel formda müşteri listesi üretemiyor.
+Yetki genişletilmedi; yeni kaynak kısayolları bu desteklenmeyen form akışını vaat etmiyor.
+Güvenlik incelemesinde kaynak ön doldurma kapsamı, reçete gizliliği, koşullu talep temizliği ve POST/idempotency
+özellikle kontrol edilmeli; ayrıntılar yeni belgede.
+
+Doğrulama: başlangıçta 430, değişiklikten sonra **439 Django testi geçti**. Sistem/migration kontrolleri temiz.
+Güncel Docker app/web/db sağlıklı. Mevcut 12 tarayıcı senaryosu ve yeni 2 senaryonun ayrı son koşusu geçti.
+Toplu koşudaki test verisi düzeltmesi ve yeniden koşma ayrıntısı devir belgesinde; uzaktaki CI doğrulanamadı.
+
+Push durumu: hem GitHub bağlayıcısı hem ortamın Git kimliği 403 döndürdü. Yerel commit'ler mevcut;
+uzak dal/CI sonucu oluşmuş sayılmamalı. Merge, force push ve yayın yapılmadı.
+Tüm inceleme bulut ortamında, kurgusal verilerle yapıldı. 390 px **emülasyon**, gerçek telefon testi değildir.
+
+---
+
 # Yerel Docker ortamı — 31 Ekim 2026 (güncel)
 
 Branch: `chore/mimcor-local-docker` (taban `0abbc87`; merge/PR/canlı yayın yok). Kullanım: **[docs/yerel-kurulum.md](docs/yerel-kurulum.md)**.
